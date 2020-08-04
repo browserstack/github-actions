@@ -4531,14 +4531,14 @@ class parseInput_ParseInput {
 
 /* harmony default export */ var parseInput = (parseInput_ParseInput);
 
+// EXTERNAL MODULE: external "path"
+var external_path_ = __webpack_require__(622);
+
 // EXTERNAL MODULE: ./node_modules/@actions/tool-cache/lib/tool-cache.js
 var tool_cache = __webpack_require__(533);
 
 // EXTERNAL MODULE: ./node_modules/@actions/io/lib/io.js
 var io = __webpack_require__(1);
-
-// EXTERNAL MODULE: external "path"
-var external_path_ = __webpack_require__(622);
 
 // CONCATENATED MODULE: ./src/binarySetup/baseHandler.js
 
@@ -4550,18 +4550,15 @@ var external_path_ = __webpack_require__(622);
 const { LOCAL_BINARY_FOLDER } = constants;
 
 class baseHandler_BaseHandler {
-  static async _makeDirectory(platform) {
-    console.log(`in makeDirectory: ${process.env.HOME}, ${LOCAL_BINARY_FOLDER}, ${platform}, ${process.env.GITHUB_WORKSPACE}`);
-    const binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, platform);
+  static async _makeDirectory(binaryFolder) {
     console.log('in makeDirectory, binaryFOlder: ', binaryFolder);
     await Object(io.mkdirP)(binaryFolder);
     console.log('made the directory..');
-    return binaryFolder;
   }
 
   async downloadBinary(zipURL) {
     try {
-      const binaryFolder = await baseHandler_BaseHandler._makeDirectory(this.platform);
+      await baseHandler_BaseHandler._makeDirectory(this.binaryFolder);
       console.log('binary folder: ', binaryFolder);
       const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(binaryFolder, 'binaryZip'));
       console.log('downloaded the binary: ', downloadPath);
@@ -4583,6 +4580,7 @@ class baseHandler_BaseHandler {
 
 
 
+
 const { BINARY_PATHS: { LINUX } } = constants;
 
 class linuxHandler_LinuxHandler extends baseHandler {
@@ -4590,6 +4588,7 @@ class linuxHandler_LinuxHandler extends baseHandler {
     super();
     this.platform = 'linux';
     this.toolName = 'BrowserStackLocal';
+    this.binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', this.platform);
   }
 
   async downloadBinary() {
@@ -4607,6 +4606,7 @@ class linuxHandler_LinuxHandler extends baseHandler {
 
 
 
+
 const { BINARY_PATHS: { WINDOWS } } = constants;
 
 class winHandler_WindowsHandler extends baseHandler {
@@ -4614,10 +4614,10 @@ class winHandler_WindowsHandler extends baseHandler {
     super();
     this.platform = 'windows';
     this.toolName = 'BrowserStackLocal';
+    this.binaryFolder = Object(external_path_.resolve)(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'executables', this.platform);
   }
 
   async downloadBinary() {
-    console.log('INSIDE WINDOWS HANDLER TO DOWNLOAD...');
     await super.downloadBinary(WINDOWS);
   }
 
@@ -4632,6 +4632,7 @@ class winHandler_WindowsHandler extends baseHandler {
 
 
 
+
 const { BINARY_PATHS: { DARWIN } } = constants;
 
 class darwinHandler_DarwinHandler extends baseHandler {
@@ -4639,6 +4640,7 @@ class darwinHandler_DarwinHandler extends baseHandler {
     super();
     this.platform = 'darwin';
     this.toolName = 'BrowserStackLocal';
+    this.binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', this.platform);
   }
 
   async downloadBinary() {
@@ -4667,7 +4669,6 @@ const HANDLER_MAPPING = {
 class factory_BinaryFactory {
   static getHandler(type) {
     try {
-      console.log('CHECK THE PLATFORM TYPE HERE: ', type);
       const matchedType = type.match(/linux|darwin|win/) || [];
       const Handler = HANDLER_MAPPING[matchedType[0]];
       if (!Handler) {

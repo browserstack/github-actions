@@ -1,3 +1,4 @@
+import * as path from 'path';
 import BaseHandler from './baseHandler';
 import constants from '../../config/constants';
 
@@ -8,6 +9,7 @@ class DarwinHandler extends BaseHandler {
     super();
     this.platform = 'darwin';
     this.toolName = 'BrowserStackLocal';
+    this.binaryFolder = path.resolve(process.env.HOME, 'work', 'executables', this.platform);
   }
 
   async downloadBinary() {

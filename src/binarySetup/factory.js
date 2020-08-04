@@ -12,7 +12,6 @@ const HANDLER_MAPPING = {
 class BinaryFactory {
   static getHandler(type) {
     try {
-      console.log('CHECK THE PLATFORM TYPE HERE: ', type);
       const matchedType = type.match(/linux|darwin|win/) || [];
       const Handler = HANDLER_MAPPING[matchedType[0]];
       if (!Handler) {

@@ -7,18 +7,15 @@ import constants from '../../config/constants';
 const { LOCAL_BINARY_FOLDER } = constants;
 
 class BaseHandler {
-  static async _makeDirectory(platform) {
-    console.log(`in makeDirectory: ${process.env.HOME}, ${LOCAL_BINARY_FOLDER}, ${platform}, ${process.env.GITHUB_WORKSPACE}`);
-    const binaryFolder = path.resolve(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, platform);
+  static async _makeDirectory(binaryFolder) {
     console.log('in makeDirectory, binaryFOlder: ', binaryFolder);
     await io.mkdirP(binaryFolder);
     console.log('made the directory..');
-    return binaryFolder;
   }
 
   async downloadBinary(zipURL) {
     try {
-      const binaryFolder = await BaseHandler._makeDirectory(this.platform);
+      await BaseHandler._makeDirectory(this.binaryFolder);
       console.log('binary folder: ', binaryFolder);
       const downloadPath = await tc.downloadTool(zipURL, path.resolve(binaryFolder, 'binaryZip'));
       console.log('downloaded the binary: ', downloadPath);

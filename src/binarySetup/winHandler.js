@@ -1,3 +1,4 @@
+import * as path from 'path';
 import BaseHandler from './baseHandler';
 import constants from '../../config/constants';
 
@@ -8,10 +9,10 @@ class WindowsHandler extends BaseHandler {
     super();
     this.platform = 'windows';
     this.toolName = 'BrowserStackLocal';
+    this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'executables', this.platform);
   }
 
   async downloadBinary() {
-    console.log('INSIDE WINDOWS HANDLER TO DOWNLOAD...');
     await super.downloadBinary(WINDOWS);
   }
 
