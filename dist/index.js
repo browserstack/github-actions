@@ -4551,7 +4551,7 @@ const { LOCAL_BINARY_FOLDER } = constants;
 
 class baseHandler_BaseHandler {
   static async _makeDirectory(platform) {
-    console.log(`in makeDirectory: ${process.env.HOME}, ${LOCAL_BINARY_FOLDER}, ${platform}`);
+    console.log(`in makeDirectory: ${process.env.HOME}, ${LOCAL_BINARY_FOLDER}, ${platform}, ${process.env.GITHUB_WORKSPACE}`);
     const binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, platform);
     console.log('in makeDirectory, binaryFOlder: ', binaryFolder);
     await Object(io.mkdirP)(binaryFolder);
