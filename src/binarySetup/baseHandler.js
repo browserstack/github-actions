@@ -4,8 +4,6 @@ import * as core from '@actions/core';
 import * as path from 'path';
 import constants from '../../config/constants';
 
-const { LOCAL_BINARY_FOLDER } = constants;
-
 class BaseHandler {
   async _makeDirectory() {
     console.log('in makeDirectory, binaryFOlder: ', this.binaryFolder);

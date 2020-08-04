@@ -4547,8 +4547,6 @@ var io = __webpack_require__(1);
 
 
 
-const { LOCAL_BINARY_FOLDER } = constants;
-
 class baseHandler_BaseHandler {
   async _makeDirectory() {
     console.log('in makeDirectory, binaryFOlder: ', this.binaryFolder);
@@ -4581,14 +4579,14 @@ class baseHandler_BaseHandler {
 
 
 
-const { BINARY_PATHS: { LINUX } } = constants;
+const { BINARY_PATHS: { LINUX }, LOCAL_BINARY_FOLDER } = constants;
 
 class linuxHandler_LinuxHandler extends baseHandler {
   constructor() {
     super();
     this.platform = 'linux';
     this.toolName = 'BrowserStackLocal';
-    this.binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', this.platform);
+    this.binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, this.platform);
   }
 
   async downloadBinary() {
@@ -4607,14 +4605,14 @@ class linuxHandler_LinuxHandler extends baseHandler {
 
 
 
-const { BINARY_PATHS: { WINDOWS } } = constants;
+const { BINARY_PATHS: { WINDOWS }, LOCAL_BINARY_FOLDER: winHandler_LOCAL_BINARY_FOLDER } = constants;
 
 class winHandler_WindowsHandler extends baseHandler {
   constructor() {
     super();
     this.platform = 'windows';
     this.toolName = 'BrowserStackLocal';
-    this.binaryFolder = Object(external_path_.resolve)(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'executables', this.platform);
+    this.binaryFolder = Object(external_path_.resolve)(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'executables', winHandler_LOCAL_BINARY_FOLDER, this.platform);
   }
 
   async downloadBinary() {
@@ -4633,14 +4631,14 @@ class winHandler_WindowsHandler extends baseHandler {
 
 
 
-const { BINARY_PATHS: { DARWIN } } = constants;
+const { BINARY_PATHS: { DARWIN }, LOCAL_BINARY_FOLDER: darwinHandler_LOCAL_BINARY_FOLDER } = constants;
 
 class darwinHandler_DarwinHandler extends baseHandler {
   constructor() {
     super();
     this.platform = 'darwin';
     this.toolName = 'BrowserStackLocal';
-    this.binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', this.platform);
+    this.binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', darwinHandler_LOCAL_BINARY_FOLDER, this.platform);
   }
 
   async downloadBinary() {
