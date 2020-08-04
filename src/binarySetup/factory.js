@@ -8,8 +8,8 @@ const HANDLER_MAPPING = {
 class BinaryFactory {
   static getHandler(type) {
     try {
-      const matchedType = type.match(type.match(/linux|darwin|win/) || []);
-      const Handler = HANDLER_MAPPING[matchedType];
+      const matchedType = type.match(/linux|darwin|win/) || [];
+      const Handler = HANDLER_MAPPING[matchedType[0]];
       if (!Handler) {
         throw Error(`No Handler Found for the Platform Type: ${type}`);
       }
