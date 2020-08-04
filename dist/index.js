@@ -1568,6 +1568,8 @@ var github = __webpack_require__(469);
     WINDOWS: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-win32.zip',
     DARWIN: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-darwin-x64.zip',
   },
+
+  LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
 });
 
 // CONCATENATED MODULE: ./src/parseInput.js
@@ -1622,18 +1624,36 @@ class parseInput_ParseInput {
 // EXTERNAL MODULE: ./node_modules/@actions/tool-cache/lib/tool-cache.js
 var tool_cache = __webpack_require__(533);
 
+// EXTERNAL MODULE: ./node_modules/@actions/io/lib/io.js
+var io = __webpack_require__(1);
+
+// EXTERNAL MODULE: external "path"
+var external_path_ = __webpack_require__(622);
+
 // CONCATENATED MODULE: ./src/binarySetup/linuxHandler.js
 
 
 
 
-const { BINARY_PATHS: { LINUX } } = constants;
+
+
+const { BINARY_PATHS: { LINUX }, LOCAL_BINARY_FOLDER } = constants;
 
 class linuxHandler_LinuxHandler {
+  async makeDirectory() {
+    try {
+      const binaryFolder = Object(external_path_.resolve)(process.env.HOME, LOCAL_BINARY_FOLDER);
+      await Object(io.mkdirP)(binaryFolder);
+      this.binaryFolder = binaryFolder;
+    } catch (e) {
+      Object(core.setFailed)(`Failed while creating directory for Local Binary: ${e.message}`);
+    }
+  }
+
   async downloadBinary() {
-    const downloadPath = await Object(tool_cache.downloadTool)(LINUX, process.env.HOME);
-    this.binaryPath = Object(tool_cache.extractZip)(downloadPath, process.env.HOME);
-    const cachedPath = await Object(tool_cache.cacheDir)(this.binaryPath, 'BrowserStackLocal');
+    const downloadPath = await Object(tool_cache.downloadTool)(LINUX, this.binaryFolder);
+    await Object(tool_cache.extractZip)(downloadPath);
+    const cachedPath = await Object(tool_cache.cacheDir)(this.binaryFolder, 'BrowserStackLocal');
     Object(core.addPath)(cachedPath);
   }
 }

@@ -23,4 +23,6 @@ export default {
     WINDOWS: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-win32.zip',
     DARWIN: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-darwin-x64.zip',
   },
+
+  LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
 };
