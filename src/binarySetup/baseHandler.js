@@ -10,6 +10,7 @@ class BaseHandler {
   async _makeDirectory() {
     try {
       const binaryFolder = path.resolve(process.env.HOME, LOCAL_BINARY_FOLDER);
+      console.log(`about to make a directory: ${binaryFolder}`);
       await io.mkdirP(binaryFolder);
       this.binaryFolder = binaryFolder;
     } catch (e) {

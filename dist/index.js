@@ -9470,6 +9470,7 @@ class baseHandler_BaseHandler {
   async _makeDirectory() {
     try {
       const binaryFolder = Object(external_path_.resolve)(process.env.HOME, LOCAL_BINARY_FOLDER);
+      console.log(`about to make a directory: ${binaryFolder}`);
       await Object(io.mkdirP)(binaryFolder);
       this.binaryFolder = binaryFolder;
     } catch (e) {
