@@ -17,4 +17,10 @@ export default {
     BROWSERSTACK_BUILD_NAME: 'BROWSERSTACK_BUILD_NAME',
     BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME',
   },
+
+  BINARY_PATHS: {
+    LINUX: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-linux-x64.zip',
+    WINDOWS: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-win32.zip',
+    DARWIN: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-darwin-x64.zip',
+  },
 };

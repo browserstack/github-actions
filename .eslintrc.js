@@ -12,6 +12,7 @@ module.exports = {
     semi: ['error', 'always'],
     indent: ['error', 2],
     quotes: ['warn', 'single'],
+    'consistent-return': 'off',
   },
   ignorePatterns: ['dist/index.js'],
 };
