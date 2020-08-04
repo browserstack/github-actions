@@ -1,8 +1,12 @@
 import * as core from '@actions/core';
 import LinuxHandler from './linuxHandler';
+import WindowsHandler from './winHandler';
+import DarwinHandler from './darwinHandler';
 
 const HANDLER_MAPPING = {
   linux: LinuxHandler,
+  win: WindowsHandler,
+  darwin: DarwinHandler,
 };
 
 class BinaryFactory {

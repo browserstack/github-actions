@@ -40,7 +40,7 @@ module.exports =
 /******/ 	// the startup function
 /******/ 	function startup() {
 /******/ 		// Load entry module and return exports
-/******/ 		return __webpack_require__(946);
+/******/ 		return __webpack_require__(509);
 /******/ 	};
 /******/ 	// initialize runtime
 /******/ 	runtime(__webpack_require__);
@@ -4434,6 +4434,261 @@ function getState(name) {
 }
 exports.getState = getState;
 //# sourceMappingURL=core.js.map
+
+/***/ }),
+
+/***/ 509:
+/***/ (function(__unusedmodule, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+
+// EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
+var core = __webpack_require__(470);
+
+// EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
+var exec = __webpack_require__(986);
+
+// EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
+var github = __webpack_require__(469);
+
+// CONCATENATED MODULE: ./config/constants.js
+/* harmony default export */ var constants = ({
+  INPUT: {
+    USERNAME: 'username',
+    ACCESS_KEY: 'access-key',
+    LOCAL_TESING: 'local-testing',
+    LOCAL_LOGGING_LEVEL: 'local-logging-level',
+    LOCAL_IDENTIFIER: 'local-identifier',
+    LOCAL_ARGS: 'local-args',
+    BUILD_NAME: 'build-name',
+    PROJECT_NAME: 'project-name',
+  },
+
+  ENV_VARS: {
+    BROWSERSTACK_USERNAME: 'BROWSERSTACK_USERNAME',
+    BROWSERSTACK_ACCESS_KEY: 'BROWSERSTACK_ACCESS_KEY',
+    BROWSERSTACK_LOCAL_IDENTIFIER: 'BROWSERSTACK_LOCAL_IDENTIFIER',
+    BROWSERSTACK_BUILD_NAME: 'BROWSERSTACK_BUILD_NAME',
+    BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME',
+  },
+
+  BINARY_PATHS: {
+    LINUX: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-linux-x64.zip',
+    WINDOWS: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-win32.zip',
+    DARWIN: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-darwin-x64.zip',
+  },
+
+  LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
+});
+
+// CONCATENATED MODULE: ./src/parseInput.js
+
+
+
+
+const { INPUT, ENV_VARS } = constants;
+
+class parseInput_ParseInput {
+  fetchAllInput() {
+    try {
+      // required fields
+      this.username = Object(core.getInput)(INPUT.USERNAME, { required: true });
+      this.accessKey = Object(core.getInput)(INPUT.ACCESS_KEY, { required: true });
+
+      // non-compulsory fields
+      this.buildName = Object(core.getInput)(INPUT.BUILD_NAME) || 'some build name';
+      this.projectName = Object(core.getInput)(INPUT.PROJECT_NAME) || github.context.repo.repo;
+      this.localTesting = Object(core.getInput)(INPUT.LOCAL_TESING);
+
+      if (this.localTesting) {
+        this.localLoggingLevel = Object(core.getInput)(INPUT.LOCAL_LOGGING_LEVEL);
+        this.localIdentifier = Object(core.getInput)(INPUT.LOCAL_IDENTIFIER) || 'some identifier';
+        this.localArgs = Object(core.getInput)(INPUT.LOCAL_ARGS);
+      }
+
+      Object(core.info)('CHECK HERE FOR THE INPUT VALS');
+      Object(core.info)(`username: ${this.username}`);
+      Object(core.info)(`buildName: ${this.buildName}`);
+      Object(core.info)(`projectName: ${this.projectName}`);
+      Object(core.info)(`localTesting: ${this.localTesting}`);
+      Object(core.info)(`localLoggingLevel: ${this.localLoggingLevel}`);
+      Object(core.info)(`localIdentifier: ${this.localIdentifier}`);
+      Object(core.info)(`localArgs: ${this.localArgs}`);
+    } catch (e) {
+      Object(core.setFailed)(`Parsing of Input Failed: ${e}`);
+    }
+  }
+
+  setEnvVariables() {
+    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_USERNAME, this.username);
+    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
+    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
+    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
+    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
+  }
+}
+
+/* harmony default export */ var parseInput = (parseInput_ParseInput);
+
+// EXTERNAL MODULE: ./node_modules/@actions/tool-cache/lib/tool-cache.js
+var tool_cache = __webpack_require__(533);
+
+// EXTERNAL MODULE: ./node_modules/@actions/io/lib/io.js
+var io = __webpack_require__(1);
+
+// EXTERNAL MODULE: external "path"
+var external_path_ = __webpack_require__(622);
+
+// CONCATENATED MODULE: ./src/binarySetup/baseHandler.js
+
+
+
+
+
+
+const { LOCAL_BINARY_FOLDER } = constants;
+
+class baseHandler_BaseHandler {
+  static async _makeDirectory(platform) {
+    const binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, platform);
+    await Object(io.mkdirP)(binaryFolder);
+    return binaryFolder;
+  }
+
+  async downloadBinary(zipURL) {
+    try {
+      const binaryFolder = await baseHandler_BaseHandler._makeDirectory(this.platform);
+      const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(binaryFolder, 'binaryZip'));
+      const extractedPath = await Object(tool_cache.extractZip)(downloadPath, binaryFolder);
+      const cachedPath = await Object(tool_cache.cacheDir)(extractedPath, this.toolName, '1.0.0');
+      Object(core.addPath)(cachedPath);
+      this.binaryPath = extractedPath;
+    } catch (e) {
+      Object(core.setFailed)(`Downloading Binary Failed: ${e.message}`);
+    }
+  }
+
+  get binaryPath() {
+    return this.binaryPath;
+  }
+}
+
+/* harmony default export */ var baseHandler = (baseHandler_BaseHandler);
+
+// CONCATENATED MODULE: ./src/binarySetup/linuxHandler.js
+
+
+
+const { BINARY_PATHS: { LINUX } } = constants;
+
+class linuxHandler_LinuxHandler extends baseHandler {
+  constructor() {
+    super();
+    this.platform = 'linux';
+    this.toolName = 'BrowserStackLocal';
+  }
+
+  async downloadBinary() {
+    await super.downloadBinary(LINUX);
+  }
+}
+
+/* harmony default export */ var linuxHandler = (linuxHandler_LinuxHandler);
+
+// CONCATENATED MODULE: ./src/binarySetup/winHandler.js
+
+
+
+const { BINARY_PATHS: { WINDOWS } } = constants;
+
+class winHandler_WindowsHandler extends baseHandler {
+  constructor() {
+    super();
+    this.platform = 'windows';
+    this.toolName = 'BrowserStackLocal';
+  }
+
+  async downloadBinary() {
+    await super.downloadBinary(WINDOWS);
+  }
+}
+
+/* harmony default export */ var winHandler = (winHandler_WindowsHandler);
+
+// CONCATENATED MODULE: ./src/binarySetup/darwinHandler.js
+
+
+
+const { BINARY_PATHS: { DARWIN } } = constants;
+
+class darwinHandler_DarwinHandler extends baseHandler {
+  constructor() {
+    super();
+    this.platform = 'darwin';
+    this.toolName = 'BrowserStackLocal';
+  }
+
+  async downloadBinary() {
+    await super.downloadBinary(DARWIN);
+  }
+}
+
+/* harmony default export */ var darwinHandler = (darwinHandler_DarwinHandler);
+
+// CONCATENATED MODULE: ./src/binarySetup/factory.js
+
+
+
+
+
+const HANDLER_MAPPING = {
+  linux: linuxHandler,
+  win: winHandler,
+  darwin: darwinHandler,
+};
+
+class factory_BinaryFactory {
+  static getHandler(type) {
+    try {
+      const matchedType = type.match(/linux|darwin|win/) || [];
+      const Handler = HANDLER_MAPPING[matchedType[0]];
+      if (!Handler) {
+        throw Error(`No Handler Found for the Platform Type: ${type}`);
+      }
+
+      return new Handler();
+    } catch (e) {
+      Object(core.setFailed)(`Failed in Setting Binary Factory: ${e.message}`);
+    }
+  }
+}
+
+/* harmony default export */ var factory = (factory_BinaryFactory);
+
+// CONCATENATED MODULE: ./src/index.js
+
+
+
+
+
+const run = async () => {
+  try {
+    const inputParser = new parseInput();
+    inputParser.fetchAllInput();
+    inputParser.setEnvVariables();
+
+    const binarySetup = factory.getHandler(process.platform);
+    await binarySetup.downloadBinary();
+    Object(exec.exec)(`ls -altrh ${binarySetup.binaryPath()}`);
+    Object(exec.exec)('BrowserStackLocal');
+  } catch (e) {
+    Object(core.setFailed)(`Action Failed: ${e}`);
+  }
+};
+
+run();
+
 
 /***/ }),
 
@@ -9353,215 +9608,6 @@ function withCustomRequest(customRequest) {
 exports.graphql = graphql$1;
 exports.withCustomRequest = withCustomRequest;
 //# sourceMappingURL=index.js.map
-
-
-/***/ }),
-
-/***/ 946:
-/***/ (function(__unusedmodule, __webpack_exports__, __webpack_require__) {
-
-"use strict";
-__webpack_require__.r(__webpack_exports__);
-
-// EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
-var core = __webpack_require__(470);
-
-// EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
-var exec = __webpack_require__(986);
-
-// EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
-var github = __webpack_require__(469);
-
-// CONCATENATED MODULE: ./config/constants.js
-/* harmony default export */ var constants = ({
-  INPUT: {
-    USERNAME: 'username',
-    ACCESS_KEY: 'access-key',
-    LOCAL_TESING: 'local-testing',
-    LOCAL_LOGGING_LEVEL: 'local-logging-level',
-    LOCAL_IDENTIFIER: 'local-identifier',
-    LOCAL_ARGS: 'local-args',
-    BUILD_NAME: 'build-name',
-    PROJECT_NAME: 'project-name',
-  },
-
-  ENV_VARS: {
-    BROWSERSTACK_USERNAME: 'BROWSERSTACK_USERNAME',
-    BROWSERSTACK_ACCESS_KEY: 'BROWSERSTACK_ACCESS_KEY',
-    BROWSERSTACK_LOCAL_IDENTIFIER: 'BROWSERSTACK_LOCAL_IDENTIFIER',
-    BROWSERSTACK_BUILD_NAME: 'BROWSERSTACK_BUILD_NAME',
-    BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME',
-  },
-
-  BINARY_PATHS: {
-    LINUX: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-linux-x64.zip',
-    WINDOWS: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-win32.zip',
-    DARWIN: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-darwin-x64.zip',
-  },
-
-  LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
-});
-
-// CONCATENATED MODULE: ./src/parseInput.js
-
-
-
-
-const { INPUT, ENV_VARS } = constants;
-
-class parseInput_ParseInput {
-  fetchAllInput() {
-    try {
-      // required fields
-      this.username = Object(core.getInput)(INPUT.USERNAME, { required: true });
-      this.accessKey = Object(core.getInput)(INPUT.ACCESS_KEY, { required: true });
-
-      // non-compulsory fields
-      this.buildName = Object(core.getInput)(INPUT.BUILD_NAME) || 'some build name';
-      this.projectName = Object(core.getInput)(INPUT.PROJECT_NAME) || github.context.repo.repo;
-      this.localTesting = Object(core.getInput)(INPUT.LOCAL_TESING);
-
-      if (this.localTesting) {
-        this.localLoggingLevel = Object(core.getInput)(INPUT.LOCAL_LOGGING_LEVEL);
-        this.localIdentifier = Object(core.getInput)(INPUT.LOCAL_IDENTIFIER) || 'some identifier';
-        this.localArgs = Object(core.getInput)(INPUT.LOCAL_ARGS);
-      }
-
-      Object(core.info)('CHECK HERE FOR THE INPUT VALS');
-      Object(core.info)(`username: ${this.username}`);
-      Object(core.info)(`buildName: ${this.buildName}`);
-      Object(core.info)(`projectName: ${this.projectName}`);
-      Object(core.info)(`localTesting: ${this.localTesting}`);
-      Object(core.info)(`localLoggingLevel: ${this.localLoggingLevel}`);
-      Object(core.info)(`localIdentifier: ${this.localIdentifier}`);
-      Object(core.info)(`localArgs: ${this.localArgs}`);
-    } catch (e) {
-      Object(core.setFailed)(`Parsing of Input Failed: ${e}`);
-    }
-  }
-
-  setEnvVariables() {
-    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_USERNAME, this.username);
-    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
-    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
-    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
-    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
-  }
-}
-
-/* harmony default export */ var parseInput = (parseInput_ParseInput);
-
-// EXTERNAL MODULE: ./node_modules/@actions/tool-cache/lib/tool-cache.js
-var tool_cache = __webpack_require__(533);
-
-// EXTERNAL MODULE: ./node_modules/@actions/io/lib/io.js
-var io = __webpack_require__(1);
-
-// EXTERNAL MODULE: external "path"
-var external_path_ = __webpack_require__(622);
-
-// CONCATENATED MODULE: ./src/binarySetup/baseHandler.js
-
-
-
-
-
-
-const { LOCAL_BINARY_FOLDER } = constants;
-
-class baseHandler_BaseHandler {
-  static async _makeDirectory(platform) {
-    try {
-      const binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, platform);
-      await Object(io.mkdirP)(binaryFolder);
-      return binaryFolder;
-    } catch (e) {
-      Object(core.setFailed)(`Failed while creating directory for Local Binary: ${e.message}`);
-    }
-  }
-
-  async downloadBinary(zipURL) {
-    const binaryFolder = await baseHandler_BaseHandler._makeDirectory(this.platform);
-    const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(binaryFolder, 'binaryZip'));
-    const extractedPath = await Object(tool_cache.extractZip)(downloadPath, binaryFolder);
-    const cachedPath = await Object(tool_cache.cacheDir)(extractedPath, 'BrowserStackLocal', '1.0.0');
-    Object(core.addPath)(cachedPath);
-    this.binaryPath = extractedPath;
-  }
-}
-
-/* harmony default export */ var baseHandler = (baseHandler_BaseHandler);
-
-// CONCATENATED MODULE: ./src/binarySetup/linuxHandler.js
-
-
-
-const { BINARY_PATHS: { LINUX } } = constants;
-
-class linuxHandler_LinuxHandler extends baseHandler {
-  constructor() {
-    super();
-    this.platform = 'linux';
-  }
-
-  async downloadBinary() {
-    await super.downloadBinary(LINUX);
-  }
-}
-
-/* harmony default export */ var linuxHandler = (linuxHandler_LinuxHandler);
-
-// CONCATENATED MODULE: ./src/binarySetup/factory.js
-
-
-
-const HANDLER_MAPPING = {
-  linux: linuxHandler,
-};
-
-class factory_BinaryFactory {
-  static getHandler(type) {
-    try {
-      const matchedType = type.match(/linux|darwin|win/) || [];
-      const Handler = HANDLER_MAPPING[matchedType[0]];
-      if (!Handler) {
-        throw Error(`No Handler Found for the Platform Type: ${type}`);
-      }
-
-      return new Handler();
-    } catch (e) {
-      Object(core.setFailed)(`Failed in Setting Binary Factory: ${e.message}`);
-    }
-  }
-}
-
-/* harmony default export */ var factory = (factory_BinaryFactory);
-
-// CONCATENATED MODULE: ./src/index.js
-
-
-
-
-
-const run = async () => {
-  try {
-    const inputParser = new parseInput();
-    inputParser.fetchAllInput();
-    inputParser.setEnvVariables();
-    Object(core.info)(`ENV variables: ${process.env.BROWSERSTACK_USERNAME}, ${process.env.BROWSERSTACK_PROJECT_NAME}, ${process.env.BROWSERSTACK_BUILD_NAME}, ${process.env.BROWSERSTACK_LOCAL_IDENTIFIER}`);
-    const binarySetup = factory.getHandler(process.platform);
-    await binarySetup.downloadBinary();
-    Object(core.info)(`PATH VALUE: ${process.env.PATH}`);
-    console.log('logging the ls altrh...');
-    Object(exec.exec)('ls -altrh /home/runner/work/executables/LocalBinaryFolder/linux');
-    console.log('running binary now...')
-    Object(exec.exec)('BrowserStackLocal');
-  } catch (e) {
-    Object(core.setFailed)(`Action Failed: ${e}`);
-  }
-};
-
-run();
 
 
 /***/ }),

@@ -7,6 +7,7 @@ class LinuxHandler extends BaseHandler {
   constructor() {
     super();
     this.platform = 'linux';
+    this.toolName = 'BrowserStackLocal';
   }
 
   async downloadBinary() {
