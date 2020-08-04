@@ -14,7 +14,7 @@ class LinuxHandler extends BaseHandler {
     await super.downloadBinary(LINUX);
   }
 
-  binaryPath() {
+  getBinaryPath() {
     return this.binaryPath;
   }
 }

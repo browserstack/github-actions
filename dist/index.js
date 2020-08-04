@@ -4589,7 +4589,7 @@ class linuxHandler_LinuxHandler extends baseHandler {
     await super.downloadBinary(LINUX);
   }
 
-  binaryPath() {
+  getBinaryPath() {
     return this.binaryPath;
   }
 }
@@ -4613,7 +4613,7 @@ class winHandler_WindowsHandler extends baseHandler {
     await super.downloadBinary(WINDOWS);
   }
 
-  binaryPath() {
+  getBinaryPath() {
     return this.binaryPath;
   }
 }
@@ -4637,7 +4637,7 @@ class darwinHandler_DarwinHandler extends baseHandler {
     await super.downloadBinary(DARWIN);
   }
 
-  binaryPath() {
+  getBinaryPath() {
     return this.binaryPath;
   }
 }

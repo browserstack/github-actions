@@ -14,7 +14,7 @@ class WindowsHandler extends BaseHandler {
     await super.downloadBinary(WINDOWS);
   }
 
-  binaryPath() {
+  getBinaryPath() {
     return this.binaryPath;
   }
 }

@@ -14,7 +14,7 @@ class DarwinHandler extends BaseHandler {
     await super.downloadBinary(DARWIN);
   }
 
-  binaryPath() {
+  getBinaryPath() {
     return this.binaryPath;
   }
 }
