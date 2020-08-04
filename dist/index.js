@@ -4552,7 +4552,9 @@ const { LOCAL_BINARY_FOLDER } = constants;
 class baseHandler_BaseHandler {
   static async _makeDirectory(platform) {
     const binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, platform);
+    console.log('in makeDirectory, binaryFOlder: ', binaryFolder);
     await Object(io.mkdirP)(binaryFolder);
+    console.log('made the directory..');
     return binaryFolder;
   }
 
@@ -4561,8 +4563,11 @@ class baseHandler_BaseHandler {
       const binaryFolder = await baseHandler_BaseHandler._makeDirectory(this.platform);
       console.log('binary folder: ', binaryFolder);
       const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(binaryFolder, 'binaryZip'));
+      console.log('downloaded the binary: ', downloadPath);
       const extractedPath = await Object(tool_cache.extractZip)(downloadPath, binaryFolder);
+      console.log('extracted path: ', extractedPath);
       const cachedPath = await Object(tool_cache.cacheDir)(extractedPath, this.toolName, '1.0.0');
+      console.log('cachedPath: ', cachedPath);
       Object(core.addPath)(cachedPath);
       this.binaryPath = extractedPath;
     } catch (e) {
