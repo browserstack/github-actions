@@ -21,9 +21,9 @@ class BaseHandler {
   async downloadBinary(zipURL) {
     console.log('inside downloadBinary...');
     await this._makeDirectory();
-    console.log('done with making directory...');
-    const downloadPath = await tc.downloadTool(zipURL, this.binaryFolder);
-    console.log('downloaded...')
+    console.log('done with making directory. Will add in:', this.platform);
+    const downloadPath = await tc.downloadTool(zipURL, path.resolve(this.binaryFolder, this.platform));
+    console.log('downloaded:', downloadPath);
     await tc.extractZip(downloadPath);
     console.log('extracted...');
     const cachedPath = await tc.cacheDir(this.binaryFolder, 'BrowserStackLocal');

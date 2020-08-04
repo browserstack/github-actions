@@ -9481,9 +9481,9 @@ class baseHandler_BaseHandler {
   async downloadBinary(zipURL) {
     console.log('inside downloadBinary...');
     await this._makeDirectory();
-    console.log('done with making directory...');
-    const downloadPath = await Object(tool_cache.downloadTool)(zipURL, this.binaryFolder);
-    console.log('downloaded...')
+    console.log('done with making directory. Will add in:', this.platform);
+    const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(this.binaryFolder, this.platform));
+    console.log('downloaded:', downloadPath);
     await Object(tool_cache.extractZip)(downloadPath);
     console.log('extracted...');
     const cachedPath = await Object(tool_cache.cacheDir)(this.binaryFolder, 'BrowserStackLocal');
@@ -9501,6 +9501,11 @@ class baseHandler_BaseHandler {
 const { BINARY_PATHS: { LINUX } } = constants;
 
 class linuxHandler_LinuxHandler extends baseHandler {
+  constructor() {
+    super();
+    this.platform = 'linux';
+  }
+
   async downloadBinary() {
     await super.downloadBinary(LINUX);
   }
