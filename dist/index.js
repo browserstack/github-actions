@@ -9483,9 +9483,13 @@ class baseHandler_BaseHandler {
   async downloadBinary(zipURL) {
     const binaryFolder = await baseHandler_BaseHandler._makeDirectory();
     const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(binaryFolder, this.platform));
-    await Object(tool_cache.extractZip)(downloadPath);
+    const expath = await Object(tool_cache.extractZip)(downloadPath, downloadPath);
+    console.log('downloadPath: ', downloadPath);
+    console.log('extracted at: ', expath);
     const cachedPath = await Object(tool_cache.cacheDir)(downloadPath, 'BrowserStackLocal', '1.0.0');
+    console.log('cached path: ', cachedPath);
     Object(core.addPath)(cachedPath);
+    console.log('added to PATH');
     this.binaryPath = downloadPath;
   }
 }
