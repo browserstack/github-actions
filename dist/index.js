@@ -9366,6 +9366,9 @@ __webpack_require__.r(__webpack_exports__);
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
 var core = __webpack_require__(470);
 
+// EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
+var exec = __webpack_require__(986);
+
 // EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
 var github = __webpack_require__(469);
 
@@ -9467,28 +9470,23 @@ var external_path_ = __webpack_require__(622);
 const { LOCAL_BINARY_FOLDER } = constants;
 
 class baseHandler_BaseHandler {
-  async _makeDirectory() {
+  static async _makeDirectory() {
     try {
       const binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER);
-      console.log(`about to make a directory: ${binaryFolder}`);
       await Object(io.mkdirP)(binaryFolder);
-      this.binaryFolder = binaryFolder;
+      return binaryFolder;
     } catch (e) {
       Object(core.setFailed)(`Failed while creating directory for Local Binary: ${e.message}`);
     }
   }
 
   async downloadBinary(zipURL) {
-    console.log('inside downloadBinary...');
-    await this._makeDirectory();
-    console.log('done with making directory. Will add in:', this.platform);
-    const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(this.binaryFolder, this.platform));
-    console.log('downloaded:', downloadPath);
+    const binaryFolder = await baseHandler_BaseHandler._makeDirectory();
+    const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(binaryFolder, this.platform));
     await Object(tool_cache.extractZip)(downloadPath);
-    console.log('extracted...');
-    const cachedPath = await Object(tool_cache.cacheDir)(this.binaryFolder, 'BrowserStackLocal', '1.0.0');
-    console.log('adding to cache: ', cachedPath);
+    const cachedPath = await Object(tool_cache.cacheDir)(downloadPath, 'BrowserStackLocal', '1.0.0');
     Object(core.addPath)(cachedPath);
+    this.binaryPath = downloadPath;
   }
 }
 
@@ -9544,6 +9542,7 @@ class factory_BinaryFactory {
 
 
 
+
 const run = async () => {
   try {
     const inputParser = new parseInput();
@@ -9553,6 +9552,7 @@ const run = async () => {
     const binarySetup = factory.getHandler(process.platform);
     await binarySetup.downloadBinary();
     Object(core.info)(`PATH VALUE: ${process.env.PATH}`);
+    Object(exec.exec)('BrowserStackLocal');
   } catch (e) {
     Object(core.setFailed)(`Action Failed: ${e}`);
   }

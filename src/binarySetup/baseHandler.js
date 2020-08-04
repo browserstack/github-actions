@@ -7,28 +7,23 @@ import constants from '../../config/constants';
 const { LOCAL_BINARY_FOLDER } = constants;
 
 class BaseHandler {
-  async _makeDirectory() {
+  static async _makeDirectory() {
     try {
       const binaryFolder = path.resolve(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER);
-      console.log(`about to make a directory: ${binaryFolder}`);
       await io.mkdirP(binaryFolder);
-      this.binaryFolder = binaryFolder;
+      return binaryFolder;
     } catch (e) {
       core.setFailed(`Failed while creating directory for Local Binary: ${e.message}`);
     }
   }
 
   async downloadBinary(zipURL) {
-    console.log('inside downloadBinary...');
-    await this._makeDirectory();
-    console.log('done with making directory. Will add in:', this.platform);
-    const downloadPath = await tc.downloadTool(zipURL, path.resolve(this.binaryFolder, this.platform));
-    console.log('downloaded:', downloadPath);
+    const binaryFolder = await BaseHandler._makeDirectory();
+    const downloadPath = await tc.downloadTool(zipURL, path.resolve(binaryFolder, this.platform));
     await tc.extractZip(downloadPath);
-    console.log('extracted...');
-    const cachedPath = await tc.cacheDir(this.binaryFolder, 'BrowserStackLocal', '1.0.0');
-    console.log('adding to cache: ', cachedPath);
+    const cachedPath = await tc.cacheDir(downloadPath, 'BrowserStackLocal', '1.0.0');
     core.addPath(cachedPath);
+    this.binaryPath = downloadPath;
   }
 }
 

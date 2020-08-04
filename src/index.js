@@ -1,4 +1,5 @@
 import * as core from '@actions/core';
+import * as exec from '@actions/exec';
 import ParseInput from './parseInput';
 import BinarySetup from './binarySetup/factory';
 
@@ -11,6 +12,7 @@ const run = async () => {
     const binarySetup = BinarySetup.getHandler(process.platform);
     await binarySetup.downloadBinary();
     core.info(`PATH VALUE: ${process.env.PATH}`);
+    exec.exec('BrowserStackLocal');
   } catch (e) {
     core.setFailed(`Action Failed: ${e}`);
   }
