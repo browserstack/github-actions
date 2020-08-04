@@ -4558,7 +4558,7 @@ class baseHandler_BaseHandler {
 
   async downloadBinary(zipURL) {
     try {
-      await baseHandler_BaseHandler._makeDirectory();
+      await this._makeDirectory();
       console.log('binary folder: ', this.binaryFolder);
       const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(this.binaryFolder, 'binaryZip'));
       console.log('downloaded the binary: ', downloadPath);
