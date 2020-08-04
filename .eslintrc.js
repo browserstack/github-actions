@@ -13,6 +13,7 @@ module.exports = {
     indent: ['error', 2],
     quotes: ['warn', 'single'],
     'consistent-return': 'off',
+    'no-underscore-dangle': 'off',
   },
   ignorePatterns: ['dist/index.js'],
 };
