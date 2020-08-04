@@ -9470,9 +9470,9 @@ var external_path_ = __webpack_require__(622);
 const { LOCAL_BINARY_FOLDER } = constants;
 
 class baseHandler_BaseHandler {
-  static async _makeDirectory() {
+  static async _makeDirectory(platform) {
     try {
-      const binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER);
+      const binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, platform);
       await Object(io.mkdirP)(binaryFolder);
       return binaryFolder;
     } catch (e) {
@@ -9481,17 +9481,17 @@ class baseHandler_BaseHandler {
   }
 
   async downloadBinary(zipURL) {
-    const binaryFolder = await baseHandler_BaseHandler._makeDirectory();
+    const binaryFolder = await baseHandler_BaseHandler._makeDirectory(this.platform);
     console.log('binary folder: ', binaryFolder);
-    const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(binaryFolder, this.platform));
+    const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(binaryFolder, 'binaryExecutable'));
     console.log('downloadPath: ', downloadPath);
-    const expath = await Object(tool_cache.extractZip)(downloadPath);
+    const expath = await Object(tool_cache.extractZip)(downloadPath, binaryFolder);
     console.log('extracted at: ', expath);
-    const cachedPath = await Object(tool_cache.cacheDir)(downloadPath, 'BrowserStackLocal', '1.0.0');
+    const cachedPath = await Object(tool_cache.cacheDir)(expath, 'BrowserStackLocal', '1.0.0');
     console.log('cached path: ', cachedPath);
     Object(core.addPath)(cachedPath);
     console.log('added to PATH');
-    this.binaryPath = downloadPath;
+    this.binaryPath = expath;
   }
 }
 
