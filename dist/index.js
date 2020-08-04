@@ -4551,6 +4551,7 @@ const { LOCAL_BINARY_FOLDER } = constants;
 
 class baseHandler_BaseHandler {
   static async _makeDirectory(platform) {
+    console.log('in makeDirectory.........');
     const binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, platform);
     console.log('in makeDirectory, binaryFOlder: ', binaryFolder);
     await Object(io.mkdirP)(binaryFolder);
@@ -4698,7 +4699,7 @@ const run = async () => {
     await binarySetup.downloadBinary();
     // exec.exec(`ls -altrh ${binarySetup.getBinaryPath()}`);
     console.log(`CHECK BINARY PATH: ${binarySetup.getBinaryPath()}`);
-    Object(exec.exec)('BrowserStackLocal');
+    // exec.exec('BrowserStackLocal');
   } catch (e) {
     Object(core.setFailed)(`Action Failed: ${e}`);
   }
