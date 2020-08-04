@@ -4546,24 +4546,17 @@ var io = __webpack_require__(1);
 
 
 
-
 class baseHandler_BaseHandler {
   async _makeDirectory() {
-    console.log('in makeDirectory, binaryFOlder: ', this.binaryFolder);
     await Object(io.mkdirP)(this.binaryFolder);
-    console.log('made the directory..');
   }
 
   async downloadBinary(zipURL) {
     try {
       await this._makeDirectory();
-      console.log('binary folder: ', this.binaryFolder);
       const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(this.binaryFolder, 'binaryZip'));
-      console.log('downloaded the binary: ', downloadPath);
       const extractedPath = await Object(tool_cache.extractZip)(downloadPath, this.binaryFolder);
-      console.log('extracted path: ', extractedPath);
       const cachedPath = await Object(tool_cache.cacheDir)(extractedPath, this.toolName, '1.0.0');
-      console.log('cachedPath: ', cachedPath);
       Object(core.addPath)(cachedPath);
       this.binaryPath = extractedPath;
     } catch (e) {
@@ -4696,8 +4689,7 @@ const run = async () => {
 
     const binarySetup = factory.getHandler(process.platform);
     await binarySetup.downloadBinary();
-    // exec.exec(`ls -altrh ${binarySetup.getBinaryPath()}`);
-    console.log(`CHECK BINARY PATH: ${binarySetup.getBinaryPath()}`);
+    Object(exec.exec)(`ls -altrh ${binarySetup.getBinaryPath()}`);
     // exec.exec('BrowserStackLocal');
   } catch (e) {
     Object(core.setFailed)(`Action Failed: ${e}`);

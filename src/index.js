@@ -11,8 +11,7 @@ const run = async () => {
 
     const binarySetup = BinarySetup.getHandler(process.platform);
     await binarySetup.downloadBinary();
-    // exec.exec(`ls -altrh ${binarySetup.getBinaryPath()}`);
-    console.log(`CHECK BINARY PATH: ${binarySetup.getBinaryPath()}`);
+    exec.exec(`ls -altrh ${binarySetup.getBinaryPath()}`);
     // exec.exec('BrowserStackLocal');
   } catch (e) {
     core.setFailed(`Action Failed: ${e}`);
