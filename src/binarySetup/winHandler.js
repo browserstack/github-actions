@@ -13,6 +13,10 @@ class WindowsHandler extends BaseHandler {
   async downloadBinary() {
     await super.downloadBinary(WINDOWS);
   }
+
+  binaryPath() {
+    return this.binaryPath;
+  }
 }
 
 export default WindowsHandler;

@@ -4568,10 +4568,6 @@ class baseHandler_BaseHandler {
       Object(core.setFailed)(`Downloading Binary Failed: ${e.message}`);
     }
   }
-
-  binaryPath() {
-    return this.binaryPath;
-  }
 }
 
 /* harmony default export */ var baseHandler = (baseHandler_BaseHandler);
@@ -4591,6 +4587,10 @@ class linuxHandler_LinuxHandler extends baseHandler {
 
   async downloadBinary() {
     await super.downloadBinary(LINUX);
+  }
+
+  binaryPath() {
+    return this.binaryPath;
   }
 }
 
@@ -4612,6 +4612,10 @@ class winHandler_WindowsHandler extends baseHandler {
   async downloadBinary() {
     await super.downloadBinary(WINDOWS);
   }
+
+  binaryPath() {
+    return this.binaryPath;
+  }
 }
 
 /* harmony default export */ var winHandler = (winHandler_WindowsHandler);
@@ -4631,6 +4635,10 @@ class darwinHandler_DarwinHandler extends baseHandler {
 
   async downloadBinary() {
     await super.downloadBinary(DARWIN);
+  }
+
+  binaryPath() {
+    return this.binaryPath;
   }
 }
 

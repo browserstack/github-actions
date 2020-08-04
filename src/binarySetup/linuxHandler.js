@@ -13,6 +13,10 @@ class LinuxHandler extends BaseHandler {
   async downloadBinary() {
     await super.downloadBinary(LINUX);
   }
+
+  binaryPath() {
+    return this.binaryPath;
+  }
 }
 
 export default LinuxHandler;

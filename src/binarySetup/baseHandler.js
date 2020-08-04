@@ -25,10 +25,6 @@ class BaseHandler {
       core.setFailed(`Downloading Binary Failed: ${e.message}`);
     }
   }
-
-  binaryPath() {
-    return this.binaryPath;
-  }
 }
 
 export default BaseHandler;
