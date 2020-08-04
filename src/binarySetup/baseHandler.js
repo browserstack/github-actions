@@ -26,11 +26,7 @@ class BaseHandler {
     }
   }
 
-  set binaryPath(value) {
-    this.binaryPath = value;
-  }
-
-  get binaryPath() {
+  binaryPath() {
     return this.binaryPath;
   }
 }
