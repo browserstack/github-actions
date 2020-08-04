@@ -9480,9 +9480,11 @@ class baseHandler_BaseHandler {
   async downloadBinary(zipURL) {
     console.log('inside downloadBinary...');
     await this._makeDirectory();
+    console.log('done with making directory...');
     const downloadPath = await Object(tool_cache.downloadTool)(zipURL, this.binaryFolder);
     await Object(tool_cache.extractZip)(downloadPath);
     const cachedPath = await Object(tool_cache.cacheDir)(this.binaryFolder, 'BrowserStackLocal');
+    console.log('adding to cache...');
     Object(core.addPath)(cachedPath);
   }
 }
