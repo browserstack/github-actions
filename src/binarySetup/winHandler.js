@@ -11,6 +11,7 @@ class WindowsHandler extends BaseHandler {
   }
 
   async downloadBinary() {
+    console.log('INSIDE WINDOWS HANDLER TO DOWNLOAD...');
     await super.downloadBinary(WINDOWS);
   }
 

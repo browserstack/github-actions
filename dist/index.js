@@ -4611,6 +4611,7 @@ class winHandler_WindowsHandler extends baseHandler {
   }
 
   async downloadBinary() {
+    console.log('INSIDE WINDOWS HANDLER TO DOWNLOAD...');
     await super.downloadBinary(WINDOWS);
   }
 
@@ -4690,7 +4691,8 @@ const run = async () => {
 
     const binarySetup = factory.getHandler(process.platform);
     await binarySetup.downloadBinary();
-    Object(exec.exec)(`ls -altrh ${binarySetup.getBinaryPath()}`);
+    // exec.exec(`ls -altrh ${binarySetup.getBinaryPath()}`);
+    console.log(`CHECK BINARY PATH: ${binarySetup.getBinaryPath()}`);
     Object(exec.exec)('BrowserStackLocal');
   } catch (e) {
     Object(core.setFailed)(`Action Failed: ${e}`);
