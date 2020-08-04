@@ -19,16 +19,11 @@ class BaseHandler {
 
   async downloadBinary(zipURL) {
     const binaryFolder = await BaseHandler._makeDirectory(this.platform);
-    console.log('binary folder: ', binaryFolder);
-    const downloadPath = await tc.downloadTool(zipURL, path.resolve(binaryFolder, 'binaryExecutable'));
-    console.log('downloadPath: ', downloadPath);
-    const expath = await tc.extractZip(downloadPath, binaryFolder);
-    console.log('extracted at: ', expath);
-    const cachedPath = await tc.cacheDir(expath, 'BrowserStackLocal', '1.0.0');
-    console.log('cached path: ', cachedPath);
+    const downloadPath = await tc.downloadTool(zipURL, path.resolve(binaryFolder, 'binaryZip'));
+    const extractedPath = await tc.extractZip(downloadPath, binaryFolder);
+    const cachedPath = await tc.cacheDir(extractedPath, 'BrowserStackLocal', '1.0.0');
     core.addPath(cachedPath);
-    console.log('added to PATH');
-    this.binaryPath = expath;
+    this.binaryPath = extractedPath;
   }
 }
 

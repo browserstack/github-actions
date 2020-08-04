@@ -9482,16 +9482,11 @@ class baseHandler_BaseHandler {
 
   async downloadBinary(zipURL) {
     const binaryFolder = await baseHandler_BaseHandler._makeDirectory(this.platform);
-    console.log('binary folder: ', binaryFolder);
-    const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(binaryFolder, 'binaryExecutable'));
-    console.log('downloadPath: ', downloadPath);
-    const expath = await Object(tool_cache.extractZip)(downloadPath, binaryFolder);
-    console.log('extracted at: ', expath);
-    const cachedPath = await Object(tool_cache.cacheDir)(expath, 'BrowserStackLocal', '1.0.0');
-    console.log('cached path: ', cachedPath);
+    const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(binaryFolder, 'binaryZip'));
+    const extractedPath = await Object(tool_cache.extractZip)(downloadPath, binaryFolder);
+    const cachedPath = await Object(tool_cache.cacheDir)(extractedPath, 'BrowserStackLocal', '1.0.0');
     Object(core.addPath)(cachedPath);
-    console.log('added to PATH');
-    this.binaryPath = expath;
+    this.binaryPath = extractedPath;
   }
 }
 
@@ -9557,6 +9552,9 @@ const run = async () => {
     const binarySetup = factory.getHandler(process.platform);
     await binarySetup.downloadBinary();
     Object(core.info)(`PATH VALUE: ${process.env.PATH}`);
+    console.log('logging the ls altrh...');
+    Object(exec.exec)('ls -altrh /home/runner/work/executables/LocalBinaryFolder/linux');
+    console.log('running binary now...')
     Object(exec.exec)('BrowserStackLocal');
   } catch (e) {
     Object(core.setFailed)(`Action Failed: ${e}`);
