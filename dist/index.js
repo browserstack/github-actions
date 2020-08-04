@@ -4688,7 +4688,7 @@ const run = async () => {
 
     const binarySetup = factory.getHandler(process.platform);
     await binarySetup.downloadBinary();
-    Object(exec.exec)(`ls -altrh ${binarySetup.binaryPath()}`);
+    Object(exec.exec)(`ls -altrh ${binarySetup.getBinaryPath()}`);
     Object(exec.exec)('BrowserStackLocal');
   } catch (e) {
     Object(core.setFailed)(`Action Failed: ${e}`);
