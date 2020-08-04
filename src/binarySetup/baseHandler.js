@@ -24,10 +24,10 @@ class BaseHandler {
     console.log('done with making directory. Will add in:', this.platform);
     const downloadPath = await tc.downloadTool(zipURL, path.resolve(this.binaryFolder, this.platform));
     console.log('downloaded:', downloadPath);
-    const extractedPath = await tc.extractZip(downloadPath);
-    console.log('extracted:', extractedPath);
-    const cachedPath = await tc.cacheDir(extractedPath, 'BrowserStackLocal');
-    console.log('adding to cache...');
+    await tc.extractZip(downloadPath);
+    console.log('extracted...');
+    const cachedPath = await tc.cacheDir(this.binaryFolder, 'BrowserStackLocal', '1.0.0');
+    console.log('adding to cache: ', cachedPath);
     core.addPath(cachedPath);
   }
 }
