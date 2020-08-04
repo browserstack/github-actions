@@ -9482,9 +9482,10 @@ class baseHandler_BaseHandler {
 
   async downloadBinary(zipURL) {
     const binaryFolder = await baseHandler_BaseHandler._makeDirectory();
+    console.log('binary folder: ', binaryFolder);
     const downloadPath = await Object(tool_cache.downloadTool)(zipURL, Object(external_path_.resolve)(binaryFolder, this.platform));
-    const expath = await Object(tool_cache.extractZip)(downloadPath);
     console.log('downloadPath: ', downloadPath);
+    const expath = await Object(tool_cache.extractZip)(downloadPath);
     console.log('extracted at: ', expath);
     const cachedPath = await Object(tool_cache.cacheDir)(downloadPath, 'BrowserStackLocal', '1.0.0');
     console.log('cached path: ', cachedPath);
