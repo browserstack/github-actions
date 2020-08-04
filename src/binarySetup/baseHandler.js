@@ -7,19 +7,19 @@ import constants from '../../config/constants';
 const { LOCAL_BINARY_FOLDER } = constants;
 
 class BaseHandler {
-  static async _makeDirectory(binaryFolder) {
-    console.log('in makeDirectory, binaryFOlder: ', binaryFolder);
-    await io.mkdirP(binaryFolder);
+  async _makeDirectory() {
+    console.log('in makeDirectory, binaryFOlder: ', this.binaryFolder);
+    await io.mkdirP(this.binaryFolder);
     console.log('made the directory..');
   }
 
   async downloadBinary(zipURL) {
     try {
-      await BaseHandler._makeDirectory(this.binaryFolder);
-      console.log('binary folder: ', binaryFolder);
-      const downloadPath = await tc.downloadTool(zipURL, path.resolve(binaryFolder, 'binaryZip'));
+      await BaseHandler._makeDirectory();
+      console.log('binary folder: ', this.binaryFolder);
+      const downloadPath = await tc.downloadTool(zipURL, path.resolve(this.binaryFolder, 'binaryZip'));
       console.log('downloaded the binary: ', downloadPath);
-      const extractedPath = await tc.extractZip(downloadPath, binaryFolder);
+      const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
       console.log('extracted path: ', extractedPath);
       const cachedPath = await tc.cacheDir(extractedPath, this.toolName, '1.0.0');
       console.log('cachedPath: ', cachedPath);
