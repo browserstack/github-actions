@@ -10471,7 +10471,7 @@ class inputValidator_InputValidator {
         return '';
       }
       default: {
-        console.log(`[Warning] Invalid input for ${INPUT.LOCAL_LOG_LEVEL}. No logs will be captured. The valid inputs are: ${Object.values(LOCAL_LOG_LEVEL).join(', ')}`);
+        console.log(`[Warning] Invalid input for ${INPUT.LOCAL_LOGGING_LEVEL}. No logs will be captured. The valid inputs are: ${Object.values(LOCAL_LOG_LEVEL).join(', ')}`);
         return '';
       }
     }
