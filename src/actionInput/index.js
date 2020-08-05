@@ -49,6 +49,18 @@ class ActionInput {
     this.buildName = InputValidator.validateBuildName(this.buildName);
     this.projectName = InputValidator.validateProjectName(this.projectName);
     this.localTesting = InputValidator.validateLocalTesting(this.localTesting);
+    this.localLoggingLevel = InputValidator.validateLocalLoggingLevel(this.localLoggingLevel);
+    this.localIdentifier = InputValidator.validateLocalIdentifier(this.localIdentifier);
+    this.localArgs = InputValidator.validateLocalArgs(this.localArgs);
+
+    console.log('VALIDATED VALUES CHECK HERE...');
+    core.info(`username: ${this.username}`);
+    core.info(`buildName: ${this.buildName}`);
+    core.info(`projectName: ${this.projectName}`);
+    core.info(`localTesting: ${this.localTesting}`);
+    core.info(`localLoggingLevel: ${this.localLoggingLevel}`);
+    core.info(`localIdentifier: ${this.localIdentifier}`);
+    core.info(`localArgs: ${this.localArgs}`);
   }
 }
 

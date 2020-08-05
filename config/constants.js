@@ -26,7 +26,16 @@ export default {
 
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING: ['start', 'stop', 'false'],
+    LOCAL_LOG_LEVEL: {
+      SETUP_LOGS: 'setup-logs',
+      NETWORK_LOGS: 'network-logs',
+      ALL_LOGS: 'all-logs',
+      FALSE: 'false',
+    },
+    LOCAL_IDENTIFIER_RANDOM: 'random',
   },
+
+  RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file'],
 
   LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
 };
