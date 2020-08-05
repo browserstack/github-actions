@@ -40,7 +40,7 @@ module.exports =
 /******/ 	// the startup function
 /******/ 	function startup() {
 /******/ 		// Load entry module and return exports
-/******/ 		return __webpack_require__(926);
+/******/ 		return __webpack_require__(976);
 /******/ 	};
 /******/ 	// initialize runtime
 /******/ 	runtime(__webpack_require__);
@@ -9357,7 +9357,73 @@ exports.withCustomRequest = withCustomRequest;
 
 /***/ }),
 
-/***/ 926:
+/***/ 950:
+/***/ (function(__unusedmodule, exports, __webpack_require__) {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", { value: true });
+const url = __webpack_require__(835);
+function getProxyUrl(reqUrl) {
+    let usingSsl = reqUrl.protocol === 'https:';
+    let proxyUrl;
+    if (checkBypass(reqUrl)) {
+        return proxyUrl;
+    }
+    let proxyVar;
+    if (usingSsl) {
+        proxyVar = process.env['https_proxy'] || process.env['HTTPS_PROXY'];
+    }
+    else {
+        proxyVar = process.env['http_proxy'] || process.env['HTTP_PROXY'];
+    }
+    if (proxyVar) {
+        proxyUrl = url.parse(proxyVar);
+    }
+    return proxyUrl;
+}
+exports.getProxyUrl = getProxyUrl;
+function checkBypass(reqUrl) {
+    if (!reqUrl.hostname) {
+        return false;
+    }
+    let noProxy = process.env['no_proxy'] || process.env['NO_PROXY'] || '';
+    if (!noProxy) {
+        return false;
+    }
+    // Determine the request port
+    let reqPort;
+    if (reqUrl.port) {
+        reqPort = Number(reqUrl.port);
+    }
+    else if (reqUrl.protocol === 'http:') {
+        reqPort = 80;
+    }
+    else if (reqUrl.protocol === 'https:') {
+        reqPort = 443;
+    }
+    // Format the request hostname and hostname with port
+    let upperReqHosts = [reqUrl.hostname.toUpperCase()];
+    if (typeof reqPort === 'number') {
+        upperReqHosts.push(`${upperReqHosts[0]}:${reqPort}`);
+    }
+    // Compare request host against noproxy
+    for (let upperNoProxyItem of noProxy
+        .split(',')
+        .map(x => x.trim().toUpperCase())
+        .filter(x => x)) {
+        if (upperReqHosts.some(x => x === upperNoProxyItem)) {
+            return true;
+        }
+    }
+    return false;
+}
+exports.checkBypass = checkBypass;
+
+
+/***/ }),
+
+/***/ 976:
 /***/ (function(__unusedmodule, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -9372,8 +9438,46 @@ var exec = __webpack_require__(986);
 // EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
 var github = __webpack_require__(469);
 
+// CONCATENATED MODULE: ./config/constants.js
+/* harmony default export */ var constants = ({
+  INPUT: {
+    USERNAME: 'username',
+    ACCESS_KEY: 'access-key',
+    LOCAL_TESING: 'local-testing',
+    LOCAL_LOGGING_LEVEL: 'local-logging-level',
+    LOCAL_IDENTIFIER: 'local-identifier',
+    LOCAL_ARGS: 'local-args',
+    BUILD_NAME: 'build-name',
+    PROJECT_NAME: 'project-name',
+  },
+
+  ENV_VARS: {
+    BROWSERSTACK_USERNAME: 'BROWSERSTACK_USERNAME',
+    BROWSERSTACK_ACCESS_KEY: 'BROWSERSTACK_ACCESS_KEY',
+    BROWSERSTACK_LOCAL_IDENTIFIER: 'BROWSERSTACK_LOCAL_IDENTIFIER',
+    BROWSERSTACK_BUILD_NAME: 'BROWSERSTACK_BUILD_NAME',
+    BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME',
+  },
+
+  BINARY_PATHS: {
+    LINUX: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-linux-x64.zip',
+    WINDOWS: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-win32.zip',
+    DARWIN: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-darwin-x64.zip',
+  },
+
+  ALLOWED_INPUT_VALUES: {
+    LOCAL_TESTING: ['start', 'stop', 'false'],
+  },
+
+  LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
+});
+
 // CONCATENATED MODULE: ./src/actionInput/inputValidator.js
 
+
+
+
+const { ALLOWED_INPUT_VALUES, INPUT } = constants;
 
 class inputValidator_InputValidator {
   static _getMetadata() {
@@ -9420,6 +9524,21 @@ class inputValidator_InputValidator {
     return `${inputUsername}-GitHubAction`;
   }
 
+  static validateLocalTesting(inputLocalTesting) {
+    if (!inputLocalTesting) return 'false';
+
+    const localTestingLowered = inputLocalTesting.toString().toLowerCase();
+    const validValue = ALLOWED_INPUT_VALUES.LOCAL_TESTING.some((allowedValue) => {
+      return allowedValue === localTestingLowered;
+    });
+
+    if (!validValue) {
+      Object(core.setFailed)(`Invalid input for ${INPUT.LOCAL_TESING}. The valid inputs are: ${ALLOWED_INPUT_VALUES.LOCAL_TESTING}. Refer the README for more details`);
+    }
+
+    return validValue;
+  }
+
   static validateBuildName(inputBuildName) {
     if (!inputBuildName) return inputValidator_InputValidator._getMetadata();
 
@@ -9448,43 +9567,13 @@ class inputValidator_InputValidator {
 
 /* harmony default export */ var inputValidator = (inputValidator_InputValidator);
 
-// CONCATENATED MODULE: ./config/constants.js
-/* harmony default export */ var constants = ({
-  INPUT: {
-    USERNAME: 'username',
-    ACCESS_KEY: 'access-key',
-    LOCAL_TESING: 'local-testing',
-    LOCAL_LOGGING_LEVEL: 'local-logging-level',
-    LOCAL_IDENTIFIER: 'local-identifier',
-    LOCAL_ARGS: 'local-args',
-    BUILD_NAME: 'build-name',
-    PROJECT_NAME: 'project-name',
-  },
-
-  ENV_VARS: {
-    BROWSERSTACK_USERNAME: 'BROWSERSTACK_USERNAME',
-    BROWSERSTACK_ACCESS_KEY: 'BROWSERSTACK_ACCESS_KEY',
-    BROWSERSTACK_LOCAL_IDENTIFIER: 'BROWSERSTACK_LOCAL_IDENTIFIER',
-    BROWSERSTACK_BUILD_NAME: 'BROWSERSTACK_BUILD_NAME',
-    BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME',
-  },
-
-  BINARY_PATHS: {
-    LINUX: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-linux-x64.zip',
-    WINDOWS: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-win32.zip',
-    DARWIN: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-darwin-x64.zip',
-  },
-
-  LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
-});
-
 // CONCATENATED MODULE: ./src/actionInput/index.js
 
 
 
 
 
-const { INPUT, ENV_VARS } = constants;
+const { INPUT: actionInput_INPUT, ENV_VARS } = constants;
 
 class actionInput_ActionInput {
   fetchAllInput() {
@@ -9493,19 +9582,16 @@ class actionInput_ActionInput {
       console.log(JSON.stringify(github.context));
 
       // required fields
-      this.username = Object(core.getInput)(INPUT.USERNAME, { required: true });
-      this.accessKey = Object(core.getInput)(INPUT.ACCESS_KEY, { required: true });
+      this.username = Object(core.getInput)(actionInput_INPUT.USERNAME, { required: true });
+      this.accessKey = Object(core.getInput)(actionInput_INPUT.ACCESS_KEY, { required: true });
 
       // non-compulsory fields
-      this.buildName = Object(core.getInput)(INPUT.BUILD_NAME);
-      this.projectName = Object(core.getInput)(INPUT.PROJECT_NAME);
-      this.localTesting = Object(core.getInput)(INPUT.LOCAL_TESING);
-
-      if (this.localTesting) {
-        this.localLoggingLevel = Object(core.getInput)(INPUT.LOCAL_LOGGING_LEVEL);
-        this.localIdentifier = Object(core.getInput)(INPUT.LOCAL_IDENTIFIER) || 'some identifier';
-        this.localArgs = Object(core.getInput)(INPUT.LOCAL_ARGS);
-      }
+      this.buildName = Object(core.getInput)(actionInput_INPUT.BUILD_NAME);
+      this.projectName = Object(core.getInput)(actionInput_INPUT.PROJECT_NAME);
+      this.localTesting = Object(core.getInput)(actionInput_INPUT.LOCAL_TESING);
+      this.localLoggingLevel = Object(core.getInput)(actionInput_INPUT.LOCAL_LOGGING_LEVEL);
+      this.localIdentifier = Object(core.getInput)(actionInput_INPUT.LOCAL_IDENTIFIER);
+      this.localArgs = Object(core.getInput)(actionInput_INPUT.LOCAL_ARGS);
 
       Object(core.info)('CHECK HERE FOR THE INPUT VALS');
       Object(core.info)(`username: ${this.username}`);
@@ -9532,6 +9618,7 @@ class actionInput_ActionInput {
     this.username = inputValidator.validateUsername(this.username);
     this.buildName = inputValidator.validateBuildName(this.buildName);
     this.projectName = inputValidator.validateProjectName(this.projectName);
+    this.localTesting = inputValidator.validateLocalTesting(this.localTesting);
   }
 }
 
@@ -9702,72 +9789,6 @@ const run = async () => {
 };
 
 run();
-
-
-/***/ }),
-
-/***/ 950:
-/***/ (function(__unusedmodule, exports, __webpack_require__) {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", { value: true });
-const url = __webpack_require__(835);
-function getProxyUrl(reqUrl) {
-    let usingSsl = reqUrl.protocol === 'https:';
-    let proxyUrl;
-    if (checkBypass(reqUrl)) {
-        return proxyUrl;
-    }
-    let proxyVar;
-    if (usingSsl) {
-        proxyVar = process.env['https_proxy'] || process.env['HTTPS_PROXY'];
-    }
-    else {
-        proxyVar = process.env['http_proxy'] || process.env['HTTP_PROXY'];
-    }
-    if (proxyVar) {
-        proxyUrl = url.parse(proxyVar);
-    }
-    return proxyUrl;
-}
-exports.getProxyUrl = getProxyUrl;
-function checkBypass(reqUrl) {
-    if (!reqUrl.hostname) {
-        return false;
-    }
-    let noProxy = process.env['no_proxy'] || process.env['NO_PROXY'] || '';
-    if (!noProxy) {
-        return false;
-    }
-    // Determine the request port
-    let reqPort;
-    if (reqUrl.port) {
-        reqPort = Number(reqUrl.port);
-    }
-    else if (reqUrl.protocol === 'http:') {
-        reqPort = 80;
-    }
-    else if (reqUrl.protocol === 'https:') {
-        reqPort = 443;
-    }
-    // Format the request hostname and hostname with port
-    let upperReqHosts = [reqUrl.hostname.toUpperCase()];
-    if (typeof reqPort === 'number') {
-        upperReqHosts.push(`${upperReqHosts[0]}:${reqPort}`);
-    }
-    // Compare request host against noproxy
-    for (let upperNoProxyItem of noProxy
-        .split(',')
-        .map(x => x.trim().toUpperCase())
-        .filter(x => x)) {
-        if (upperReqHosts.some(x => x === upperNoProxyItem)) {
-            return true;
-        }
-    }
-    return false;
-}
-exports.checkBypass = checkBypass;
 
 
 /***/ }),

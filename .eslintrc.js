@@ -11,7 +11,7 @@ module.exports = {
   rules: {
     semi: ['error', 'always'],
     indent: ['error', 2, { SwitchCase: 1 }],
-    quotes: ['warn', 'single'],
+    quotes: 'off',
     'consistent-return': 'off',
     'no-underscore-dangle': 'off',
     'no-case-declarations': 'error',

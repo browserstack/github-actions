@@ -19,12 +19,9 @@ class ActionInput {
       this.buildName = core.getInput(INPUT.BUILD_NAME);
       this.projectName = core.getInput(INPUT.PROJECT_NAME);
       this.localTesting = core.getInput(INPUT.LOCAL_TESING);
-
-      if (this.localTesting) {
-        this.localLoggingLevel = core.getInput(INPUT.LOCAL_LOGGING_LEVEL);
-        this.localIdentifier = core.getInput(INPUT.LOCAL_IDENTIFIER) || 'some identifier';
-        this.localArgs = core.getInput(INPUT.LOCAL_ARGS);
-      }
+      this.localLoggingLevel = core.getInput(INPUT.LOCAL_LOGGING_LEVEL);
+      this.localIdentifier = core.getInput(INPUT.LOCAL_IDENTIFIER);
+      this.localArgs = core.getInput(INPUT.LOCAL_ARGS);
 
       core.info('CHECK HERE FOR THE INPUT VALS');
       core.info(`username: ${this.username}`);
@@ -51,6 +48,7 @@ class ActionInput {
     this.username = InputValidator.validateUsername(this.username);
     this.buildName = InputValidator.validateBuildName(this.buildName);
     this.projectName = InputValidator.validateProjectName(this.projectName);
+    this.localTesting = InputValidator.validateLocalTesting(this.localTesting);
   }
 }
 

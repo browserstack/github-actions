@@ -1,4 +1,8 @@
 import * as github from '@actions/github';
+import * as core from '@actions/core';
+import constants from '../../config/constants';
+
+const { ALLOWED_INPUT_VALUES, INPUT } = constants;
 
 class InputValidator {
   static _getMetadata() {
@@ -43,6 +47,21 @@ class InputValidator {
 
   static validateUsername(inputUsername) {
     return `${inputUsername}-GitHubAction`;
+  }
+
+  static validateLocalTesting(inputLocalTesting) {
+    if (!inputLocalTesting) return 'false';
+
+    const localTestingLowered = inputLocalTesting.toString().toLowerCase();
+    const validValue = ALLOWED_INPUT_VALUES.LOCAL_TESTING.some((allowedValue) => {
+      return allowedValue === localTestingLowered;
+    });
+
+    if (!validValue) {
+      core.setFailed(`Invalid input for ${INPUT.LOCAL_TESING}. The valid inputs are: ${ALLOWED_INPUT_VALUES.LOCAL_TESTING}. Refer the README for more details`);
+    }
+
+    return validValue;
   }
 
   static validateBuildName(inputBuildName) {

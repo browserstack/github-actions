@@ -24,5 +24,9 @@ export default {
     DARWIN: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-darwin-x64.zip',
   },
 
+  ALLOWED_INPUT_VALUES: {
+    LOCAL_TESTING: ['start', 'stop', 'false'],
+  },
+
   LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
 };
