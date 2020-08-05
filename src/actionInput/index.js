@@ -6,6 +6,11 @@ import constants from '../../config/constants';
 const { INPUT, ENV_VARS } = constants;
 
 class ActionInput {
+  constructor() {
+    this.fetchAllInput();
+    this.validateInput();
+  }
+
   fetchAllInput() {
     try {
       console.log('check here for github context...');

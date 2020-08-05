@@ -10,6 +10,12 @@ export default {
     PROJECT_NAME: 'project-name',
   },
 
+  PLATFORMS: {
+    LINUX: 'linux',
+    DARWIN: 'darwin',
+    WIN32: 'win32',
+  },
+
   ENV_VARS: {
     BROWSERSTACK_USERNAME: 'BROWSERSTACK_USERNAME',
     BROWSERSTACK_ACCESS_KEY: 'BROWSERSTACK_ACCESS_KEY',
@@ -18,8 +24,9 @@ export default {
     BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME',
   },
 
-  BINARY_PATHS: {
-    LINUX: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-linux-x64.zip',
+  BINARY_LINKS: {
+    LINUX_32: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-linux-ia32.zip',
+    LINUX_64: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-linux-x64.zip',
     WINDOWS: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-win32.zip',
     DARWIN: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-darwin-x64.zip',
   },
@@ -38,4 +45,5 @@ export default {
   RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file'],
 
   LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
+  LOCAL_BINARY_NAME: 'BrowserStackLocal',
 };
