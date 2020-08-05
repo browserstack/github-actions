@@ -9397,6 +9397,8 @@ class inputValidator_InputValidator {
           // i.e. push event comprising of multiple commits
           let commitMessage = github.context.payload.head_commit.message;
           commitMessage = commitMessage.split(' ').join('-');
+          console.log('commitMessage: ', commitMessage);
+          console.log('github.context.sha:', github.context.sha);
           return `Commit-${Object(github.context.sha.slice)(0, 7)}-${commitMessage}}`;
         }
         case 'pull_request': {
