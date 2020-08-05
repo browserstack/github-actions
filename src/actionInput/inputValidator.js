@@ -23,9 +23,10 @@ class InputValidator {
           let commitMessage = github.context.payload.head_commit.message;
           commitMessage = commitMessage.split(' ').join('-');
           console.log('commitMessage: ', commitMessage);
-          console.log('github.context.sha:', github.context.sha);
-          console.log(`returning value: Commit-${github.context.sha.slice(0, 7)}-${commitMessage}}`);
-          return `Commit-${github.context.sha.slice(0, 7)}-${commitMessage}}`;
+          const sha = github.context.sha.toString();
+          console.log('github.context.sha:', sha);
+          console.log(`returning value: Commit-${sha.slice(0, 7)}-${commitMessage}}`);
+          return `Commit-${sha.slice(0, 7)}-${commitMessage}}`;
         }
         case 'pull_request': {
           console.log('in pull request...');
