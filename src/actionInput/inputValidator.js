@@ -24,12 +24,15 @@ class InputValidator {
           commitMessage = commitMessage.split(' ').join('-');
           console.log('commitMessage: ', commitMessage);
           console.log('github.context.sha:', github.context.sha);
+          console.log(`returning value: Commit-${github.context.sha.slice(0, 7)}-${commitMessage}}`);
           return `Commit-${github.context.sha.slice(0, 7)}-${commitMessage}}`;
         }
         case 'pull_request': {
+          console.log('in pull request...');
           return `PR-${github.context.payload.number}-Commit-${github.context.payload.pull_request.head.sha.slice(0, 7)}`;
         }
         default: {
+          console.log('in default....');
           return `${githubEvent}-${github.context.sha.slice(0, 7)}`;
         }
       }
