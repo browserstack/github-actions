@@ -9376,62 +9376,59 @@ var github = __webpack_require__(469);
 
 
 class inputValidator_InputValidator {
+  static _getMetadata(githubEvent) {
+    switch (github.context.eventName) {
+      case 'push': {
+        const {
+          context: {
+            payload: {
+              head_commit: {
+                message: commitMessage,
+              },
+            },
+            sha: commitSHA,
+          },
+        } = github;
+
+        const parsedCommitMessage = commitMessage.split(' ').join('-');
+        return `Commit-${commitSHA.slice(0, 7)}-${parsedCommitMessage}`;
+      }
+      case 'pull_request': {
+        const {
+          context: {
+            payload: {
+              pull_request: {
+                head: {
+                  sha: commitSHA,
+                },
+              },
+              number: prNumber,
+            },
+          },
+        } = github;
+
+        return `PR-${prNumber}-Commit-${commitSHA.slice(0, 7)}`;
+      }
+      default: {
+        return `${githubEvent}-${Object(github.context.sha.slice)(0, 7)}`;
+      }
+    }
+  }
+
   static validateUsername(inputUsername) {
     return `${inputUsername}-GitHubAction`;
   }
 
   static validateBuildName(inputBuildName) {
-    const githubEvent = github.context.eventName;
+    if (!inputBuildName) return inputValidator_InputValidator._getMetadata();
 
-    console.log('gitHubEvent: ', githubEvent);
-    console.log('inputBuildName: ', inputBuildName);
+    const buildNameWithHyphen = inputBuildName.split(' ').join('-');
+    const prIndex = buildNameWithHyphen.indexOf('META#');
 
-    if (inputBuildName) {
-      const buildNameWithHyphen = inputBuildName.split().join('-');
-      const prIndex = buildNameWithHyphen.indexOf('META#');
-      if (prIndex === -1) return buildNameWithHyphen;
-    } else {
-      switch (githubEvent) {
-        case 'push': {
-          // commit message of the latest commit in a push event,
-          // i.e. push event comprising of multiple commits
-          const {
-            context: {
-              payload: {
-                head_commit: {
-                  message: commitMessage,
-                },
-              },
-              sha: commitSHA,
-            },
-          } = github;
+    if (prIndex === -1) return buildNameWithHyphen;
 
-          const parsedCommitMessage = commitMessage.split(' ').join('-');
-          return `Commit-${commitSHA.slice(0, 7)}-${parsedCommitMessage}`;
-        }
-        case 'pull_request': {
-          console.log('in pull request...');
-          const {
-            context: {
-              payload: {
-                pull_request: {
-                  head: {
-                    sha: commitSHA,
-                  },
-                },
-                number: prNumber,
-              },
-            },
-          } = github;
-
-          return `PR-${prNumber}-Commit-${commitSHA.slice(0, 7)}`;
-        }
-        default: {
-          console.log('in default....');
-          return `${githubEvent}-${Object(github.context.sha.slice)(0, 7)}`;
-        }
-      }
-    }
+    const metadata = inputValidator_InputValidator._getMetadata();
+    return prIndex === 0 ? `${buildNameWithHyphen}-${metadata}` : `${metadata}-${buildNameWithHyphen}`;
   }
 
   static validateProjectName(inputProjectName) {
