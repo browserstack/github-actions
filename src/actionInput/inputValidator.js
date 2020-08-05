@@ -58,6 +58,12 @@ class InputValidator {
       }
     }
   }
+
+  static validateProjectName(inputProjectName) {
+    if (inputProjectName) return inputProjectName.split(' ').join('-');
+
+    return github.context.repo.repo;
+  }
 }
 
 export default InputValidator;

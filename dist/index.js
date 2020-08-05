@@ -9433,6 +9433,12 @@ class inputValidator_InputValidator {
       }
     }
   }
+
+  static validateProjectName(inputProjectName) {
+    if (inputProjectName) return inputProjectName.split(' ').join('-');
+
+    return github.context.repo.repo;
+  }
 }
 
 /* harmony default export */ var inputValidator = (inputValidator_InputValidator);
@@ -9487,7 +9493,7 @@ class actionInput_ActionInput {
 
       // non-compulsory fields
       this.buildName = Object(core.getInput)(INPUT.BUILD_NAME);
-      this.projectName = Object(core.getInput)(INPUT.PROJECT_NAME) || github.context.repo.repo;
+      this.projectName = Object(core.getInput)(INPUT.PROJECT_NAME);
       this.localTesting = Object(core.getInput)(INPUT.LOCAL_TESING);
 
       if (this.localTesting) {
@@ -9520,6 +9526,7 @@ class actionInput_ActionInput {
   validateInput() {
     this.username = inputValidator.validateUsername(this.username);
     this.buildName = inputValidator.validateBuildName(this.buildName);
+    this.projectName = inputValidator.validateProjectName(this.projectName);
   }
 }
 

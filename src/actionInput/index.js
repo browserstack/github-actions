@@ -17,7 +17,7 @@ class ActionInput {
 
       // non-compulsory fields
       this.buildName = core.getInput(INPUT.BUILD_NAME);
-      this.projectName = core.getInput(INPUT.PROJECT_NAME) || github.context.repo.repo;
+      this.projectName = core.getInput(INPUT.PROJECT_NAME);
       this.localTesting = core.getInput(INPUT.LOCAL_TESING);
 
       if (this.localTesting) {
@@ -50,6 +50,7 @@ class ActionInput {
   validateInput() {
     this.username = InputValidator.validateUsername(this.username);
     this.buildName = InputValidator.validateBuildName(this.buildName);
+    this.projectName = InputValidator.validateProjectName(this.projectName);
   }
 }
 
