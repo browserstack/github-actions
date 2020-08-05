@@ -1,12 +1,15 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
-import constants from '../config/constants';
+import constants from '../../config/constants';
 
 const { INPUT, ENV_VARS } = constants;
 
-class ParseInput {
+class ActionInput {
   fetchAllInput() {
     try {
+      console.log('check here for github context...');
+      console.log(JSON.stringify(github.context));
+      
       // required fields
       this.username = core.getInput(INPUT.USERNAME, { required: true });
       this.accessKey = core.getInput(INPUT.ACCESS_KEY, { required: true });
@@ -44,4 +47,4 @@ class ParseInput {
   }
 }
 
-export default ParseInput;
+export default ActionInput;
