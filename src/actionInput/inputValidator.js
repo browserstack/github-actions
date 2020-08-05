@@ -1,8 +1,9 @@
 import * as github from '@actions/github';
 
 class InputValidator {
-  static _getMetadata(githubEvent) {
-    switch (github.context.eventName) {
+  static _getMetadata() {
+    const githubEvent = github.context.eventName;
+    switch (githubEvent) {
       case 'push': {
         const {
           context: {
@@ -47,13 +48,20 @@ class InputValidator {
   static validateBuildName(inputBuildName) {
     if (!inputBuildName) return InputValidator._getMetadata();
 
-    const buildNameWithHyphen = inputBuildName.split(' ').join('-');
+    let buildNameWithHyphen = inputBuildName.split(' ').join('-');
     const prIndex = buildNameWithHyphen.indexOf('META#');
 
     if (prIndex === -1) return buildNameWithHyphen;
 
     const metadata = InputValidator._getMetadata();
-    return prIndex === 0 ? `${buildNameWithHyphen}-${metadata}` : `${metadata}-${buildNameWithHyphen}`;
+
+    if (prIndex === 0) {
+      buildNameWithHyphen = buildNameWithHyphen.split('META#-')[1];
+      return buildNameWithHyphen ? `${metadata}-${buildNameWithHyphen}` : metadata;
+    }
+
+    buildNameWithHyphen = buildNameWithHyphen.split('-META#')[0];
+    return buildNameWithHyphen ? `${buildNameWithHyphen}-${metadata}` : metadata;
   }
 
   static validateProjectName(inputProjectName) {

@@ -15,6 +15,7 @@ module.exports = {
     'consistent-return': 'off',
     'no-underscore-dangle': 'off',
     'no-case-declarations': 'error',
+    'prefer-destructuring': ['error', { object: true, array: false }],
   },
   ignorePatterns: ['dist/index.js'],
 };
