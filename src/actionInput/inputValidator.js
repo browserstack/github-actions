@@ -23,7 +23,7 @@ class InputValidator {
           let commitMessage = github.context.payload.head_commit.message;
           commitMessage = commitMessage.split(' ').join('-');
           console.log('commitMessage: ', commitMessage);
-          const sha = github.context.sha.toString();
+          const sha = `${github.context.sha}`;
           console.log('github.context.sha:', sha);
           console.log(`returning value: Commit-${sha.slice(0, 7)}-${commitMessage}}`);
           return `Commit-${sha.slice(0, 7)}-${commitMessage}}`;
