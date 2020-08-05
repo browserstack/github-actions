@@ -10,10 +10,11 @@ module.exports = {
   },
   rules: {
     semi: ['error', 'always'],
-    indent: ['error', 2],
+    indent: ['error', 2, { SwitchCase: 1 }],
     quotes: ['warn', 'single'],
     'consistent-return': 'off',
     'no-underscore-dangle': 'off',
+    'no-case-declarations': 'error',
   },
   ignorePatterns: ['dist/index.js'],
 };

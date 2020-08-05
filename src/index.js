@@ -7,6 +7,7 @@ const run = async () => {
   try {
     const inputParser = new ActionInput();
     inputParser.fetchAllInput();
+    inputParser.validateInput();
     inputParser.setEnvVariables();
 
     const binarySetup = BinarySetup.getHandler(process.platform);
