@@ -9395,19 +9395,36 @@ class inputValidator_InputValidator {
         case 'push': {
           // commit message of the latest commit in a push event,
           // i.e. push event comprising of multiple commits
-          let commitMessage = github.context.payload.head_commit.message;
-          commitMessage = commitMessage.split(' ').join('-');
-          console.log('commitMessage: ', commitMessage);
-          console.log(`sha ka value : ${github.context.sha}`);
-          console.log(`sha ka type : ${typeof github.context.sha}`);
-          const sha = `${github.context.sha}`;
-          console.log('github.context.sha:', sha);
-          console.log(`returning value: Commit-${sha.slice(0, 7)}-${commitMessage}}`);
-          return `Commit-${sha.slice(0, 7)}-${commitMessage}}`;
+          const {
+            context: {
+              payload: {
+                head_commit: {
+                  message: commitMessage,
+                },
+              },
+              sha: commitSHA,
+            },
+          } = github;
+
+          const parsedCommitMessage = commitMessage.split(' ').join('-');
+          return `Commit-${commitSHA.slice(0, 7)}-${parsedCommitMessage}`;
         }
         case 'pull_request': {
           console.log('in pull request...');
-          return `PR-${github.context.payload.number}-Commit-${Object(github.context.payload.pull_request.head.sha.slice)(0, 7)}`;
+          const {
+            context: {
+              payload: {
+                pull_request: {
+                  head: {
+                    sha: commitSHA,
+                  },
+                },
+                number: prNumber,
+              },
+            },
+          } = github;
+
+          return `PR-${prNumber}-Commit-${commitSHA.slice(0, 7)}`;
         }
         default: {
           console.log('in default....');
