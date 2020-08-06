@@ -7537,17 +7537,14 @@ class binaryControl_BinaryControl {
   }
 
   _generateArgsForBinary() {
-    console.log(`GENERATE ARGS: ${JSON.stringify(this.stateForBinary)}, ${this.stateForBinary.accessKey}`);
     const {
-      accessKey: key,
       localArgs,
       localIdentifier,
       localLoggingLevel: verbose,
       localTesting: binaryAction,
     } = this.stateForBinary;
 
-    console.log(`CHECK FINAL KEY VALUE HERE: ${key}`);
-    let argsString = `--key ${Object(core.getInput)('access-key')}-GitHubAction --only-automate `;
+    let argsString = `--key ${Object(core.getInput)('access-key')} --only-automate `;
 
     switch (binaryAction) {
       case binaryControl_LOCAL_TESTING.START: {
