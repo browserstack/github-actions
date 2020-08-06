@@ -7131,6 +7131,9 @@ __webpack_require__.r(__webpack_exports__);
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
 var core = __webpack_require__(470);
 
+// EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
+var exec = __webpack_require__(986);
+
 // EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
 var github = __webpack_require__(469);
 
@@ -7462,9 +7465,6 @@ var tool_cache = __webpack_require__(533);
 // EXTERNAL MODULE: ./node_modules/@actions/io/lib/io.js
 var io = __webpack_require__(1);
 
-// EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
-var exec = __webpack_require__(986);
-
 // EXTERNAL MODULE: external "os"
 var external_os_ = __webpack_require__(87);
 
@@ -7595,6 +7595,7 @@ class binaryControl_BinaryControl {
 
 
 
+
 const {
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING: src_LOCAL_TESTING,
@@ -7605,8 +7606,6 @@ const run = async () => {
   try {
     const inputParser = new actionInput();
     const stateForBinary = inputParser.getInputStateForBinary();
-    console.log('PRINTING JSON STRINGIFY...');
-    console.log(JSON.stringify(stateForBinary));
     const binaryControl = new src_binaryControl(stateForBinary);
 
     if ([src_LOCAL_TESTING.START, src_LOCAL_TESTING.FALSE].includes(stateForBinary.localTesting)) {
@@ -7618,6 +7617,7 @@ const run = async () => {
       }
     } else {
       await binaryControl.stopBinary();
+      await Object(exec.exec)(`ls -altrh ${binaryControl.binaryFolder}`);
       // upload artifacts if any
     }
   } catch (e) {
