@@ -32,7 +32,11 @@ export default {
   },
 
   ALLOWED_INPUT_VALUES: {
-    LOCAL_TESTING: ['start', 'stop', 'false'],
+    LOCAL_TESTING: {
+      START: 'start',
+      STOP: 'stop',
+      FALSE: 'false',
+    },
     LOCAL_LOG_LEVEL: {
       SETUP_LOGS: 'setup-logs',
       NETWORK_LOGS: 'network-logs',

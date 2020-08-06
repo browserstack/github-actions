@@ -3,15 +3,15 @@ import * as github from '@actions/github';
 import InputValidator from './inputValidator';
 import constants from '../../config/constants';
 
-const { INPUT, ENV_VARS } = constants;
+const { INPUT, ENV_VARS, ALLOWED_INPUT_VALUES: { LOCAL_TESTING } } = constants;
 
 class ActionInput {
   constructor() {
-    this.fetchAllInput();
-    this.validateInput();
+    this._fetchAllInput();
+    this._validateInput();
   }
 
-  fetchAllInput() {
+  _fetchAllInput() {
     try {
       console.log('check here for github context...');
       console.log(JSON.stringify(github.context));
@@ -46,17 +46,29 @@ class ActionInput {
     core.exportVariable(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
     core.exportVariable(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
     core.exportVariable(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
-    core.exportVariable(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
+    if (this.localTesting === LOCAL_TESTING.START) {
+      core.exportVariable(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
+    }
   }
 
-  validateInput() {
-    this.username = InputValidator.validateUsername(this.username);
-    this.buildName = InputValidator.validateBuildName(this.buildName);
-    this.projectName = InputValidator.validateProjectName(this.projectName);
+  _validateInput() {
     this.localTesting = InputValidator.validateLocalTesting(this.localTesting);
-    this.localLoggingLevel = InputValidator.validateLocalLoggingLevel(this.localLoggingLevel);
-    this.localIdentifier = InputValidator.validateLocalIdentifier(this.localIdentifier);
-    this.localArgs = InputValidator.validateLocalArgs(this.localArgs);
+
+    if ([LOCAL_TESTING.START, LOCAL_TESTING.FALSE].includes(this.localTesting)) {
+      // properties common to local/non-local testing comes here
+      this.username = InputValidator.validateUsername(this.username);
+      this.projectName = InputValidator.validateProjectName(this.projectName);
+      this.buildName = InputValidator.validateBuildName(this.buildName);
+
+      // properties specific to requiring local testing shall come in this block
+      if (this.localTesting === LOCAL_TESTING.START) {
+        this.localLoggingLevel = InputValidator.validateLocalLoggingLevel(this.localLoggingLevel);
+        this.localIdentifier = InputValidator.validateLocalIdentifier(this.localIdentifier);
+        this.localArgs = InputValidator.validateLocalArgs(this.localArgs);
+      }
+    } else {
+      this.localIdentifier = process.env[ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER];
+    }
 
     console.log('VALIDATED VALUES CHECK HERE...');
     core.info(`username: ${this.username}`);
@@ -66,6 +78,16 @@ class ActionInput {
     core.info(`localLoggingLevel: ${this.localLoggingLevel}`);
     core.info(`localIdentifier: ${this.localIdentifier}`);
     core.info(`localArgs: ${this.localArgs}`);
+  }
+
+  getInputStateForBinary() {
+    return {
+      accesskey: this.accessKey,
+      localTesting: this.localTesting,
+      localArgs: this.localArgs,
+      localIdentifier: this.localIdentifier,
+      localLoggingLevel: this.localLoggingLevel,
+    };
   }
 }
 

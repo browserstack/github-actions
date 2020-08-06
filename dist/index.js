@@ -7131,9 +7131,6 @@ __webpack_require__.r(__webpack_exports__);
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
 var core = __webpack_require__(470);
 
-// EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
-var exec = __webpack_require__(986);
-
 // EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
 var github = __webpack_require__(469);
 
@@ -7178,7 +7175,11 @@ var minimist = __webpack_require__(109);
   },
 
   ALLOWED_INPUT_VALUES: {
-    LOCAL_TESTING: ['start', 'stop', 'false'],
+    LOCAL_TESTING: {
+      START: 'start',
+      STOP: 'stop',
+      FALSE: 'false',
+    },
     LOCAL_LOG_LEVEL: {
       SETUP_LOGS: 'setup-logs',
       NETWORK_LOGS: 'network-logs',
@@ -7212,6 +7213,12 @@ const {
 } = constants;
 
 class inputValidator_InputValidator {
+  /**
+   * Generates metadata of the triggered workflow in the form of
+   * 1. Push event (Non PR): Commit-\<commit-id>-\<commit-message>
+   * 2. Pull Request event: PR-\<PR-number>-Commit-\<commit-id>
+   * @returns {String} Metadata
+   */
   static _getMetadata() {
     const githubEvent = github.context.eventName;
     switch (githubEvent) {
@@ -7252,44 +7259,62 @@ class inputValidator_InputValidator {
     }
   }
 
+  /**
+   * Appends the username with '-GitHubAction' for internal instrumentation
+   * @param {String} inputUsername BrowserStack Username
+   * @returns {String} Modified Username
+   */
   static validateUsername(inputUsername) {
     return `${inputUsername}-GitHubAction`;
   }
 
+  /**
+   * Validates the action input 'local-testing' and returns the
+   * parsed value.
+   * Throws error if it's not a valid value
+   * @param {String} inputLocalTesting Action input for 'local-testing'
+   * @returns {String} One of the values from start/stop/false
+   */
   static validateLocalTesting(inputLocalTesting) {
     if (!inputLocalTesting) return 'false';
 
     const localTestingLowered = inputLocalTesting.toString().toLowerCase();
-    const validValue = LOCAL_TESTING.some((allowedValue) => allowedValue === localTestingLowered);
+    const validValue = Object.values(LOCAL_TESTING).some((allowedValue) => allowedValue === localTestingLowered);
 
     if (!validValue) {
-      throw Error(`Invalid input for ${INPUT.LOCAL_TESING}. The valid inputs are: ${LOCAL_TESTING.join(', ')}. Refer the README for more details`);
+      throw Error(`Invalid input for ${INPUT.LOCAL_TESING}. The valid inputs are: ${Object.values(LOCAL_TESTING).join(', ')}. Refer the README for more details`);
     }
 
-    return validValue;
+    return localTestingLowered;
   }
 
+  /**
+   * Validates the action input 'local-logging-level' and returns the
+   * verbosity level of logging
+   * @param {String} inputLocalLoggingLevel Action input for 'local-logging-level'
+   * @returns {Number} Logging Level
+   */
   static validateLocalLoggingLevel(inputLocalLoggingLevel) {
-    if (!inputLocalLoggingLevel) return '';
+    if (!inputLocalLoggingLevel) return 0;
 
     const loggingLevelLowered = inputLocalLoggingLevel.toString().toLowerCase();
 
     switch (loggingLevelLowered) {
       case LOCAL_LOG_LEVEL.SETUP_LOGS: {
-        return '--verbose 1 --log-file BrowserStackLocal.log';
+        return 1;
       }
       case LOCAL_LOG_LEVEL.NETWORK_LOGS: {
-        return '--verbose 2 --log-file BrowserStackLocal.log';
+        return 2;
       }
       case LOCAL_LOG_LEVEL.ALL_LOGS: {
-        return '--verbose 3 --log-file BrowserStackLocal.log';
+        return 3;
       }
       case LOCAL_LOG_LEVEL.FALSE: {
-        return '';
+        return 0;
       }
       default: {
         console.log(`[Warning] Invalid input for ${INPUT.LOCAL_LOGGING_LEVEL}. No logs will be captured. The valid inputs are: ${Object.values(LOCAL_LOG_LEVEL).join(', ')}`);
-        return '';
+        return 0;
       }
     }
   }
@@ -7357,15 +7382,15 @@ class inputValidator_InputValidator {
 
 
 
-const { INPUT: actionInput_INPUT, ENV_VARS } = constants;
+const { INPUT: actionInput_INPUT, ENV_VARS, ALLOWED_INPUT_VALUES: { LOCAL_TESTING: actionInput_LOCAL_TESTING } } = constants;
 
 class actionInput_ActionInput {
   constructor() {
-    this.fetchAllInput();
-    this.validateInput();
+    this._fetchAllInput();
+    this._validateInput();
   }
 
-  fetchAllInput() {
+  _fetchAllInput() {
     try {
       console.log('check here for github context...');
       console.log(JSON.stringify(github.context));
@@ -7400,17 +7425,29 @@ class actionInput_ActionInput {
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
-    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
+    if (this.localTesting === actionInput_LOCAL_TESTING.START) {
+      Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
+    }
   }
 
-  validateInput() {
-    this.username = inputValidator.validateUsername(this.username);
-    this.buildName = inputValidator.validateBuildName(this.buildName);
-    this.projectName = inputValidator.validateProjectName(this.projectName);
+  _validateInput() {
     this.localTesting = inputValidator.validateLocalTesting(this.localTesting);
-    this.localLoggingLevel = inputValidator.validateLocalLoggingLevel(this.localLoggingLevel);
-    this.localIdentifier = inputValidator.validateLocalIdentifier(this.localIdentifier);
-    this.localArgs = inputValidator.validateLocalArgs(this.localArgs);
+
+    if ([actionInput_LOCAL_TESTING.START, actionInput_LOCAL_TESTING.FALSE].includes(this.localTesting)) {
+      // properties common to local/non-local testing comes here
+      this.username = inputValidator.validateUsername(this.username);
+      this.projectName = inputValidator.validateProjectName(this.projectName);
+      this.buildName = inputValidator.validateBuildName(this.buildName);
+
+      // properties specific to requiring local testing shall come in this block
+      if (this.localTesting === actionInput_LOCAL_TESTING.START) {
+        this.localLoggingLevel = inputValidator.validateLocalLoggingLevel(this.localLoggingLevel);
+        this.localIdentifier = inputValidator.validateLocalIdentifier(this.localIdentifier);
+        this.localArgs = inputValidator.validateLocalArgs(this.localArgs);
+      }
+    } else {
+      this.localIdentifier = process.env[ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER];
+    }
 
     console.log('VALIDATED VALUES CHECK HERE...');
     Object(core.info)(`username: ${this.username}`);
@@ -7421,6 +7458,16 @@ class actionInput_ActionInput {
     Object(core.info)(`localIdentifier: ${this.localIdentifier}`);
     Object(core.info)(`localArgs: ${this.localArgs}`);
   }
+
+  getInputStateForBinary() {
+    return {
+      accesskey: this.accessKey,
+      localTesting: this.localTesting,
+      localArgs: this.localArgs,
+      localIdentifier: this.localIdentifier,
+      localLoggingLevel: this.localLoggingLevel,
+    };
+  }
 }
 
 /* harmony default export */ var actionInput = (actionInput_ActionInput);
@@ -7430,6 +7477,9 @@ var tool_cache = __webpack_require__(533);
 
 // EXTERNAL MODULE: ./node_modules/@actions/io/lib/io.js
 var io = __webpack_require__(1);
+
+// EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
+var exec = __webpack_require__(986);
 
 // EXTERNAL MODULE: external "os"
 var external_os_ = __webpack_require__(87);
@@ -7445,19 +7495,31 @@ var external_path_ = __webpack_require__(622);
 
 
 
+
 const {
   BINARY_LINKS,
   LOCAL_BINARY_FOLDER,
   PLATFORMS,
   LOCAL_BINARY_NAME,
+  ALLOWED_INPUT_VALUES: {
+    LOCAL_TESTING: binaryControl_LOCAL_TESTING,
+  },
 } = constants;
 
 class binaryControl_BinaryControl {
-  constructor() {
+  constructor(stateForBinary) {
     this.platform = Object(external_os_.platform)();
+    this.stateForBinary = stateForBinary;
 
-    // decides the binary link and the folder to store the binary based on the
-    // platform and the architecture
+    this._decidePlatformAndBinary();
+    this._generateArgsForBinary();
+  }
+
+  /**
+   * decides the binary link and the folder to store the binary based on the
+   * platform and the architecture
+   */
+  _decidePlatformAndBinary() {
     if (this.platform === PLATFORMS.DARWIN) {
       this.binaryLink = BINARY_LINKS.DARWIN;
       this.binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, this.platform);
@@ -7474,6 +7536,46 @@ class binaryControl_BinaryControl {
     await Object(io.mkdirP)(this.binaryFolder);
   }
 
+  _generateArgsForBinary() {
+    const {
+      accessKey: key,
+      localArgs,
+      localIdentifier,
+      localLoggingLevel: verbose,
+      localTesting: binaryAction,
+    } = this.stateForBinary;
+
+    let argsString = `--key ${key} --only-automate `;
+
+    switch (binaryAction) {
+      case binaryControl_LOCAL_TESTING.START: {
+        if (localArgs) argsString += `${localArgs} `;
+        if (localIdentifier) argsString += `--local-identifier ${localIdentifier} `;
+        if (verbose) argsString += `--verbose ${verbose} --log-file BrowserStackLocal.log `;
+        argsString += '--daemon start ';
+        break;
+      }
+      case binaryControl_LOCAL_TESTING.STOP: {
+        if (localIdentifier) argsString += `--local-identifier ${localIdentifier} `;
+        argsString += '--daemon stop ';
+        break;
+      }
+      default: {
+        throw Error('Invalid Binary Action');
+      }
+    }
+
+    this.binaryArgs = argsString;
+  }
+
+  async _triggerBinary() {
+    try {
+      await Object(exec.exec)(`${LOCAL_BINARY_NAME} ${this.binaryArgs}`);
+    } catch (e) {
+      throw Error(`Binary Action: ${this.stateForBinary.localTesting} failed with args: ${this.binaryArgs}. Error: ${e.message}`);
+    }
+  }
+
   async downloadBinary() {
     try {
       await this._makeDirectory();
@@ -7486,9 +7588,21 @@ class binaryControl_BinaryControl {
       Object(core.setFailed)(`Downloading Binary Failed: ${e.message}`);
     }
   }
+
+  async startBinary() {
+    console.log(`Starting Local Binary with args: ${this.binaryArgs}`);
+    await this._triggerBinary();
+    console.log(`Successfully started Local Binary`);
+  }
+
+  async stopBinary() {
+    console.log(`Stopping Local Binary with args: ${this.binaryArgs}`);
+    await this._triggerBinary();
+    console.log(`Successfuly stopped Local Binary`);
+  }
 }
 
-/* harmony default export */ var binaryControl = (binaryControl_BinaryControl);
+/* harmony default export */ var src_binaryControl = (binaryControl_BinaryControl);
 
 // CONCATENATED MODULE: ./src/index.js
 
@@ -7496,13 +7610,31 @@ class binaryControl_BinaryControl {
 
 
 
+const {
+  ALLOWED_INPUT_VALUES: {
+    LOCAL_TESTING: src_LOCAL_TESTING,
+  },
+} = constants;
+
 const run = async () => {
   try {
     const inputParser = new actionInput();
-    inputParser.setEnvVariables();
+    const stateForBinary = inputParser.getInputStateForBinary();
+    const binaryControl = new src_binaryControl(stateForBinary);
 
-    const binarySetup = new binaryControl();
-    await binarySetup.downloadBinary();
+    if ([src_LOCAL_TESTING.START, src_LOCAL_TESTING.FALSE].includes(stateForBinary.localTesting)) {
+      inputParser.setEnvVariables();
+
+      if (stateForBinary.localTesting === src_LOCAL_TESTING.START) {
+        await binaryControl.downloadBinary();
+        await binaryControl.startBinary();
+        // 2. provide required input for its state
+        // 3. start binary
+      }
+    } else {
+      await binaryControl.stopBinary();
+      // upload artifacts if any
+    }
   } catch (e) {
     Object(core.setFailed)(`Action Failed: ${e}`);
   }

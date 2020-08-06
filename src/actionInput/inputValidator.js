@@ -15,6 +15,12 @@ const {
 } = constants;
 
 class InputValidator {
+  /**
+   * Generates metadata of the triggered workflow in the form of
+   * 1. Push event (Non PR): Commit-\<commit-id>-\<commit-message>
+   * 2. Pull Request event: PR-\<PR-number>-Commit-\<commit-id>
+   * @returns {String} Metadata
+   */
   static _getMetadata() {
     const githubEvent = github.context.eventName;
     switch (githubEvent) {
@@ -55,44 +61,62 @@ class InputValidator {
     }
   }
 
+  /**
+   * Appends the username with '-GitHubAction' for internal instrumentation
+   * @param {String} inputUsername BrowserStack Username
+   * @returns {String} Modified Username
+   */
   static validateUsername(inputUsername) {
     return `${inputUsername}-GitHubAction`;
   }
 
+  /**
+   * Validates the action input 'local-testing' and returns the
+   * parsed value.
+   * Throws error if it's not a valid value
+   * @param {String} inputLocalTesting Action input for 'local-testing'
+   * @returns {String} One of the values from start/stop/false
+   */
   static validateLocalTesting(inputLocalTesting) {
     if (!inputLocalTesting) return 'false';
 
     const localTestingLowered = inputLocalTesting.toString().toLowerCase();
-    const validValue = LOCAL_TESTING.some((allowedValue) => allowedValue === localTestingLowered);
+    const validValue = Object.values(LOCAL_TESTING).some((allowedValue) => allowedValue === localTestingLowered);
 
     if (!validValue) {
-      throw Error(`Invalid input for ${INPUT.LOCAL_TESING}. The valid inputs are: ${LOCAL_TESTING.join(', ')}. Refer the README for more details`);
+      throw Error(`Invalid input for ${INPUT.LOCAL_TESING}. The valid inputs are: ${Object.values(LOCAL_TESTING).join(', ')}. Refer the README for more details`);
     }
 
-    return validValue;
+    return localTestingLowered;
   }
 
+  /**
+   * Validates the action input 'local-logging-level' and returns the
+   * verbosity level of logging
+   * @param {String} inputLocalLoggingLevel Action input for 'local-logging-level'
+   * @returns {Number} Logging Level
+   */
   static validateLocalLoggingLevel(inputLocalLoggingLevel) {
-    if (!inputLocalLoggingLevel) return '';
+    if (!inputLocalLoggingLevel) return 0;
 
     const loggingLevelLowered = inputLocalLoggingLevel.toString().toLowerCase();
 
     switch (loggingLevelLowered) {
       case LOCAL_LOG_LEVEL.SETUP_LOGS: {
-        return '--verbose 1 --log-file BrowserStackLocal.log';
+        return 1;
       }
       case LOCAL_LOG_LEVEL.NETWORK_LOGS: {
-        return '--verbose 2 --log-file BrowserStackLocal.log';
+        return 2;
       }
       case LOCAL_LOG_LEVEL.ALL_LOGS: {
-        return '--verbose 3 --log-file BrowserStackLocal.log';
+        return 3;
       }
       case LOCAL_LOG_LEVEL.FALSE: {
-        return '';
+        return 0;
       }
       default: {
         console.log(`[Warning] Invalid input for ${INPUT.LOCAL_LOGGING_LEVEL}. No logs will be captured. The valid inputs are: ${Object.values(LOCAL_LOG_LEVEL).join(', ')}`);
-        return '';
+        return 0;
       }
     }
   }
