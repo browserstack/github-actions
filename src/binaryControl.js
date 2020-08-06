@@ -56,7 +56,7 @@ class BinaryControl {
     } = this.stateForBinary;
 
     console.log(`CHECK FINAL KEY VALUE HERE: ${key}`);
-    let argsString = `--key ${key} --only-automate `;
+    let argsString = `--key ${process.env.BROWSERSTACK_USERNAME} --only-automate `;
 
     switch (binaryAction) {
       case LOCAL_TESTING.START: {
