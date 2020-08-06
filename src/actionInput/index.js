@@ -1,9 +1,14 @@
 import * as core from '@actions/core';
-import * as github from '@actions/github';
 import InputValidator from './inputValidator';
 import constants from '../../config/constants';
 
-const { INPUT, ENV_VARS, ALLOWED_INPUT_VALUES: { LOCAL_TESTING } } = constants;
+const {
+  INPUT,
+  ENV_VARS,
+  ALLOWED_INPUT_VALUES: {
+    LOCAL_TESTING,
+  },
+} = constants;
 
 class ActionInput {
   constructor() {
@@ -13,9 +18,6 @@ class ActionInput {
 
   _fetchAllInput() {
     try {
-      console.log('check here for github context...');
-      console.log(JSON.stringify(github.context));
-
       // required fields
       this.username = core.getInput(INPUT.USERNAME, { required: true });
       this.accessKey = core.getInput(INPUT.ACCESS_KEY, { required: true });
@@ -27,15 +29,6 @@ class ActionInput {
       this.localLoggingLevel = core.getInput(INPUT.LOCAL_LOGGING_LEVEL);
       this.localIdentifier = core.getInput(INPUT.LOCAL_IDENTIFIER);
       this.localArgs = core.getInput(INPUT.LOCAL_ARGS);
-
-      core.info('CHECK HERE FOR THE INPUT VALS');
-      core.info(`username: ${this.username}`);
-      core.info(`buildName: ${this.buildName}`);
-      core.info(`projectName: ${this.projectName}`);
-      core.info(`localTesting: ${this.localTesting}`);
-      core.info(`localLoggingLevel: ${this.localLoggingLevel}`);
-      core.info(`localIdentifier: ${this.localIdentifier}`);
-      core.info(`localArgs: ${this.localArgs}`);
     } catch (e) {
       core.setFailed(`Parsing of Input Failed: ${e}`);
     }
@@ -69,21 +62,11 @@ class ActionInput {
     } else {
       this.localIdentifier = process.env[ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER];
     }
-
-    console.log('VALIDATED VALUES CHECK HERE...');
-    core.info(`username: ${this.username}`);
-    core.info(`buildName: ${this.buildName}`);
-    core.info(`projectName: ${this.projectName}`);
-    core.info(`localTesting: ${this.localTesting}`);
-    core.info(`localLoggingLevel: ${this.localLoggingLevel}`);
-    core.info(`localIdentifier: ${this.localIdentifier}`);
-    core.info(`localArgs: ${this.localArgs}`);
   }
 
   getInputStateForBinary() {
-    console.log(`PRINTING ACCESS KEY HERE: ${this.accessKey}, ${JSON.stringify(this.accessKey.split(''))}`);
     return {
-      accesskey: this.accessKey,
+      accessKey: this.accessKey,
       localTesting: this.localTesting,
       localArgs: this.localArgs,
       localIdentifier: this.localIdentifier,

@@ -47,13 +47,14 @@ class BinaryControl {
 
   _generateArgsForBinary() {
     const {
+      accessKey: key,
       localArgs,
       localIdentifier,
       localLoggingLevel: verbose,
       localTesting: binaryAction,
     } = this.stateForBinary;
 
-    let argsString = `--key ${core.getInput('access-key')} --only-automate `;
+    let argsString = `--key ${key} --only-automate `;
 
     switch (binaryAction) {
       case LOCAL_TESTING.START: {

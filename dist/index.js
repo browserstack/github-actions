@@ -7381,8 +7381,13 @@ class inputValidator_InputValidator {
 
 
 
-
-const { INPUT: actionInput_INPUT, ENV_VARS, ALLOWED_INPUT_VALUES: { LOCAL_TESTING: actionInput_LOCAL_TESTING } } = constants;
+const {
+  INPUT: actionInput_INPUT,
+  ENV_VARS,
+  ALLOWED_INPUT_VALUES: {
+    LOCAL_TESTING: actionInput_LOCAL_TESTING,
+  },
+} = constants;
 
 class actionInput_ActionInput {
   constructor() {
@@ -7392,9 +7397,6 @@ class actionInput_ActionInput {
 
   _fetchAllInput() {
     try {
-      console.log('check here for github context...');
-      console.log(JSON.stringify(github.context));
-
       // required fields
       this.username = Object(core.getInput)(actionInput_INPUT.USERNAME, { required: true });
       this.accessKey = Object(core.getInput)(actionInput_INPUT.ACCESS_KEY, { required: true });
@@ -7406,15 +7408,6 @@ class actionInput_ActionInput {
       this.localLoggingLevel = Object(core.getInput)(actionInput_INPUT.LOCAL_LOGGING_LEVEL);
       this.localIdentifier = Object(core.getInput)(actionInput_INPUT.LOCAL_IDENTIFIER);
       this.localArgs = Object(core.getInput)(actionInput_INPUT.LOCAL_ARGS);
-
-      Object(core.info)('CHECK HERE FOR THE INPUT VALS');
-      Object(core.info)(`username: ${this.username}`);
-      Object(core.info)(`buildName: ${this.buildName}`);
-      Object(core.info)(`projectName: ${this.projectName}`);
-      Object(core.info)(`localTesting: ${this.localTesting}`);
-      Object(core.info)(`localLoggingLevel: ${this.localLoggingLevel}`);
-      Object(core.info)(`localIdentifier: ${this.localIdentifier}`);
-      Object(core.info)(`localArgs: ${this.localArgs}`);
     } catch (e) {
       Object(core.setFailed)(`Parsing of Input Failed: ${e}`);
     }
@@ -7448,21 +7441,11 @@ class actionInput_ActionInput {
     } else {
       this.localIdentifier = process.env[ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER];
     }
-
-    console.log('VALIDATED VALUES CHECK HERE...');
-    Object(core.info)(`username: ${this.username}`);
-    Object(core.info)(`buildName: ${this.buildName}`);
-    Object(core.info)(`projectName: ${this.projectName}`);
-    Object(core.info)(`localTesting: ${this.localTesting}`);
-    Object(core.info)(`localLoggingLevel: ${this.localLoggingLevel}`);
-    Object(core.info)(`localIdentifier: ${this.localIdentifier}`);
-    Object(core.info)(`localArgs: ${this.localArgs}`);
   }
 
   getInputStateForBinary() {
-    console.log(`PRINTING ACCESS KEY HERE: ${this.accessKey}, ${JSON.stringify(this.accessKey.split(''))}`);
     return {
-      accesskey: this.accessKey,
+      accessKey: this.accessKey,
       localTesting: this.localTesting,
       localArgs: this.localArgs,
       localIdentifier: this.localIdentifier,
@@ -7538,13 +7521,14 @@ class binaryControl_BinaryControl {
 
   _generateArgsForBinary() {
     const {
+      accessKey: key,
       localArgs,
       localIdentifier,
       localLoggingLevel: verbose,
       localTesting: binaryAction,
     } = this.stateForBinary;
 
-    let argsString = `--key ${Object(core.getInput)('access-key')} --only-automate `;
+    let argsString = `--key ${key} --only-automate `;
 
     switch (binaryAction) {
       case binaryControl_LOCAL_TESTING.START: {
