@@ -7545,6 +7545,7 @@ class binaryControl_BinaryControl {
       localTesting: binaryAction,
     } = this.stateForBinary;
 
+    console.log(`CHECK FINAL KEY VALUE HERE: ${JSON.stringify(key.split(''))}`);
     let argsString = `--key ${key} --only-automate `;
 
     switch (binaryAction) {
@@ -7622,6 +7623,8 @@ const run = async () => {
   try {
     const inputParser = new actionInput();
     const stateForBinary = inputParser.getInputStateForBinary();
+    console.log('PRINTING JSON STRINGIFY...');
+    console.log(JSON.stringify(stateForBinary));
     const binaryControl = new src_binaryControl(stateForBinary);
 
     if ([src_LOCAL_TESTING.START, src_LOCAL_TESTING.FALSE].includes(stateForBinary.localTesting)) {

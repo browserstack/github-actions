@@ -54,6 +54,7 @@ class BinaryControl {
       localTesting: binaryAction,
     } = this.stateForBinary;
 
+    console.log(`CHECK FINAL KEY VALUE HERE: ${JSON.stringify(key.split(''))}`);
     let argsString = `--key ${key} --only-automate `;
 
     switch (binaryAction) {

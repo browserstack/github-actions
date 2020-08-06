@@ -13,6 +13,8 @@ const run = async () => {
   try {
     const inputParser = new ActionInput();
     const stateForBinary = inputParser.getInputStateForBinary();
+    console.log('PRINTING JSON STRINGIFY...');
+    console.log(JSON.stringify(stateForBinary));
     const binaryControl = new BinaryControl(stateForBinary);
 
     if ([LOCAL_TESTING.START, LOCAL_TESTING.FALSE].includes(stateForBinary.localTesting)) {
