@@ -9,7 +9,7 @@ const {
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING,
   },
-  LOCAL_BINARY_FOLDER
+  LOCAL_LOGGING_FILE
 } = constants;
 
 const run = async () => {
@@ -27,7 +27,7 @@ const run = async () => {
       }
     } else {
       await binaryControl.stopBinary();
-      await exec.exec(`cat ${path.resolve(binaryControl.binaryFolder, LOCAL_BINARY_FOLDER)}`);
+      await exec.exec(`cat ${path.resolve(binaryControl.binaryFolder, LOCAL_LOGGING_FILE)}`);
       // upload artifacts if any
     }
   } catch (e) {

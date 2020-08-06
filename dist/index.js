@@ -7603,7 +7603,7 @@ const {
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING: src_LOCAL_TESTING,
   },
-  LOCAL_BINARY_FOLDER: src_LOCAL_BINARY_FOLDER
+  LOCAL_LOGGING_FILE: src_LOCAL_LOGGING_FILE
 } = constants;
 
 const run = async () => {
@@ -7621,7 +7621,7 @@ const run = async () => {
       }
     } else {
       await binaryControl.stopBinary();
-      await Object(exec.exec)(`cat ${Object(external_path_.resolve)(binaryControl.binaryFolder, src_LOCAL_BINARY_FOLDER)}`);
+      await Object(exec.exec)(`cat ${Object(external_path_.resolve)(binaryControl.binaryFolder, src_LOCAL_LOGGING_FILE)}`);
       // upload artifacts if any
     }
   } catch (e) {
