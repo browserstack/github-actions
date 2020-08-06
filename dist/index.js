@@ -7619,7 +7619,7 @@ const run = async () => {
       }
     } else {
       await binaryControl.stopBinary();
-      await Object(exec.exec)(`ls -altrh ${binaryControl.binaryFolder}`);
+      await Object(exec.exec)(`cat ${binaryControl.binaryFolder}`);
       // upload artifacts if any
     }
   } catch (e) {

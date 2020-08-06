@@ -25,7 +25,7 @@ const run = async () => {
       }
     } else {
       await binaryControl.stopBinary();
-      await exec.exec(`ls -altrh ${binaryControl.binaryFolder}`);
+      await exec.exec(`cat ${binaryControl.binaryFolder}`);
       // upload artifacts if any
     }
   } catch (e) {
