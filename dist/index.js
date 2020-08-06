@@ -7134,6 +7134,9 @@ var core = __webpack_require__(470);
 // EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
 var exec = __webpack_require__(986);
 
+// EXTERNAL MODULE: external "path"
+var external_path_ = __webpack_require__(622);
+
 // EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
 var github = __webpack_require__(469);
 
@@ -7469,9 +7472,6 @@ var io = __webpack_require__(1);
 // EXTERNAL MODULE: external "os"
 var external_os_ = __webpack_require__(87);
 
-// EXTERNAL MODULE: external "path"
-var external_path_ = __webpack_require__(622);
-
 // CONCATENATED MODULE: ./src/binaryControl.js
 
 
@@ -7598,10 +7598,12 @@ class binaryControl_BinaryControl {
 
 
 
+
 const {
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING: src_LOCAL_TESTING,
   },
+  LOCAL_BINARY_FOLDER: src_LOCAL_BINARY_FOLDER
 } = constants;
 
 const run = async () => {
@@ -7619,7 +7621,7 @@ const run = async () => {
       }
     } else {
       await binaryControl.stopBinary();
-      await Object(exec.exec)(`cat ${binaryControl.binaryFolder}`);
+      await Object(exec.exec)(`cat ${Object(external_path_.resolve)(binaryControl.binaryFolder, src_LOCAL_BINARY_FOLDER)}`);
       // upload artifacts if any
     }
   } catch (e) {

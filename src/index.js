@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
 import * as exec from '@actions/exec';
+import * as path from 'path';
 import ActionInput from './actionInput';
 import BinaryControl from './binaryControl';
 import constants from '../config/constants';
@@ -8,6 +9,7 @@ const {
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING,
   },
+  LOCAL_BINARY_FOLDER
 } = constants;
 
 const run = async () => {
@@ -25,7 +27,7 @@ const run = async () => {
       }
     } else {
       await binaryControl.stopBinary();
-      await exec.exec(`cat ${binaryControl.binaryFolder}`);
+      await exec.exec(`cat ${path.resolve(binaryControl.binaryFolder, LOCAL_BINARY_FOLDER)}`);
       // upload artifacts if any
     }
   } catch (e) {
