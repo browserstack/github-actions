@@ -50,4 +50,5 @@ export default {
 
   LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
   LOCAL_BINARY_NAME: 'BrowserStackLocal',
+  LOCAL_LOGGING_FILE: 'BrowserStackLocal.log',
 };

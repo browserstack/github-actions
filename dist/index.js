@@ -7196,6 +7196,7 @@ var minimist = __webpack_require__(109);
 
   LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
   LOCAL_BINARY_NAME: 'BrowserStackLocal',
+  LOCAL_LOGGING_FILE: 'BrowserStackLocal.log',
 });
 
 // CONCATENATED MODULE: ./src/actionInput/inputValidator.js
@@ -7485,6 +7486,7 @@ const {
   LOCAL_BINARY_FOLDER,
   PLATFORMS,
   LOCAL_BINARY_NAME,
+  LOCAL_LOGGING_FILE,
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING: binaryControl_LOCAL_TESTING,
   },
@@ -7505,13 +7507,13 @@ class binaryControl_BinaryControl {
   _decidePlatformAndBinary() {
     if (this.platform === PLATFORMS.DARWIN) {
       this.binaryLink = BINARY_LINKS.DARWIN;
-      this.binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, this.platform);
+      this.binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
     } else if (this.platform === PLATFORMS.LINUX) {
       this.binaryLink = Object(external_os_.arch)() === 'x32' ? BINARY_LINKS.LINUX_32 : BINARY_LINKS.LINUX_64;
-      this.binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, this.platform);
+      this.binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
     } else if (this.platform === PLATFORMS.WIN32) {
       this.binaryLink = BINARY_LINKS.WINDOWS;
-      this.binaryFolder = Object(external_path_.resolve)(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'executables', LOCAL_BINARY_FOLDER, this.platform);
+      this.binaryFolder = Object(external_path_.resolve)(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
     }
   }
 
@@ -7534,7 +7536,7 @@ class binaryControl_BinaryControl {
       case binaryControl_LOCAL_TESTING.START: {
         if (localArgs) argsString += `${localArgs} `;
         if (localIdentifier) argsString += `--local-identifier ${localIdentifier} `;
-        if (verbose) argsString += `--verbose ${verbose} --log-file BrowserStackLocal.log `;
+        if (verbose) argsString += `--verbose ${verbose} --log-file ${Object(external_path_.resolve)(this.binaryFolder, LOCAL_LOGGING_FILE)} `;
         argsString += '--daemon start ';
         break;
       }

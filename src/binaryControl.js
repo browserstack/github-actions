@@ -11,6 +11,7 @@ const {
   LOCAL_BINARY_FOLDER,
   PLATFORMS,
   LOCAL_BINARY_NAME,
+  LOCAL_LOGGING_FILE,
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING,
   },
@@ -31,13 +32,13 @@ class BinaryControl {
   _decidePlatformAndBinary() {
     if (this.platform === PLATFORMS.DARWIN) {
       this.binaryLink = BINARY_LINKS.DARWIN;
-      this.binaryFolder = path.resolve(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, this.platform);
+      this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
     } else if (this.platform === PLATFORMS.LINUX) {
       this.binaryLink = os.arch() === 'x32' ? BINARY_LINKS.LINUX_32 : BINARY_LINKS.LINUX_64;
-      this.binaryFolder = path.resolve(process.env.HOME, 'work', 'executables', LOCAL_BINARY_FOLDER, this.platform);
+      this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
     } else if (this.platform === PLATFORMS.WIN32) {
       this.binaryLink = BINARY_LINKS.WINDOWS;
-      this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'executables', LOCAL_BINARY_FOLDER, this.platform);
+      this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
     }
   }
 
@@ -60,7 +61,7 @@ class BinaryControl {
       case LOCAL_TESTING.START: {
         if (localArgs) argsString += `${localArgs} `;
         if (localIdentifier) argsString += `--local-identifier ${localIdentifier} `;
-        if (verbose) argsString += `--verbose ${verbose} --log-file BrowserStackLocal.log `;
+        if (verbose) argsString += `--verbose ${verbose} --log-file ${path.resolve(this.binaryFolder, LOCAL_LOGGING_FILE)} `;
         argsString += '--daemon start ';
         break;
       }
