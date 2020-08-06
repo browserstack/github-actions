@@ -12836,7 +12836,7 @@ const {
 } = constants;
 
 const artifactClient = Object(artifact_client.create)();
-const artifactName = 'BrowserStack-Local-Logs';
+const artifactName = `BrowserStack-Local-Logs-${process.platform}`;
 
 const run = async () => {
   try {

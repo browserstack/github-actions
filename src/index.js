@@ -14,7 +14,7 @@ const {
 } = constants;
 
 const artifactClient = artifact.create();
-const artifactName = 'BrowserStack-Local-Logs';
+const artifactName = `BrowserStack-Local-Logs-${process.platform}`;
 
 const run = async () => {
   try {
