@@ -7569,7 +7569,6 @@ class binaryControl_BinaryControl {
 
   async _triggerBinary() {
     try {
-      this._generateArgsForBinary();
       await Object(exec.exec)(`${LOCAL_BINARY_NAME} ${this.binaryArgs}`);
     } catch (e) {
       throw Error(`Binary Action: ${this.stateForBinary.localTesting} failed with args: ${this.binaryArgs}. Error: ${e.message}`);
@@ -7590,12 +7589,14 @@ class binaryControl_BinaryControl {
   }
 
   async startBinary() {
+    this._generateArgsForBinary();
     console.log(`Starting Local Binary with args: ${this.binaryArgs}`);
     await this._triggerBinary();
     console.log(`Successfully started Local Binary`);
   }
 
   async stopBinary() {
+    this._generateArgsForBinary();
     console.log(`Stopping Local Binary with args: ${this.binaryArgs}`);
     await this._triggerBinary();
     console.log(`Successfuly stopped Local Binary`);
