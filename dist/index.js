@@ -7547,7 +7547,7 @@ class binaryControl_BinaryControl {
     } = this.stateForBinary;
 
     console.log(`CHECK FINAL KEY VALUE HERE: ${key}`);
-    let argsString = `--key ${Object(core.getInput)('access-key')} --only-automate `;
+    let argsString = `--key ${Object(core.getInput)('access-key')}-GitHubAction --only-automate `;
 
     switch (binaryAction) {
       case binaryControl_LOCAL_TESTING.START: {
