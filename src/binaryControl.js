@@ -46,6 +46,7 @@ class BinaryControl {
   }
 
   _generateArgsForBinary() {
+    console.log(`GENERATE ARGS: ${JSON.stringify(this.stateForBinary)}, ${this.stateForBinary.accessKey}`);
     const {
       accessKey: key,
       localArgs,
@@ -54,7 +55,7 @@ class BinaryControl {
       localTesting: binaryAction,
     } = this.stateForBinary;
 
-    console.log(`CHECK FINAL KEY VALUE HERE: ${JSON.stringify(key.split(''))}`);
+    console.log(`CHECK FINAL KEY VALUE HERE: ${key}`);
     let argsString = `--key ${key} --only-automate `;
 
     switch (binaryAction) {
