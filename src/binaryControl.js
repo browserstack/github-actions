@@ -22,7 +22,6 @@ class BinaryControl {
     this.stateForBinary = stateForBinary;
 
     this._decidePlatformAndBinary();
-    this._generateArgsForBinary();
   }
 
   /**
@@ -80,6 +79,7 @@ class BinaryControl {
 
   async _triggerBinary() {
     try {
+      this._generateArgsForBinary();
       await exec.exec(`${LOCAL_BINARY_NAME} ${this.binaryArgs}`);
     } catch (e) {
       throw Error(`Binary Action: ${this.stateForBinary.localTesting} failed with args: ${this.binaryArgs}. Error: ${e.message}`);
