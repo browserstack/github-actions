@@ -7628,8 +7628,6 @@ const run = async () => {
       if (stateForBinary.localTesting === src_LOCAL_TESTING.START) {
         await binaryControl.downloadBinary();
         await binaryControl.startBinary();
-        // 2. provide required input for its state
-        // 3. start binary
       }
     } else {
       await binaryControl.stopBinary();
