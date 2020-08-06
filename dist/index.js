@@ -7603,7 +7603,7 @@ const {
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING: src_LOCAL_TESTING,
   },
-  LOCAL_LOGGING_FILE: src_LOCAL_LOGGING_FILE
+  LOCAL_LOGGING_FILE: src_LOCAL_LOGGING_FILE,
 } = constants;
 
 const run = async () => {
