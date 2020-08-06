@@ -7460,6 +7460,7 @@ class actionInput_ActionInput {
   }
 
   getInputStateForBinary() {
+    console.log(`PRINTING ACCESS KEY HERE: ${this.accessKey}, ${JSON.stringify(this.accessKey.split(''))}`);
     return {
       accesskey: this.accessKey,
       localTesting: this.localTesting,
