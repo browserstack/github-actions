@@ -2,8 +2,10 @@ import * as tc from '@actions/tool-cache';
 import * as io from '@actions/io';
 import * as exec from '@actions/exec';
 import * as core from '@actions/core';
+import * as github from '@actions/github';
 import * as os from 'os';
 import * as path from 'path';
+import { uploadArtifacts } from './artifacts';
 import constants from '../config/constants';
 
 const {
@@ -11,7 +13,7 @@ const {
   LOCAL_BINARY_FOLDER,
   PLATFORMS,
   LOCAL_BINARY_NAME,
-  LOCAL_LOGGING_FILE,
+  LOCAL_LOG_FILE_PREFIX,
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING,
   },
@@ -46,6 +48,11 @@ class BinaryControl {
     await io.mkdirP(this.binaryFolder);
   }
 
+  async _generateLogFileMetadata() {
+    this.logFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}.log`;
+    this.logFilePath = path.resolve(this.binaryFolder, this.logFileName);
+  }
+
   _generateArgsForBinary() {
     const {
       accessKey: key,
@@ -61,7 +68,10 @@ class BinaryControl {
       case LOCAL_TESTING.START: {
         if (localArgs) argsString += `${localArgs} `;
         if (localIdentifier) argsString += `--local-identifier ${localIdentifier} `;
-        if (verbose) argsString += `--verbose ${verbose} --log-file ${path.resolve(this.binaryFolder, LOCAL_LOGGING_FILE)} `;
+        if (verbose) {
+          this._generateLogFileMetadata();
+          argsString += `--verbose ${verbose} --log-file ${this.logFilePath} `;
+        }
         argsString += '--daemon start ';
         break;
       }
@@ -111,6 +121,13 @@ class BinaryControl {
     console.log(`Stopping Local Binary with args: ${this.binaryArgs}`);
     await this._triggerBinary();
     console.log(`Successfuly stopped Local Binary`);
+  }
+
+  async uploadLogFilesIfAny() {
+    if (this.stateForBinary.localLoggingLevel) {
+      this._generateLogFileMetadata();
+      await uploadArtifacts(this.logFileName, [this.logFilePath], this.binaryFolder);
+    }
   }
 }
 
