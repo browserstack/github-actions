@@ -1192,6 +1192,7 @@ var dist = __webpack_require__(62);
 
 // EXTERNAL MODULE: ./node_modules/minimist/index.js
 var minimist = __webpack_require__(109);
+var minimist_default = /*#__PURE__*/__webpack_require__.n(minimist);
 
 // CONCATENATED MODULE: ./config/constants.js
 /* harmony default export */ var constants = ({
@@ -1413,7 +1414,7 @@ class inputValidator_InputValidator {
    * @returns {String} Parsed args
    */
   static validateLocalArgs(inputLocalArgs) {
-    const parsedArgs = minimist(inputLocalArgs.split(/\s+/));
+    const parsedArgs = minimist_default()(inputLocalArgs.split(/\s+/));
 
     delete parsedArgs._;
     RESTRICTED_LOCAL_ARGS.forEach((arg) => {
@@ -1485,12 +1486,20 @@ const {
   },
 } = constants;
 
+/**
+ * ActionInput manages the fetching of action input values and
+ * helps in setting env variables post validation.
+ */
 class actionInput_ActionInput {
   constructor() {
     this._fetchAllInput();
     this._validateInput();
   }
 
+  /**
+   * Fetches all the input values given to the action.
+   * Raises error if the required values are not provided.
+   */
   _fetchAllInput() {
     try {
       // required fields
@@ -1509,6 +1518,9 @@ class actionInput_ActionInput {
     }
   }
 
+  /**
+   * Sets env variables to be used in the test script for BrowserStack
+   */
   setEnvVariables() {
     Object(core.startGroup)('Setting Environment Variables');
 
@@ -1532,6 +1544,10 @@ class actionInput_ActionInput {
     Object(core.endGroup)();
   }
 
+  /**
+   * Triggers conditional validation of action input values based on the operation
+   * to be performed, i.e. start/no local connection required, stopping of local connection
+   */
   _validateInput() {
     this.localTesting = inputValidator.validateLocalTesting(this.localTesting);
 
@@ -1552,6 +1568,16 @@ class actionInput_ActionInput {
     }
   }
 
+  /**
+   * Returns the information required for setting up of Local Binary
+   * @returns {{
+   *  accessKey: String,
+   *  localTesting: String,
+   *  localArgs: String,
+   *  localIdentifier: String,
+   *  localLoggingLevel: Number
+   * }}
+   */
   getInputStateForBinary() {
     return {
       accessKey: this.accessKey,
@@ -1820,6 +1846,9 @@ class binaryControl_BinaryControl {
     }
   }
 
+  /**
+   * Uploads BrowserStackLocal generated logs (if the file exists for the job)
+   */
   async uploadLogFilesIfAny() {
     this._generateLogFileMetadata();
     if (Object(external_fs_.existsSync)(this.logFilePath)) {
@@ -1843,6 +1872,13 @@ const {
   },
 } = constants;
 
+/**
+ * Entry point to initiate the Action.
+ * 1. Triggers parsing of action input values
+ * 2. Decides requirement of Local Binary
+ * 3. Start/Stop Local Binary if required
+ * 4. Triggers uploading of artifacts
+ */
 const run = async () => {
   try {
     const inputParser = new actionInput();

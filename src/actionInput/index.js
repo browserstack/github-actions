@@ -10,12 +10,20 @@ const {
   },
 } = constants;
 
+/**
+ * ActionInput manages the fetching of action input values and
+ * helps in setting env variables post validation.
+ */
 class ActionInput {
   constructor() {
     this._fetchAllInput();
     this._validateInput();
   }
 
+  /**
+   * Fetches all the input values given to the action.
+   * Raises error if the required values are not provided.
+   */
   _fetchAllInput() {
     try {
       // required fields
@@ -34,6 +42,9 @@ class ActionInput {
     }
   }
 
+  /**
+   * Sets env variables to be used in the test script for BrowserStack
+   */
   setEnvVariables() {
     core.startGroup('Setting Environment Variables');
 
@@ -57,6 +68,10 @@ class ActionInput {
     core.endGroup();
   }
 
+  /**
+   * Triggers conditional validation of action input values based on the operation
+   * to be performed, i.e. start/no local connection required, stopping of local connection
+   */
   _validateInput() {
     this.localTesting = InputValidator.validateLocalTesting(this.localTesting);
 
@@ -77,6 +92,16 @@ class ActionInput {
     }
   }
 
+  /**
+   * Returns the information required for setting up of Local Binary
+   * @returns {{
+   *  accessKey: String,
+   *  localTesting: String,
+   *  localArgs: String,
+   *  localIdentifier: String,
+   *  localLoggingLevel: Number
+   * }}
+   */
   getInputStateForBinary() {
     return {
       accessKey: this.accessKey,

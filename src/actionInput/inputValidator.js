@@ -1,7 +1,7 @@
 import * as github from '@actions/github';
 import * as core from '@actions/core';
 import { v4 as uuidv4 } from 'uuid';
-import * as parseArgs from 'minimist';
+import parseArgs from 'minimist';
 
 import constants from '../../config/constants';
 

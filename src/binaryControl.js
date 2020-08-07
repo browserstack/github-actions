@@ -203,6 +203,9 @@ class BinaryControl {
     }
   }
 
+  /**
+   * Uploads BrowserStackLocal generated logs (if the file exists for the job)
+   */
   async uploadLogFilesIfAny() {
     this._generateLogFileMetadata();
     if (fs.existsSync(this.logFilePath)) {
