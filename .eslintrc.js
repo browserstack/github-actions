@@ -16,7 +16,6 @@ module.exports = {
     'no-underscore-dangle': 'off',
     'no-case-declarations': 'error',
     'prefer-destructuring': ['error', { object: true, array: false }],
-    'no-console': 'off',
     'no-restricted-syntax': 'off',
   },
   ignorePatterns: ['dist/index.js'],
