@@ -1722,7 +1722,7 @@ class binaryControl_BinaryControl {
       localTesting: binaryAction,
     } = this.stateForBinary;
 
-    let argsString = `--key ${key} --only-automate --ci-plugin GitHubAction`;
+    let argsString = `--key ${key} --only-automate --ci-plugin GitHubAction `;
 
     switch (binaryAction) {
       case binaryControl_LOCAL_TESTING.START: {
