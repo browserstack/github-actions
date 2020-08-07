@@ -49,7 +49,7 @@ export default {
   LOCAL_BINARY_TRIGGER: {
     START: {
       CONNECTED: 'connected',
-      DISCONNECTED: 'disconnected'
+      DISCONNECTED: 'disconnected',
     },
     STOP: {
       SUCCESS: 'success',

@@ -39,17 +39,17 @@ class ActionInput {
     core.exportVariable(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
 
     core.exportVariable(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
-    console.log(`${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable set as: ${this.projectName}`);
-    console.log(`Use ${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment varaible for your project name capability in your tests`);
+    core.info(`${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable set as: ${this.projectName}`);
+    core.info(`Use ${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment varaible for your project name capability in your tests`);
 
     core.exportVariable(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
-    console.log(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
-    console.log(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment varaible for your build name capability in your tests`);
+    core.info(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
+    core.info(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment varaible for your build name capability in your tests`);
 
     if (this.localTesting === LOCAL_TESTING.START) {
       core.exportVariable(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
-      console.log(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} environment variable set as: ${this.localIdentifier}`);
-      console.log(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test scripts as the local identifier`);
+      core.info(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} environment variable set as: ${this.localIdentifier}`);
+      core.info(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test scripts as the local identifier`);
     }
   }
 

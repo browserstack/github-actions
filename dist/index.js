@@ -1245,7 +1245,7 @@ var minimist = __webpack_require__(109);
   LOCAL_BINARY_TRIGGER: {
     START: {
       CONNECTED: 'connected',
-      DISCONNECTED: 'disconnected'
+      DISCONNECTED: 'disconnected',
     },
     STOP: {
       SUCCESS: 'success',
@@ -1512,17 +1512,17 @@ class actionInput_ActionInput {
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
 
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
-    console.log(`${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable set as: ${this.projectName}`);
-    console.log(`Use ${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment varaible for your project name capability in your tests`);
+    Object(core.info)(`${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable set as: ${this.projectName}`);
+    Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment varaible for your project name capability in your tests`);
 
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
-    console.log(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
-    console.log(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment varaible for your build name capability in your tests`);
+    Object(core.info)(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
+    Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment varaible for your build name capability in your tests`);
 
     if (this.localTesting === actionInput_LOCAL_TESTING.START) {
       Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
-      console.log(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} environment variable set as: ${this.localIdentifier}`);
-      console.log(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test scripts as the local identifier`);
+      Object(core.info)(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} environment variable set as: ${this.localIdentifier}`);
+      Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test scripts as the local identifier`);
     }
   }
 
@@ -1583,6 +1583,7 @@ var artifact_client = __webpack_require__(214);
 // CONCATENATED MODULE: ./src/artifacts.js
 
 
+
 const artifactClient = Object(artifact_client.create)();
 
 /**
@@ -1600,7 +1601,7 @@ const uploadArtifacts = async (artifactName, files, rootFolder) => {
       continueOnError: true,
     },
   );
-  console.log(`Response for upload: ${JSON.stringify(response)}`);
+  Object(core.info)(`Response for upload: ${JSON.stringify(response)}`);
   return response;
 };
 

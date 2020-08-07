@@ -1,4 +1,5 @@
 import * as artifact from '@actions/artifact';
+import * as core from '@actions/core';
 
 const artifactClient = artifact.create();
 
@@ -17,7 +18,7 @@ const uploadArtifacts = async (artifactName, files, rootFolder) => {
       continueOnError: true,
     },
   );
-  console.log(`Response for upload: ${JSON.stringify(response)}`);
+  core.info(`Response for upload: ${JSON.stringify(response)}`);
   return response;
 };
 
