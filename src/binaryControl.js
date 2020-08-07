@@ -110,17 +110,19 @@ class BinaryControl {
     let triggerOutput = '';
     let triggerError = '';
     await exec.exec(
-      `${LOCAL_BINARY_NAME}`,
+      LOCAL_BINARY_NAME,
       [
         this.binaryArgs,
         `--daemon ${operation}`,
       ],
       {
-        stdout: (data) => {
-          triggerOutput += data.toString();
-        },
-        stderr: (data) => {
-          triggerError += data.toString();
+        listeners: {
+          stdout: (data) => {
+            triggerOutput += data.toString();
+          },
+          stderr: (data) => {
+            triggerError += data.toString();
+          },
         },
       },
     );
