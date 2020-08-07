@@ -46,7 +46,7 @@ class ActionInput {
     core.info(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
     core.info(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment varaible for your build name capability in your tests`);
 
-    if (this.localTesting === LOCAL_TESTING.START) {
+    if ((this.localTesting === LOCAL_TESTING.START) && this.localIdentifier) {
       core.exportVariable(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
       core.info(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} environment variable set as: ${this.localIdentifier}`);
       core.info(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test scripts as the local identifier`);

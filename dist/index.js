@@ -1521,7 +1521,7 @@ class actionInput_ActionInput {
     Object(core.info)(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
     Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment varaible for your build name capability in your tests`);
 
-    if (this.localTesting === actionInput_LOCAL_TESTING.START) {
+    if ((this.localTesting === actionInput_LOCAL_TESTING.START) && this.localIdentifier) {
       Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
       Object(core.info)(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} environment variable set as: ${this.localIdentifier}`);
       Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test scripts as the local identifier`);
