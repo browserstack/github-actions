@@ -1749,6 +1749,7 @@ class binaryControl_BinaryControl {
     this._generateArgsForBinary();
     console.log(`Starting Local Binary with args: ${this.binaryArgs}`);
     const response = await this._triggerBinary(binaryControl_LOCAL_TESTING.START);
+    console.log(`SEE THE RSPONSE HERE: ${JSON.stringify(response)}`);
     console.log(`Successfully started Local Binary`);
   }
 
