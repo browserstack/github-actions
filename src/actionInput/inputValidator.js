@@ -1,4 +1,5 @@
 import * as github from '@actions/github';
+import * as core from '@actions/core';
 import { v4 as uuidv4 } from 'uuid';
 import * as parseArgs from 'minimist';
 
@@ -85,6 +86,7 @@ class InputValidator {
     if (!inputLocalTesting) return 'false';
 
     const localTestingLowered = inputLocalTesting.toString().toLowerCase();
+    // eslint-disable-next-line max-len
     const validValue = Object.values(LOCAL_TESTING).some((allowedValue) => allowedValue === localTestingLowered);
 
     if (!validValue) {
@@ -119,7 +121,7 @@ class InputValidator {
         return 0;
       }
       default: {
-        console.log(`[Warning] Invalid input for ${INPUT.LOCAL_LOGGING_LEVEL}. No logs will be captured. The valid inputs are: ${Object.values(LOCAL_LOG_LEVEL).join(', ')}`);
+        core.info(`[Warning] Invalid input for ${INPUT.LOCAL_LOGGING_LEVEL}. No logs will be captured. The valid inputs are: ${Object.values(LOCAL_LOG_LEVEL).join(', ')}`);
         return 0;
       }
     }

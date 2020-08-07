@@ -1266,6 +1266,7 @@ var minimist = __webpack_require__(109);
 
 
 
+
 const {
   ALLOWED_INPUT_VALUES: {
     LOCAL_LOG_LEVEL,
@@ -1347,6 +1348,7 @@ class inputValidator_InputValidator {
     if (!inputLocalTesting) return 'false';
 
     const localTestingLowered = inputLocalTesting.toString().toLowerCase();
+    // eslint-disable-next-line max-len
     const validValue = Object.values(LOCAL_TESTING).some((allowedValue) => allowedValue === localTestingLowered);
 
     if (!validValue) {
@@ -1381,7 +1383,7 @@ class inputValidator_InputValidator {
         return 0;
       }
       default: {
-        console.log(`[Warning] Invalid input for ${INPUT.LOCAL_LOGGING_LEVEL}. No logs will be captured. The valid inputs are: ${Object.values(LOCAL_LOG_LEVEL).join(', ')}`);
+        Object(core.info)(`[Warning] Invalid input for ${INPUT.LOCAL_LOGGING_LEVEL}. No logs will be captured. The valid inputs are: ${Object.values(LOCAL_LOG_LEVEL).join(', ')}`);
         return 0;
       }
     }
@@ -1810,7 +1812,7 @@ class binaryControl_BinaryControl {
         throw Error(JSON.stringify(error));
       }
     } catch (e) {
-      console.error(`Error in stopping local tunnel: ${e.message}. Continuing the workflow without breaking...`);
+      Object(core.info)(`[Warning] Error in stopping local tunnel: ${e.message}. Continuing the workflow without breaking...`);
     }
   }
 

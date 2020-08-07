@@ -199,7 +199,7 @@ class BinaryControl {
         throw Error(JSON.stringify(error));
       }
     } catch (e) {
-      console.error(`Error in stopping local tunnel: ${e.message}. Continuing the workflow without breaking...`);
+      core.info(`[Warning] Error in stopping local tunnel: ${e.message}. Continuing the workflow without breaking...`);
     }
   }
 
