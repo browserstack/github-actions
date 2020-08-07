@@ -124,6 +124,7 @@ class BinaryControl {
         },
       },
     );
+
     return {
       output: triggerOutput,
       error: triggerError,
@@ -136,10 +137,10 @@ class BinaryControl {
   async downloadBinary() {
     try {
       await this._makeDirectory();
-      console.log('Downloading BrowserStackLocal binary...');
+      core.info('Downloading BrowserStackLocal binary...');
       const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
       const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
-      console.log(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
+      core.info(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
       const cachedPath = await tc.cacheDir(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
       core.addPath(cachedPath);
       this.binaryPath = extractedPath;
@@ -156,14 +157,14 @@ class BinaryControl {
       this._generateArgsForBinary();
       let { localIdentifier } = this.stateForBinary;
       localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
-      console.log(`Starting local tunnel ${localIdentifier} in daemon mode...`);
+      core.info(`Starting local tunnel ${localIdentifier} in daemon mode...`);
 
       const { output, error } = await this._triggerBinary(LOCAL_TESTING.START);
 
       if (!error) {
         const outputParsed = JSON.parse(output);
         if (outputParsed.state === LOCAL_BINARY_TRIGGER.START.CONNECTED) {
-          console.log(`Local tunnel status: ${outputParsed.message}`);
+          core.info(`Local tunnel status: ${outputParsed.message}`);
         } else {
           throw Error(JSON.stringify(outputParsed.message));
         }
@@ -171,7 +172,7 @@ class BinaryControl {
         throw Error(JSON.stringify(error));
       }
     } catch (e) {
-      throw Error(`BrowserStackLocal binary could not be started. Error message from binary: ${e.message}`);
+      throw Error(`Local tunnel could not be started. Error message from binary: ${e.message}`);
     }
   }
 
@@ -183,14 +184,14 @@ class BinaryControl {
       this._generateArgsForBinary();
       let { localIdentifier } = this.stateForBinary;
       localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
-      console.log(`Stopping Local tunnel ${localIdentifier} in daemon mode...`);
+      core.info(`Stopping local tunnel ${localIdentifier} in daemon mode...`);
 
       const { output, error } = await this._triggerBinary(LOCAL_TESTING.STOP);
 
       if (!error) {
         const outputParsed = JSON.parse(output);
         if (outputParsed.status === LOCAL_BINARY_TRIGGER.STOP.SUCCESS) {
-          console.log(`Local tunnel stopping status: ${outputParsed.message}`);
+          core.info(`Local tunnel stopping status: ${outputParsed.message}`);
         } else {
           throw Error(JSON.stringify(outputParsed.message));
         }

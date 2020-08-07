@@ -1512,7 +1512,7 @@ class actionInput_ActionInput {
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
 
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
-    console.log(`${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable set as: ${this.buildName}`);
+    console.log(`${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable set as: ${this.projectName}`);
     console.log(`Use ${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment varaible for your project name capability in your tests`);
 
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
@@ -1521,7 +1521,7 @@ class actionInput_ActionInput {
 
     if (this.localTesting === actionInput_LOCAL_TESTING.START) {
       Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
-      console.log(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} set as: ${this.localIdentifier}`);
+      console.log(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} environment variable set as: ${this.localIdentifier}`);
       console.log(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test scripts as the local identifier`);
     }
   }
@@ -1734,6 +1734,7 @@ class binaryControl_BinaryControl {
         },
       },
     );
+
     return {
       output: triggerOutput,
       error: triggerError,
@@ -1746,10 +1747,10 @@ class binaryControl_BinaryControl {
   async downloadBinary() {
     try {
       await this._makeDirectory();
-      console.log('Downloading BrowserStackLocal binary...');
+      Object(core.info)('Downloading BrowserStackLocal binary...');
       const downloadPath = await Object(tool_cache.downloadTool)(this.binaryLink, Object(external_path_.resolve)(this.binaryFolder, 'binaryZip'));
       const extractedPath = await Object(tool_cache.extractZip)(downloadPath, this.binaryFolder);
-      console.log(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
+      Object(core.info)(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
       const cachedPath = await Object(tool_cache.cacheDir)(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
       Object(core.addPath)(cachedPath);
       this.binaryPath = extractedPath;
@@ -1766,14 +1767,14 @@ class binaryControl_BinaryControl {
       this._generateArgsForBinary();
       let { localIdentifier } = this.stateForBinary;
       localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
-      console.log(`Starting local tunnel ${localIdentifier} in daemon mode...`);
+      Object(core.info)(`Starting local tunnel ${localIdentifier} in daemon mode...`);
 
       const { output, error } = await this._triggerBinary(binaryControl_LOCAL_TESTING.START);
 
       if (!error) {
         const outputParsed = JSON.parse(output);
         if (outputParsed.state === LOCAL_BINARY_TRIGGER.START.CONNECTED) {
-          console.log(`Local tunnel status: ${outputParsed.message}`);
+          Object(core.info)(`Local tunnel status: ${outputParsed.message}`);
         } else {
           throw Error(JSON.stringify(outputParsed.message));
         }
@@ -1781,7 +1782,7 @@ class binaryControl_BinaryControl {
         throw Error(JSON.stringify(error));
       }
     } catch (e) {
-      throw Error(`BrowserStackLocal binary could not be started. Error message from binary: ${e.message}`);
+      throw Error(`Local tunnel could not be started. Error message from binary: ${e.message}`);
     }
   }
 
@@ -1793,14 +1794,14 @@ class binaryControl_BinaryControl {
       this._generateArgsForBinary();
       let { localIdentifier } = this.stateForBinary;
       localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
-      console.log(`Stopping Local tunnel ${localIdentifier} in daemon mode...`);
+      Object(core.info)(`Stopping local tunnel ${localIdentifier} in daemon mode...`);
 
       const { output, error } = await this._triggerBinary(binaryControl_LOCAL_TESTING.STOP);
 
       if (!error) {
         const outputParsed = JSON.parse(output);
         if (outputParsed.status === LOCAL_BINARY_TRIGGER.STOP.SUCCESS) {
-          console.log(`Local tunnel stopping status: ${outputParsed.message}`);
+          Object(core.info)(`Local tunnel stopping status: ${outputParsed.message}`);
         } else {
           throw Error(JSON.stringify(outputParsed.message));
         }
