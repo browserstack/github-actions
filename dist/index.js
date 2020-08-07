@@ -1529,7 +1529,7 @@ class actionInput_ActionInput {
       Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test scripts as the local identifier\n`);
     }
 
-    Object(core.endGroup)('Setting Environment Variables');
+    Object(core.endGroup)();
   }
 
   _validateInput() {

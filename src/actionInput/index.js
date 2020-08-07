@@ -54,7 +54,7 @@ class ActionInput {
       core.info(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test scripts as the local identifier\n`);
     }
 
-    core.endGroup('Setting Environment Variables');
+    core.endGroup();
   }
 
   _validateInput() {
