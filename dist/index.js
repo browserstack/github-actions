@@ -1517,16 +1517,16 @@ class actionInput_ActionInput {
 
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
     Object(core.info)(`${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable set as: ${this.projectName}`);
-    Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment varaible for your project name capability in your tests\n`);
+    Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable for your project name capability in your tests\n`);
 
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
     Object(core.info)(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
-    Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment varaible for your build name capability in your tests\n`);
+    Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable for your build name capability in your tests\n`);
 
     if ((this.localTesting === actionInput_LOCAL_TESTING.START) && this.localIdentifier) {
       Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
       Object(core.info)(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} environment variable set as: ${this.localIdentifier}`);
-      Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test scripts as the local identifier\n`);
+      Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test script as the local identifier\n`);
     }
 
     Object(core.endGroup)();
