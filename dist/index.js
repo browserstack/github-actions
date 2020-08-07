@@ -1705,18 +1705,18 @@ class binaryControl_BinaryControl {
     let triggerOutput = '';
     let triggerError = '';
     await Object(exec.exec)(
-      LOCAL_BINARY_NAME,
-      [`${this.binaryArgs} --daemon ${operation}`],
-      // {
-      //   listeners: {
-      //     stdout: (data) => {
-      //       triggerOutput += data.toString();
-      //     },
-      //     stderr: (data) => {
-      //       triggerError += data.toString();
-      //     },
-      //   },
-      // },
+      `${LOCAL_BINARY_NAME} ${this.binaryArgs} --daemon ${operation}`,
+      [],
+      {
+        listeners: {
+          stdout: (data) => {
+            triggerOutput += data.toString();
+          },
+          stderr: (data) => {
+            triggerError += data.toString();
+          },
+        },
+      },
     );
     return {
       output: triggerOutput,
