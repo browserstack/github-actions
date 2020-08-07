@@ -5,6 +5,7 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 import * as os from 'os';
 import * as path from 'path';
+import * as fs from 'fs';
 import { uploadArtifacts } from './artifacts';
 import constants from '../config/constants';
 
@@ -124,9 +125,10 @@ class BinaryControl {
   }
 
   async uploadLogFilesIfAny() {
-    if (this.stateForBinary.localLoggingLevel) {
-      this._generateLogFileMetadata();
+    this._generateLogFileMetadata();
+    if (fs.existsSync(this.logFilePath)) {
       await uploadArtifacts(this.logFileName, [this.logFilePath], this.binaryFolder);
+      await io.rmRF(this.logFilePath);
     }
   }
 }

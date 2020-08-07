@@ -1525,6 +1525,9 @@ var external_os_ = __webpack_require__(87);
 // EXTERNAL MODULE: external "path"
 var external_path_ = __webpack_require__(622);
 
+// EXTERNAL MODULE: external "fs"
+var external_fs_ = __webpack_require__(747);
+
 // EXTERNAL MODULE: ./node_modules/@actions/artifact/lib/artifact-client.js
 var artifact_client = __webpack_require__(214);
 
@@ -1549,6 +1552,7 @@ const uploadArtifacts = async (artifactName, files, rootFolder) => {
 
 
 // CONCATENATED MODULE: ./src/binaryControl.js
+
 
 
 
@@ -1675,9 +1679,10 @@ class binaryControl_BinaryControl {
   }
 
   async uploadLogFilesIfAny() {
-    if (this.stateForBinary.localLoggingLevel) {
-      this._generateLogFileMetadata();
+    this._generateLogFileMetadata();
+    if (Object(external_fs_.existsSync)(this.logFilePath)) {
       await uploadArtifacts(this.logFileName, [this.logFilePath], this.binaryFolder);
+      await Object(io.rmRF)(this.logFilePath);
     }
   }
 }
