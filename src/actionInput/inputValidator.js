@@ -179,18 +179,18 @@ class InputValidator {
     if (!inputBuildName) return InputValidator._getMetadata();
 
     let buildNameWithHyphen = inputBuildName.split(/\s+/).join('-');
-    const prIndex = buildNameWithHyphen.indexOf('META#');
+    const prIndex = buildNameWithHyphen.toLowerCase().indexOf('meta#');
 
     if (prIndex === -1) return buildNameWithHyphen;
 
     const metadata = InputValidator._getMetadata();
 
     if (prIndex === 0) {
-      buildNameWithHyphen = buildNameWithHyphen.split('META#-')[1];
+      buildNameWithHyphen = buildNameWithHyphen.split(/meta#-/i)[1];
       return buildNameWithHyphen ? `${metadata}-${buildNameWithHyphen}` : metadata;
     }
 
-    buildNameWithHyphen = buildNameWithHyphen.split('-META#')[0];
+    buildNameWithHyphen = buildNameWithHyphen.split(/-meta#/i)[0];
     return buildNameWithHyphen ? `${buildNameWithHyphen}-${metadata}` : metadata;
   }
 

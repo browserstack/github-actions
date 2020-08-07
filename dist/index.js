@@ -1442,18 +1442,18 @@ class inputValidator_InputValidator {
     if (!inputBuildName) return inputValidator_InputValidator._getMetadata();
 
     let buildNameWithHyphen = inputBuildName.split(/\s+/).join('-');
-    const prIndex = buildNameWithHyphen.indexOf('META#');
+    const prIndex = buildNameWithHyphen.toLowerCase().indexOf('meta#');
 
     if (prIndex === -1) return buildNameWithHyphen;
 
     const metadata = inputValidator_InputValidator._getMetadata();
 
     if (prIndex === 0) {
-      buildNameWithHyphen = buildNameWithHyphen.split('META#-')[1];
+      buildNameWithHyphen = buildNameWithHyphen.split(/meta#-/i)[1];
       return buildNameWithHyphen ? `${metadata}-${buildNameWithHyphen}` : metadata;
     }
 
-    buildNameWithHyphen = buildNameWithHyphen.split('-META#')[0];
+    buildNameWithHyphen = buildNameWithHyphen.split(/-meta#/i)[0];
     return buildNameWithHyphen ? `${buildNameWithHyphen}-${metadata}` : metadata;
   }
 
@@ -1722,7 +1722,7 @@ class binaryControl_BinaryControl {
       localTesting: binaryAction,
     } = this.stateForBinary;
 
-    let argsString = `--key ${key} --only-automate `;
+    let argsString = `--key ${key} --only-automate --ci-plugin GitHubAction`;
 
     switch (binaryAction) {
       case binaryControl_LOCAL_TESTING.START: {
