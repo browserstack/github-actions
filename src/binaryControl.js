@@ -111,10 +111,7 @@ class BinaryControl {
     let triggerError = '';
     await exec.exec(
       LOCAL_BINARY_NAME,
-      [
-        this.binaryArgs,
-        `--daemon ${operation}`,
-      ],
+      [`${this.binaryArgs} --daemon ${operation}`],
       {
         listeners: {
           stdout: (data) => {
@@ -156,9 +153,7 @@ class BinaryControl {
   async startBinary() {
     this._generateArgsForBinary();
     console.log(`Starting Local Binary with args: ${this.binaryArgs}`);
-    const { output, error } = await this._triggerBinary(LOCAL_TESTING.START);
-    console.log(`output here: ${output}`);
-    console.log(`error here: ${error}`);
+    const response = await this._triggerBinary(LOCAL_TESTING.START);
     console.log(`Successfully started Local Binary`);
   }
 
