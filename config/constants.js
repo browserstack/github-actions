@@ -46,6 +46,16 @@ export default {
     LOCAL_IDENTIFIER_RANDOM: 'random',
   },
 
+  LOCAL_BINARY_TRIGGER: {
+    START: {
+      CONNECTED: 'connected',
+      DISCONNECTED: 'disconnected'
+    },
+    STOP: {
+      SUCCESS: 'success',
+    },
+  },
+
   RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file'],
 
   LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',

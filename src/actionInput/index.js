@@ -37,9 +37,14 @@ class ActionInput {
   setEnvVariables() {
     core.exportVariable(ENV_VARS.BROWSERSTACK_USERNAME, this.username);
     core.exportVariable(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
+
     core.exportVariable(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
+    console.log(`${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable set as: ${this.buildName}`);
+    console.log(`Use ${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment varaible for your project name capability in your tests`);
+
     core.exportVariable(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
     console.log(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
+    console.log(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment varaible for your build name capability in your tests`);
 
     if (this.localTesting === LOCAL_TESTING.START) {
       core.exportVariable(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);

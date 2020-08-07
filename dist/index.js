@@ -1242,6 +1242,16 @@ var minimist = __webpack_require__(109);
     LOCAL_IDENTIFIER_RANDOM: 'random',
   },
 
+  LOCAL_BINARY_TRIGGER: {
+    START: {
+      CONNECTED: 'connected',
+      DISCONNECTED: 'disconnected'
+    },
+    STOP: {
+      SUCCESS: 'success',
+    },
+  },
+
   RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file'],
 
   LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
@@ -1500,9 +1510,14 @@ class actionInput_ActionInput {
   setEnvVariables() {
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_USERNAME, this.username);
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
+
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
+    console.log(`${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable set as: ${this.buildName}`);
+    console.log(`Use ${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment varaible for your project name capability in your tests`);
+
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
     console.log(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
+    console.log(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment varaible for your build name capability in your tests`);
 
     if (this.localTesting === actionInput_LOCAL_TESTING.START) {
       Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
@@ -1610,6 +1625,7 @@ const {
   PLATFORMS,
   LOCAL_BINARY_NAME,
   LOCAL_LOG_FILE_PREFIX,
+  LOCAL_BINARY_TRIGGER,
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING: binaryControl_LOCAL_TESTING,
   },
@@ -1746,21 +1762,54 @@ class binaryControl_BinaryControl {
    * Starts Local Binary using the args generated for this action
    */
   async startBinary() {
-    this._generateArgsForBinary();
-    console.log(`Starting Local Binary with args: ${this.binaryArgs}`);
-    const response = await this._triggerBinary(binaryControl_LOCAL_TESTING.START);
-    console.log(`SEE THE RSPONSE HERE: ${JSON.stringify(response)}`);
-    console.log(`Successfully started Local Binary`);
+    try {
+      this._generateArgsForBinary();
+      let { localIdentifier } = this.stateForBinary;
+      localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
+      console.log(`Starting local tunnel ${localIdentifier} in daemon mode...`);
+
+      const { output, error } = await this._triggerBinary(binaryControl_LOCAL_TESTING.START);
+
+      if (!error) {
+        const outputParsed = JSON.parse(output);
+        if (outputParsed.state === LOCAL_BINARY_TRIGGER.START.CONNECTED) {
+          console.log(`Local tunnel status: ${outputParsed.message}`);
+        } else {
+          throw Error(JSON.stringify(outputParsed.message));
+        }
+      } else {
+        throw Error(JSON.stringify(error));
+      }
+    } catch (e) {
+      throw Error(`BrowserStackLocal binary could not be started. Error message from binary: ${e.message}`);
+    }
   }
 
   /**
    * Stops Local Binary using the args generated for this action
    */
   async stopBinary() {
-    this._generateArgsForBinary();
-    console.log(`Stopping Local Binary with args: ${this.binaryArgs}`);
-    await this._triggerBinary(binaryControl_LOCAL_TESTING.STOP);
-    console.log(`Successfuly stopped Local Binary`);
+    try {
+      this._generateArgsForBinary();
+      let { localIdentifier } = this.stateForBinary;
+      localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
+      console.log(`Stopping Local tunnel ${localIdentifier} in daemon mode...`);
+
+      const { output, error } = await this._triggerBinary(binaryControl_LOCAL_TESTING.STOP);
+
+      if (!error) {
+        const outputParsed = JSON.parse(output);
+        if (outputParsed.status === LOCAL_BINARY_TRIGGER.STOP.SUCCESS) {
+          console.log(`Local tunnel stopping status: ${outputParsed.message}`);
+        } else {
+          throw Error(JSON.stringify(outputParsed.message));
+        }
+      } else {
+        throw Error(JSON.stringify(error));
+      }
+    } catch (e) {
+      console.error(`Error in stopping local tunnel: ${e.message}. Continuing the workflow without breaking...`);
+    }
   }
 
   async uploadLogFilesIfAny() {
