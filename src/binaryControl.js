@@ -67,6 +67,7 @@ class BinaryControl {
   /**
    * Generates the args to be provided for the Local Binary based on the operation, i.e.
    * start/stop.
+   * These are generated based on the input state provided to the Binary Control.
    */
   _generateArgsForBinary() {
     const {
@@ -106,7 +107,27 @@ class BinaryControl {
    * @param {String} operation start/stop operation
    */
   async _triggerBinary(operation) {
-    await exec.exec(`${LOCAL_BINARY_NAME} ${this.binaryArgs} --daemon ${operation}`);
+    let triggerOutput = '';
+    let triggerError = '';
+    await exec.exec(
+      `${LOCAL_BINARY_NAME}`,
+      [
+        this.binaryArgs,
+        `--daemon ${operation}`,
+      ],
+      {
+        stdout: (data) => {
+          triggerOutput += data.toString();
+        },
+        stderr: (data) => {
+          triggerError += data.toString();
+        },
+      },
+    );
+    return {
+      output: triggerOutput,
+      error: triggerError,
+    };
   }
 
   /**
@@ -115,13 +136,15 @@ class BinaryControl {
   async downloadBinary() {
     try {
       await this._makeDirectory();
+      console.log('Downloading BrowserStackLocal binary...');
       const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
       const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
+      console.log(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
       const cachedPath = await tc.cacheDir(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
       core.addPath(cachedPath);
       this.binaryPath = extractedPath;
     } catch (e) {
-      core.setFailed(`Downloading Binary Failed: ${e.message}`);
+      throw Error(`BrowserStackLocal binary could not be downloaded due to ${e.message}`);
     }
   }
 
@@ -131,7 +154,9 @@ class BinaryControl {
   async startBinary() {
     this._generateArgsForBinary();
     console.log(`Starting Local Binary with args: ${this.binaryArgs}`);
-    await this._triggerBinary(LOCAL_TESTING.START);
+    const { output, error } = await this._triggerBinary(LOCAL_TESTING.START);
+    console.log(`output here: ${output}`);
+    console.log(`error here: ${error}`);
     console.log(`Successfully started Local Binary`);
   }
 

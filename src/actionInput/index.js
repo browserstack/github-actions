@@ -30,7 +30,7 @@ class ActionInput {
       this.localIdentifier = core.getInput(INPUT.LOCAL_IDENTIFIER);
       this.localArgs = core.getInput(INPUT.LOCAL_ARGS);
     } catch (e) {
-      core.setFailed(`Parsing of Input Failed: ${e}`);
+      throw Error(`Action input failed for reason: ${e.message}`);
     }
   }
 
@@ -39,8 +39,12 @@ class ActionInput {
     core.exportVariable(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
     core.exportVariable(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
     core.exportVariable(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
+    console.log(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
+
     if (this.localTesting === LOCAL_TESTING.START) {
       core.exportVariable(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
+      console.log(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} set as: ${this.localIdentifier}`);
+      console.log(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test scripts as the local identifier`);
     }
   }
 

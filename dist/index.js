@@ -1493,7 +1493,7 @@ class actionInput_ActionInput {
       this.localIdentifier = Object(core.getInput)(actionInput_INPUT.LOCAL_IDENTIFIER);
       this.localArgs = Object(core.getInput)(actionInput_INPUT.LOCAL_ARGS);
     } catch (e) {
-      Object(core.setFailed)(`Parsing of Input Failed: ${e}`);
+      throw Error(`Action input failed for reason: ${e.message}`);
     }
   }
 
@@ -1502,8 +1502,12 @@ class actionInput_ActionInput {
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
     Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
+    console.log(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
+
     if (this.localTesting === actionInput_LOCAL_TESTING.START) {
       Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
+      console.log(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} set as: ${this.localIdentifier}`);
+      console.log(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test scripts as the local identifier`);
     }
   }
 
@@ -1658,6 +1662,7 @@ class binaryControl_BinaryControl {
   /**
    * Generates the args to be provided for the Local Binary based on the operation, i.e.
    * start/stop.
+   * These are generated based on the input state provided to the Binary Control.
    */
   _generateArgsForBinary() {
     const {
@@ -1697,7 +1702,27 @@ class binaryControl_BinaryControl {
    * @param {String} operation start/stop operation
    */
   async _triggerBinary(operation) {
-    await Object(exec.exec)(`${LOCAL_BINARY_NAME} ${this.binaryArgs} --daemon ${operation}`);
+    let triggerOutput = '';
+    let triggerError = '';
+    await Object(exec.exec)(
+      `${LOCAL_BINARY_NAME}`,
+      [
+        this.binaryArgs,
+        `--daemon ${operation}`,
+      ],
+      {
+        stdout: (data) => {
+          triggerOutput += data.toString();
+        },
+        stderr: (data) => {
+          triggerError += data.toString();
+        },
+      },
+    );
+    return {
+      output: triggerOutput,
+      error: triggerError,
+    };
   }
 
   /**
@@ -1706,13 +1731,15 @@ class binaryControl_BinaryControl {
   async downloadBinary() {
     try {
       await this._makeDirectory();
+      console.log('Downloading BrowserStackLocal binary...');
       const downloadPath = await Object(tool_cache.downloadTool)(this.binaryLink, Object(external_path_.resolve)(this.binaryFolder, 'binaryZip'));
       const extractedPath = await Object(tool_cache.extractZip)(downloadPath, this.binaryFolder);
+      console.log(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
       const cachedPath = await Object(tool_cache.cacheDir)(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
       Object(core.addPath)(cachedPath);
       this.binaryPath = extractedPath;
     } catch (e) {
-      Object(core.setFailed)(`Downloading Binary Failed: ${e.message}`);
+      throw Error(`BrowserStackLocal binary could not be downloaded due to ${e.message}`);
     }
   }
 
@@ -1722,7 +1749,9 @@ class binaryControl_BinaryControl {
   async startBinary() {
     this._generateArgsForBinary();
     console.log(`Starting Local Binary with args: ${this.binaryArgs}`);
-    await this._triggerBinary(binaryControl_LOCAL_TESTING.START);
+    const { output, error } = await this._triggerBinary(binaryControl_LOCAL_TESTING.START);
+    console.log(`output here: ${output}`);
+    console.log(`error here: ${error}`);
     console.log(`Successfully started Local Binary`);
   }
 
