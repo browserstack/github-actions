@@ -20,6 +20,10 @@ const {
   },
 } = constants;
 
+/**
+ * BinaryControl handles the operations to be performed on the Local Binary.
+ * It takes care of logs generation and triggering the upload as well.
+ */
 class BinaryControl {
   constructor(stateForBinary) {
     this.platform = os.platform();
@@ -45,15 +49,25 @@ class BinaryControl {
     }
   }
 
+  /**
+   * Creates directory recursively for storing Local Binary & its logs.
+   */
   async _makeDirectory() {
     await io.mkdirP(this.binaryFolder);
   }
 
-  async _generateLogFileMetadata() {
+  /**
+   * Generates logging file name and its path for Local Binary
+   */
+  _generateLogFileMetadata() {
     this.logFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}.log`;
     this.logFilePath = path.resolve(this.binaryFolder, this.logFileName);
   }
 
+  /**
+   * Generates the args to be provided for the Local Binary based on the operation, i.e.
+   * start/stop.
+   */
   _generateArgsForBinary() {
     const {
       accessKey: key,
@@ -73,12 +87,10 @@ class BinaryControl {
           this._generateLogFileMetadata();
           argsString += `--verbose ${verbose} --log-file ${this.logFilePath} `;
         }
-        argsString += '--daemon start ';
         break;
       }
       case LOCAL_TESTING.STOP: {
         if (localIdentifier) argsString += `--local-identifier ${localIdentifier} `;
-        argsString += '--daemon stop ';
         break;
       }
       default: {
@@ -89,14 +101,17 @@ class BinaryControl {
     this.binaryArgs = argsString;
   }
 
-  async _triggerBinary() {
-    try {
-      await exec.exec(`${LOCAL_BINARY_NAME} ${this.binaryArgs}`);
-    } catch (e) {
-      throw Error(`Binary Action: ${this.stateForBinary.localTesting} failed with args: ${this.binaryArgs}. Error: ${e.message}`);
-    }
+  /**
+   * Triggers the Local Binary. It is used for starting/stopping.
+   * @param {String} operation start/stop operation
+   */
+  async _triggerBinary(operation) {
+    await exec.exec(`${LOCAL_BINARY_NAME} ${this.binaryArgs} --daemon ${operation}`);
   }
 
+  /**
+   * Downloads the Local Binary, extracts it and adds it in the PATH variable
+   */
   async downloadBinary() {
     try {
       await this._makeDirectory();
@@ -110,17 +125,23 @@ class BinaryControl {
     }
   }
 
+  /**
+   * Starts Local Binary using the args generated for this action
+   */
   async startBinary() {
     this._generateArgsForBinary();
     console.log(`Starting Local Binary with args: ${this.binaryArgs}`);
-    await this._triggerBinary();
+    await this._triggerBinary(LOCAL_TESTING.START);
     console.log(`Successfully started Local Binary`);
   }
 
+  /**
+   * Stops Local Binary using the args generated for this action
+   */
   async stopBinary() {
     this._generateArgsForBinary();
     console.log(`Stopping Local Binary with args: ${this.binaryArgs}`);
-    await this._triggerBinary();
+    await this._triggerBinary(LOCAL_TESTING.STOP);
     console.log(`Successfuly stopped Local Binary`);
   }
 

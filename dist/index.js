@@ -1266,6 +1266,10 @@ const {
   RESTRICTED_LOCAL_ARGS,
 } = constants;
 
+/**
+ * InputValidator performs validation on the input fields of this
+ * action. The fields are parsed and converted into the required format.
+ */
 class inputValidator_InputValidator {
   /**
    * Generates metadata of the triggered workflow in the form of
@@ -1344,9 +1348,9 @@ class inputValidator_InputValidator {
 
   /**
    * Validates the action input 'local-logging-level' and returns the
-   * verbosity level of logging
+   * verbosity level of logging.
    * @param {String} inputLocalLoggingLevel Action input for 'local-logging-level'
-   * @returns {Number} Logging Level
+   * @returns {Number} Logging Level (0 - 3)
    */
   static validateLocalLoggingLevel(inputLocalLoggingLevel) {
     if (!inputLocalLoggingLevel) return 0;
@@ -1373,6 +1377,12 @@ class inputValidator_InputValidator {
     }
   }
 
+  /**
+   * Validates the local-identifier input. It handles the generation of random
+   * identifier if required.
+   * @param {String} inputLocalIdentifier Action input for 'local-identifier'
+   * @returns {String} Parsed/Random local-identifier
+   */
   static validateLocalIdentifier(inputLocalIdentifier) {
     if (!inputLocalIdentifier) return '';
 
@@ -1384,6 +1394,12 @@ class inputValidator_InputValidator {
     return localIdentifierParsed;
   }
 
+  /**
+   * Validates the local-args input. Removes any args which might conflict with
+   * the input args taken from the action input for the Local Binary.
+   * @param {String} inputLocalArgs Action input for 'local-args'
+   * @returns {String} Parsed args
+   */
   static validateLocalArgs(inputLocalArgs) {
     const parsedArgs = minimist(inputLocalArgs.split(/\s+/));
 
@@ -1402,6 +1418,13 @@ class inputValidator_InputValidator {
     return parsedArgsString;
   }
 
+  /**
+   * Validates the build-name based on the input type. It performs the following:
+   * 1. Removes any spaces from the input provided.
+   * 2. Adds metadata information of the PR/Commit if required (based on the input format).
+   * @param {String} inputBuildName Action input for 'build-name'
+   * @returns {String} Parsed/Modified Build Name
+   */
   static validateBuildName(inputBuildName) {
     if (!inputBuildName) return inputValidator_InputValidator._getMetadata();
 
@@ -1421,6 +1444,13 @@ class inputValidator_InputValidator {
     return buildNameWithHyphen ? `${buildNameWithHyphen}-${metadata}` : metadata;
   }
 
+  /**
+   * Validates the project-name. It performs the following:
+   * 1. Removes any spaces from the input provided.
+   * 2. (or) Considers the Repository name as the project name if no input is provided.
+   * @param {String} inputProjectName Action input for 'project-name'
+   * @returns {String} Parsed/Repository name as Project Name
+   */
   static validateProjectName(inputProjectName) {
     if (inputProjectName) return inputProjectName.split(/\s+/).join('-');
 
@@ -1536,6 +1566,13 @@ var artifact_client = __webpack_require__(214);
 
 const artifactClient = Object(artifact_client.create)();
 
+/**
+ * Upload artifacts to GitHub workflow
+ * @param {String} artifactName Name by which the artifact should be available post uploading
+ * @param {String[]} files Files to upload
+ * @param {String} rootFolder Folder in which the files reside
+ * @returns {artifact.UploadResponse} Response of the upload operation
+ */
 const uploadArtifacts = async (artifactName, files, rootFolder) => {
   const response = await artifactClient.uploadArtifact(
     artifactName,
@@ -1574,6 +1611,10 @@ const {
   },
 } = constants;
 
+/**
+ * BinaryControl handles the operations to be performed on the Local Binary.
+ * It takes care of logs generation and triggering the upload as well.
+ */
 class binaryControl_BinaryControl {
   constructor(stateForBinary) {
     this.platform = Object(external_os_.platform)();
@@ -1599,15 +1640,25 @@ class binaryControl_BinaryControl {
     }
   }
 
+  /**
+   * Creates directory recursively for storing Local Binary & its logs.
+   */
   async _makeDirectory() {
     await Object(io.mkdirP)(this.binaryFolder);
   }
 
-  async _generateLogFileMetadata() {
+  /**
+   * Generates logging file name and its path for Local Binary
+   */
+  _generateLogFileMetadata() {
     this.logFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}.log`;
     this.logFilePath = Object(external_path_.resolve)(this.binaryFolder, this.logFileName);
   }
 
+  /**
+   * Generates the args to be provided for the Local Binary based on the operation, i.e.
+   * start/stop.
+   */
   _generateArgsForBinary() {
     const {
       accessKey: key,
@@ -1627,12 +1678,10 @@ class binaryControl_BinaryControl {
           this._generateLogFileMetadata();
           argsString += `--verbose ${verbose} --log-file ${this.logFilePath} `;
         }
-        argsString += '--daemon start ';
         break;
       }
       case binaryControl_LOCAL_TESTING.STOP: {
         if (localIdentifier) argsString += `--local-identifier ${localIdentifier} `;
-        argsString += '--daemon stop ';
         break;
       }
       default: {
@@ -1643,14 +1692,17 @@ class binaryControl_BinaryControl {
     this.binaryArgs = argsString;
   }
 
-  async _triggerBinary() {
-    try {
-      await Object(exec.exec)(`${LOCAL_BINARY_NAME} ${this.binaryArgs}`);
-    } catch (e) {
-      throw Error(`Binary Action: ${this.stateForBinary.localTesting} failed with args: ${this.binaryArgs}. Error: ${e.message}`);
-    }
+  /**
+   * Triggers the Local Binary. It is used for starting/stopping.
+   * @param {String} operation start/stop operation
+   */
+  async _triggerBinary(operation) {
+    await Object(exec.exec)(`${LOCAL_BINARY_NAME} ${this.binaryArgs} --daemon ${operation}`);
   }
 
+  /**
+   * Downloads the Local Binary, extracts it and adds it in the PATH variable
+   */
   async downloadBinary() {
     try {
       await this._makeDirectory();
@@ -1664,17 +1716,23 @@ class binaryControl_BinaryControl {
     }
   }
 
+  /**
+   * Starts Local Binary using the args generated for this action
+   */
   async startBinary() {
     this._generateArgsForBinary();
     console.log(`Starting Local Binary with args: ${this.binaryArgs}`);
-    await this._triggerBinary();
+    await this._triggerBinary(binaryControl_LOCAL_TESTING.START);
     console.log(`Successfully started Local Binary`);
   }
 
+  /**
+   * Stops Local Binary using the args generated for this action
+   */
   async stopBinary() {
     this._generateArgsForBinary();
     console.log(`Stopping Local Binary with args: ${this.binaryArgs}`);
-    await this._triggerBinary();
+    await this._triggerBinary(binaryControl_LOCAL_TESTING.STOP);
     console.log(`Successfuly stopped Local Binary`);
   }
 

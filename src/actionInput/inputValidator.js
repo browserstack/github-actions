@@ -14,6 +14,10 @@ const {
   RESTRICTED_LOCAL_ARGS,
 } = constants;
 
+/**
+ * InputValidator performs validation on the input fields of this
+ * action. The fields are parsed and converted into the required format.
+ */
 class InputValidator {
   /**
    * Generates metadata of the triggered workflow in the form of
@@ -92,9 +96,9 @@ class InputValidator {
 
   /**
    * Validates the action input 'local-logging-level' and returns the
-   * verbosity level of logging
+   * verbosity level of logging.
    * @param {String} inputLocalLoggingLevel Action input for 'local-logging-level'
-   * @returns {Number} Logging Level
+   * @returns {Number} Logging Level (0 - 3)
    */
   static validateLocalLoggingLevel(inputLocalLoggingLevel) {
     if (!inputLocalLoggingLevel) return 0;
@@ -121,6 +125,12 @@ class InputValidator {
     }
   }
 
+  /**
+   * Validates the local-identifier input. It handles the generation of random
+   * identifier if required.
+   * @param {String} inputLocalIdentifier Action input for 'local-identifier'
+   * @returns {String} Parsed/Random local-identifier
+   */
   static validateLocalIdentifier(inputLocalIdentifier) {
     if (!inputLocalIdentifier) return '';
 
@@ -132,6 +142,12 @@ class InputValidator {
     return localIdentifierParsed;
   }
 
+  /**
+   * Validates the local-args input. Removes any args which might conflict with
+   * the input args taken from the action input for the Local Binary.
+   * @param {String} inputLocalArgs Action input for 'local-args'
+   * @returns {String} Parsed args
+   */
   static validateLocalArgs(inputLocalArgs) {
     const parsedArgs = parseArgs(inputLocalArgs.split(/\s+/));
 
@@ -150,6 +166,13 @@ class InputValidator {
     return parsedArgsString;
   }
 
+  /**
+   * Validates the build-name based on the input type. It performs the following:
+   * 1. Removes any spaces from the input provided.
+   * 2. Adds metadata information of the PR/Commit if required (based on the input format).
+   * @param {String} inputBuildName Action input for 'build-name'
+   * @returns {String} Parsed/Modified Build Name
+   */
   static validateBuildName(inputBuildName) {
     if (!inputBuildName) return InputValidator._getMetadata();
 
@@ -169,6 +192,13 @@ class InputValidator {
     return buildNameWithHyphen ? `${buildNameWithHyphen}-${metadata}` : metadata;
   }
 
+  /**
+   * Validates the project-name. It performs the following:
+   * 1. Removes any spaces from the input provided.
+   * 2. (or) Considers the Repository name as the project name if no input is provided.
+   * @param {String} inputProjectName Action input for 'project-name'
+   * @returns {String} Parsed/Repository name as Project Name
+   */
   static validateProjectName(inputProjectName) {
     if (inputProjectName) return inputProjectName.split(/\s+/).join('-');
 
