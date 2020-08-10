@@ -1,7 +1,7 @@
-import * as core from '@actions/core';
-import ActionInput from './actionInput';
-import BinaryControl from './binaryControl';
-import constants from '../config/constants';
+const core = require('@actions/core');
+const ActionInput = require('./actionInput');
+const BinaryControl = require('./binaryControl');
+const constants = require('../config/constants');
 
 const {
   ALLOWED_INPUT_VALUES: {

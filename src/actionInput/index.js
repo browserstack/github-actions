@@ -1,6 +1,6 @@
-import * as core from '@actions/core';
-import InputValidator from './inputValidator';
-import constants from '../../config/constants';
+const core = require('@actions/core');
+const InputValidator = require('./inputValidator');
+const constants = require('../../config/constants');
 
 const {
   INPUT,
@@ -113,4 +113,4 @@ class ActionInput {
   }
 }
 
-export default ActionInput;
+module.exports = ActionInput;

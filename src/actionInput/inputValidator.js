@@ -1,9 +1,8 @@
-import * as github from '@actions/github';
-import * as core from '@actions/core';
-import { v4 as uuidv4 } from 'uuid';
-import parseArgs from 'minimist';
-
-import constants from '../../config/constants';
+const github = require('@actions/github');
+const core = require('@actions/core');
+const { v4: uuidv4 } = require('uuid');
+const parseArgs = require('minimist');
+const constants = require('../../config/constants');
 
 const {
   ALLOWED_INPUT_VALUES: {
@@ -208,4 +207,4 @@ class InputValidator {
   }
 }
 
-export default InputValidator;
+module.exports = InputValidator;
