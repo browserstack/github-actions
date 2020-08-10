@@ -1,7 +1,7 @@
-const artifact = require('@actions/artifact');
-const core = require('@actions/core');
 const chai = require('chai');
 const sinon = require('sinon');
+const artifact = require('@actions/artifact');
+const core = require('@actions/core');
 const ArtifactsManager = require('../src/artifacts');
 
 const { expect } = chai;
@@ -16,6 +16,10 @@ describe('Artifacts Handling', () => {
 
     sinon.stub(artifact, 'create').returns(artifactClient);
     sinon.stub(core, 'info');
+  });
+
+  afterEach(() => {
+    core.info.restore();
   });
 
   context('Upload Artifacts', () => {
