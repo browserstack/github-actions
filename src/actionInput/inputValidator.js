@@ -42,7 +42,7 @@ class InputValidator {
         } = github;
 
         const parsedCommitMessage = commitMessage.split(/\s+/).join('-');
-        return `Commit-${commitSHA.slice(0, 7)}-${parsedCommitMessage}`;
+        return `COMMIT-${commitSHA.slice(0, 7)}-MESSAGE-${parsedCommitMessage}`;
       }
       case 'pull_request': {
         const {
@@ -58,7 +58,7 @@ class InputValidator {
           },
         } = github;
 
-        return `PR-${prNumber}-Commit-${commitSHA.slice(0, 7)}`;
+        return `PR-${prNumber}-COMMIT-${commitSHA.slice(0, 7)}`;
       }
       default: {
         return `${githubEvent}-${github.context.sha.slice(0, 7)}`;
