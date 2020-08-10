@@ -56,7 +56,7 @@ export default {
     },
   },
 
-  RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file'],
+  RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file', 'ci-plugin'],
 
   LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
   LOCAL_BINARY_NAME: 'BrowserStackLocal',

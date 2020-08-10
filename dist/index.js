@@ -1253,7 +1253,7 @@ var minimist_default = /*#__PURE__*/__webpack_require__.n(minimist);
     },
   },
 
-  RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file'],
+  RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file', 'ci-plugin'],
 
   LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
   LOCAL_BINARY_NAME: 'BrowserStackLocal',
