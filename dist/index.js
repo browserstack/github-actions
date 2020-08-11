@@ -5124,7 +5124,7 @@ class InputValidator {
           },
         } = github;
 
-        return `[${branchName}] Release ${tagName}${releaseName === tagName ? ' ' : ` ${releaseName} `}[Workflow: ${workflowNumber}]`;
+        return `[${branchName}] Release ${tagName}${releaseName === tagName ? ' ' : `: ${releaseName} `}[Workflow: ${workflowNumber}]`;
       }
       default: {
         return `${githubEvent} [Workflow: ${github.context.runNumber}]`;
