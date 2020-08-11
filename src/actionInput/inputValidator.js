@@ -52,18 +52,17 @@ class InputValidator {
             payload: {
               pull_request: {
                 head: {
-                  title: prTitle,
+                  ref: branchName,
                 },
+                title: prTitle,
               },
               number: prNumber,
             },
             runNumber: workflowNumber,
-            ref,
           },
         } = github;
 
-        const probableBranchOrTag = ref.split('/').pop();
-        return `[${probableBranchOrTag}] PR ${prNumber}: ${prTitle} [Workflow: ${workflowNumber}]`;
+        return `[${branchName}] PR ${prNumber}: ${prTitle} [Workflow: ${workflowNumber}]`;
       }
       case 'release': {
         const {
