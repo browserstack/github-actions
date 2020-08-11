@@ -37,11 +37,14 @@ class InputValidator {
               },
             },
             sha: commitSHA,
+            runNumber: workflowNumber,
+            ref,
           },
         } = github;
 
-        const parsedCommitMessage = commitMessage.split(/\s+/).join('-');
-        return `COMMIT-${commitSHA.slice(0, 7)}-MESSAGE-${parsedCommitMessage}`;
+        const probableBranchOrTag = ref.split('/').pop();
+        const slicedSHA = commitSHA.slice(0, 7);
+        return `[${probableBranchOrTag}] Commit ${slicedSHA}: ${commitMessage} [Workflow: ${workflowNumber}]`;
       }
       case 'pull_request': {
         const {
@@ -49,18 +52,37 @@ class InputValidator {
             payload: {
               pull_request: {
                 head: {
-                  sha: commitSHA,
+                  title: prTitle,
                 },
               },
               number: prNumber,
             },
+            runNumber: workflowNumber,
+            ref,
           },
         } = github;
 
-        return `PR-${prNumber}-COMMIT-${commitSHA.slice(0, 7)}`;
+        const probableBranchOrTag = ref.split('/').pop();
+        return `[${probableBranchOrTag}] PR ${prNumber}: ${prTitle} [Workflow: ${workflowNumber}]`;
+      }
+      case 'release': {
+        const {
+          context: {
+            payload: {
+              release: {
+                tag_name: tagName,
+                target_commitish: branchName,
+                name: releaseName,
+              },
+            },
+            runNumber: workflowNumber,
+          },
+        } = github;
+
+        return `[${branchName}] Release ${tagName}${releaseName === tagName ? ' ' : ` ${releaseName} `}[Workflow: ${workflowNumber}]`;
       }
       default: {
-        return `${githubEvent}-${github.context.sha.slice(0, 7)}`;
+        return `${githubEvent} [Workflow: ${github.context.runNumber}]`;
       }
     }
   }
