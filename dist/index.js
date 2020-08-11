@@ -16976,6 +16976,7 @@ module.exports = v4;
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
 const core = __webpack_require__(470);
+const github = __webpack_require__(469);
 const InputValidator = __webpack_require__(288);
 const constants = __webpack_require__(613);
 
@@ -17004,6 +17005,7 @@ class ActionInput {
   _fetchAllInput() {
     try {
       // required fields
+      console.log(JSON.stringify(github.context));
       this.username = core.getInput(INPUT.USERNAME, { required: true });
       this.accessKey = core.getInput(INPUT.ACCESS_KEY, { required: true });
 
