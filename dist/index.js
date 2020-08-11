@@ -5245,20 +5245,12 @@ class InputValidator {
   static validateBuildName(inputBuildName) {
     if (!inputBuildName) return InputValidator._getMetadata();
 
-    let buildNameWithHyphen = inputBuildName.split(/\s+/).join('-');
-    const prIndex = buildNameWithHyphen.toLowerCase().indexOf('meta#');
+    const prIndex = inputBuildName.toLowerCase().indexOf('build_info');
 
-    if (prIndex === -1) return buildNameWithHyphen;
+    if (prIndex === -1) return inputBuildName;
 
     const metadata = InputValidator._getMetadata();
-
-    if (prIndex === 0) {
-      buildNameWithHyphen = buildNameWithHyphen.split(/meta#-/i)[1];
-      return buildNameWithHyphen ? `${metadata}-${buildNameWithHyphen}` : metadata;
-    }
-
-    buildNameWithHyphen = buildNameWithHyphen.split(/-meta#/i)[0];
-    return buildNameWithHyphen ? `${buildNameWithHyphen}-${metadata}` : metadata;
+    return inputBuildName.replace(/build_info/i, metadata);
   }
 
   /**
