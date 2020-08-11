@@ -1,5 +1,4 @@
 const core = require('@actions/core');
-const github = require('@actions/github');
 const InputValidator = require('./inputValidator');
 const constants = require('../../config/constants');
 
@@ -28,7 +27,6 @@ class ActionInput {
   _fetchAllInput() {
     try {
       // required fields
-      console.log(JSON.stringify(github.context));
       this.username = core.getInput(INPUT.USERNAME, { required: true });
       this.accessKey = core.getInput(INPUT.ACCESS_KEY, { required: true });
 

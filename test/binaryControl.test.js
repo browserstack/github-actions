@@ -41,22 +41,22 @@ describe('Binary Control Operations', () => {
         binary: BINARY_LINKS.DARWIN,
         folder: `/work/binary/${LOCAL_BINARY_FOLDER}/darwin`,
         arch: 'x64',
-        platform: 'darwin',
+        platform: PLATFORMS.DARWIN,
       }, {
         binary: BINARY_LINKS.LINUX_32,
         folder: `/work/binary/${LOCAL_BINARY_FOLDER}/linux`,
         arch: 'x32',
-        platform: 'linux',
+        platform: PLATFORMS.LINUX,
       }, {
         binary: BINARY_LINKS.LINUX_64,
         folder: `/work/binary/${LOCAL_BINARY_FOLDER}/linux`,
         arch: 'x64',
-        platform: 'linux',
+        platform: PLATFORMS.LINUX,
       }, {
         binary: BINARY_LINKS.WINDOWS,
         folder: `/work/binary/${LOCAL_BINARY_FOLDER}/win32`,
         arch: 'x32',
-        platform: 'win32',
+        platform: PLATFORMS.WIN32,
       },
     ];
 
@@ -293,7 +293,7 @@ describe('Binary Control Operations', () => {
       });
     });
 
-    context('Start Binary', () => {
+    context('Triggering Binary to Start/Stop Local Tunnel', () => {
       let binaryControl;
 
       beforeEach(() => {
@@ -306,78 +306,194 @@ describe('Binary Control Operations', () => {
         core.info.restore();
       });
 
-      it("Starts the local tunnel successfully (with local identifier) and gets connected if the response state is 'connected'", async () => {
-        const response = {
-          output: JSON.stringify({
-            state: 'connected',
-            pid: 1234,
-            message: 'some message',
-          }),
-          error: '',
-        };
-        sinon.stub(binaryControl, 'stateForBinary').value({
-          localIdentifier: 'someIdentifier',
-        });
-        sinon.stub(binaryControl, '_triggerBinary').returns(response);
-        await binaryControl.startBinary();
-        sinon.assert.calledWith(core.info, 'Starting local tunnel with local-identifier=someIdentifier in daemon mode...');
-        sinon.assert.calledWith(core.info, 'Local tunnel status: some message');
-      });
-
-      it("Starts the local tunnel successfully (without local identifier) and gets connected if the response state is 'connected'", async () => {
-        const response = {
-          output: JSON.stringify({
-            state: 'connected',
-            pid: 1234,
-            message: 'some message',
-          }),
-          error: '',
-        };
-        sinon.stub(binaryControl, 'stateForBinary').value({
-          localIdentifier: '',
-        });
-        sinon.stub(binaryControl, '_triggerBinary').returns(response);
-        await binaryControl.startBinary();
-        sinon.assert.calledWith(core.info, 'Starting local tunnel  in daemon mode...');
-        sinon.assert.calledWith(core.info, 'Local tunnel status: some message');
-      });
-
-      it("Fails and doesn't connect the local tunnel if the response state is 'disconnected'", async () => {
-        const response = {
-          output: JSON.stringify({
-            state: 'disconnected',
-            pid: 1234,
-            message: 'some message',
-          }),
-          error: '',
-        };
-        sinon.stub(binaryControl, 'stateForBinary').value({
-          localIdentifier: 'someIdentifier',
-        });
-        sinon.stub(binaryControl, '_triggerBinary').returns(response);
-        try {
+      context('Starting Local Tunnel', () => {
+        it("Starts the local tunnel successfully (with local identifier) and gets connected if the response state is 'connected'", async () => {
+          const response = {
+            output: JSON.stringify({
+              state: LOCAL_BINARY_TRIGGER.START.CONNECTED,
+              pid: 1234,
+              message: 'some message',
+            }),
+            error: '',
+          };
+          sinon.stub(binaryControl, 'stateForBinary').value({
+            localIdentifier: 'someIdentifier',
+          });
+          sinon.stub(binaryControl, '_triggerBinary').returns(response);
           await binaryControl.startBinary();
-        } catch (e) {
-          expect(e.message).to.eq('Local tunnel could not be started. Error message from binary: "some message"');
-        }
+          sinon.assert.calledWith(binaryControl._triggerBinary, LOCAL_TESTING.START);
+          sinon.assert.calledWith(core.info, 'Starting local tunnel with local-identifier=someIdentifier in daemon mode...');
+          sinon.assert.calledWith(core.info, 'Local tunnel status: some message');
+        });
+
+        it("Starts the local tunnel successfully (without local identifier) and gets connected if the response state is 'connected'", async () => {
+          const response = {
+            output: JSON.stringify({
+              state: LOCAL_BINARY_TRIGGER.START.CONNECTED,
+              pid: 1234,
+              message: 'some message',
+            }),
+            error: '',
+          };
+          sinon.stub(binaryControl, 'stateForBinary').value({
+            localIdentifier: '',
+          });
+          sinon.stub(binaryControl, '_triggerBinary').returns(response);
+          await binaryControl.startBinary();
+          sinon.assert.calledWith(core.info, 'Starting local tunnel  in daemon mode...');
+          sinon.assert.calledWith(core.info, 'Local tunnel status: some message');
+        });
+
+        it("Fails and doesn't connect the local tunnel if the response state is 'disconnected'", async () => {
+          const response = {
+            output: JSON.stringify({
+              state: LOCAL_BINARY_TRIGGER.START.DISCONNECTED,
+              pid: 1234,
+              message: 'some message',
+            }),
+            error: '',
+          };
+          sinon.stub(binaryControl, 'stateForBinary').value({
+            localIdentifier: 'someIdentifier',
+          });
+          sinon.stub(binaryControl, '_triggerBinary').returns(response);
+          try {
+            await binaryControl.startBinary();
+          } catch (e) {
+            expect(e.message).to.eq('Local tunnel could not be started. Error message from binary: "some message"');
+          }
+        });
+
+        it("Fails and doesn't connect if binary throws an error message", async () => {
+          const response = {
+            output: '',
+            error: JSON.stringify({
+              key: 'value',
+            }),
+          };
+          sinon.stub(binaryControl, 'stateForBinary').value({
+            localIdentifier: 'someIdentifier',
+          });
+          sinon.stub(binaryControl, '_triggerBinary').returns(response);
+          try {
+            await binaryControl.startBinary();
+          } catch (e) {
+            expect(e.message).to.eq(`Local tunnel could not be started. Error message from binary: ${JSON.stringify(response.error)}`);
+          }
+        });
       });
 
-      it("Fails and doesn't connect if binary throws an error message", async () => {
-        const response = {
-          output: '',
-          error: JSON.stringify({
-            key: 'value',
-          }),
-        };
-        sinon.stub(binaryControl, 'stateForBinary').value({
-          localIdentifier: 'someIdentifier',
+      context('Stopping Local Tunnel', () => {
+        it("Stops the local tunnel successfully (with local identifier) if the response status is 'success'", async () => {
+          const response = {
+            output: JSON.stringify({
+              status: LOCAL_BINARY_TRIGGER.STOP.SUCCESS,
+              message: 'some message',
+            }),
+            error: '',
+          };
+          sinon.stub(binaryControl, 'stateForBinary').value({
+            localIdentifier: 'someIdentifier',
+          });
+          sinon.stub(binaryControl, '_triggerBinary').returns(response);
+          await binaryControl.stopBinary();
+          sinon.assert.calledWith(binaryControl._triggerBinary, LOCAL_TESTING.STOP);
+          sinon.assert.calledWith(core.info, 'Stopping local tunnel with local-identifier=someIdentifier in daemon mode...');
+          sinon.assert.calledWith(core.info, 'Local tunnel stopping status: some message');
         });
-        sinon.stub(binaryControl, '_triggerBinary').returns(response);
-        try {
-          await binaryControl.startBinary();
-        } catch (e) {
-          expect(e.message).to.eq(`Local tunnel could not be started. Error message from binary: ${JSON.stringify(response.error)}`);
-        }
+
+        it("Stops the local tunnel successfully (without local identifier) if the response status is 'success'", async () => {
+          const response = {
+            output: JSON.stringify({
+              status: LOCAL_BINARY_TRIGGER.STOP.SUCCESS,
+              message: 'some message',
+            }),
+            error: '',
+          };
+          sinon.stub(binaryControl, 'stateForBinary').value({
+            localIdentifier: '',
+          });
+          sinon.stub(binaryControl, '_triggerBinary').returns(response);
+          await binaryControl.stopBinary();
+          sinon.assert.calledWith(binaryControl._triggerBinary, LOCAL_TESTING.STOP);
+          sinon.assert.calledWith(core.info, 'Stopping local tunnel  in daemon mode...');
+          sinon.assert.calledWith(core.info, 'Local tunnel stopping status: some message');
+        });
+
+        it("Fails while disconnecting the local tunnel if the response status is not 'success'", async () => {
+          const response = {
+            output: JSON.stringify({
+              status: 'someStatus',
+              message: 'some message',
+            }),
+            error: '',
+          };
+          sinon.stub(binaryControl, 'stateForBinary').value({
+            localIdentifier: '',
+          });
+          sinon.stub(binaryControl, '_triggerBinary').returns(response);
+          await binaryControl.stopBinary();
+          sinon.assert.calledWith(binaryControl._triggerBinary, LOCAL_TESTING.STOP);
+          sinon.assert.calledWith(core.info, 'Stopping local tunnel  in daemon mode...');
+          sinon.assert.calledWith(core.info, '[Warning] Error in stopping local tunnel: "some message". Continuing the workflow without breaking...');
+        });
+
+        it("Fails while disconnecting the local tunnel if binanry thrown as error message", async () => {
+          const response = {
+            output: '',
+            error: JSON.stringify({
+              key: 'value',
+            }),
+          };
+          sinon.stub(binaryControl, 'stateForBinary').value({
+            localIdentifier: '',
+          });
+          sinon.stub(binaryControl, '_triggerBinary').returns(response);
+          await binaryControl.stopBinary();
+          sinon.assert.calledWith(binaryControl._triggerBinary, LOCAL_TESTING.STOP);
+          sinon.assert.calledWith(core.info, 'Stopping local tunnel  in daemon mode...');
+          sinon.assert.calledWith(core.info, `[Warning] Error in stopping local tunnel: ${JSON.stringify(response.error)}. Continuing the workflow without breaking...`);
+        });
+      });
+    });
+
+    context('Uploading log files if they exists', () => {
+      let binaryControl;
+
+      beforeEach(() => {
+        binaryControl = new BinaryControl();
+        sinon.stub(binaryControl, '_generateLogFileMetadata');
+        sinon.stub(io, 'rmRF');
+        sinon.stub(ArtifactsManager, 'uploadArtifacts').returns(true);
+        binaryControl.logFilePath = 'somePath';
+        binaryControl.logFileName = 'someName';
+        binaryControl.binaryFolder = 'someFolderPath';
+      });
+
+      afterEach(() => {
+        io.rmRF.restore();
+        ArtifactsManager.uploadArtifacts.restore();
+      });
+
+      it('Uploads the log files if they exists', async () => {
+        sinon.stub(fs, 'existsSync').returns(true);
+        await binaryControl.uploadLogFilesIfAny();
+        sinon.assert.calledWith(
+          ArtifactsManager.uploadArtifacts,
+          'someName',
+          ['somePath'],
+          'someFolderPath',
+        );
+        sinon.assert.calledWith(io.rmRF, 'somePath');
+        fs.existsSync.restore();
+      });
+
+      it("Doesn't upload the log files if they don't exist", async () => {
+        sinon.stub(fs, 'existsSync').returns(false);
+        await binaryControl.uploadLogFilesIfAny();
+        sinon.assert.notCalled(ArtifactsManager.uploadArtifacts);
+        sinon.assert.notCalled(io.rmRF);
+        fs.existsSync.restore();
       });
     });
   });
