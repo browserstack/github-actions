@@ -358,7 +358,7 @@ describe('Binary Control Operations', () => {
         try {
           await binaryControl.startBinary();
         } catch (e) {
-          expect(e.message).to.eq('Local tunnel could not be started. Error message from binary: "some message"')
+          expect(e.message).to.eq('Local tunnel could not be started. Error message from binary: "some message"');
         }
       });
 
@@ -376,7 +376,7 @@ describe('Binary Control Operations', () => {
         try {
           await binaryControl.startBinary();
         } catch (e) {
-          expect(e.message).to.eq(`Local tunnel could not be started. Error message from binary: ${JSON.stringify(response.error)}`)
+          expect(e.message).to.eq(`Local tunnel could not be started. Error message from binary: ${JSON.stringify(response.error)}`);
         }
       });
     });
