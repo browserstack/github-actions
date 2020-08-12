@@ -1,9 +1,8 @@
-import * as github from '@actions/github';
-import * as core from '@actions/core';
-import { v4 as uuidv4 } from 'uuid';
-import parseArgs from 'minimist';
-
-import constants from '../../config/constants';
+const github = require('@actions/github');
+const core = require('@actions/core');
+const { v4: uuidv4 } = require('uuid');
+const parseArgs = require('minimist');
+const constants = require('../../config/constants');
 
 const {
   ALLOWED_INPUT_VALUES: {
@@ -38,11 +37,14 @@ class InputValidator {
               },
             },
             sha: commitSHA,
+            runNumber: workflowNumber,
+            ref,
           },
         } = github;
 
-        const parsedCommitMessage = commitMessage.split(/\s+/).join('-');
-        return `COMMIT-${commitSHA.slice(0, 7)}-MESSAGE-${parsedCommitMessage}`;
+        const probableBranchOrTag = ref.split('/').pop();
+        const slicedSHA = commitSHA.slice(0, 7);
+        return `[${probableBranchOrTag}] Commit ${slicedSHA}: ${commitMessage} [Workflow: ${workflowNumber}]`;
       }
       case 'pull_request': {
         const {
@@ -50,18 +52,36 @@ class InputValidator {
             payload: {
               pull_request: {
                 head: {
-                  sha: commitSHA,
+                  ref: branchName,
                 },
+                title: prTitle,
               },
               number: prNumber,
             },
+            runNumber: workflowNumber,
           },
         } = github;
 
-        return `PR-${prNumber}-COMMIT-${commitSHA.slice(0, 7)}`;
+        return `[${branchName}] PR ${prNumber}: ${prTitle} [Workflow: ${workflowNumber}]`;
+      }
+      case 'release': {
+        const {
+          context: {
+            payload: {
+              release: {
+                tag_name: tagName,
+                target_commitish: branchName,
+                name: releaseName,
+              },
+            },
+            runNumber: workflowNumber,
+          },
+        } = github;
+
+        return `[${branchName}] Release ${tagName}${releaseName === tagName ? ' ' : `: ${releaseName} `}[Workflow: ${workflowNumber}]`;
       }
       default: {
-        return `${githubEvent}-${github.context.sha.slice(0, 7)}`;
+        return `${githubEvent} [Workflow: ${github.context.runNumber}]`;
       }
     }
   }
@@ -178,20 +198,12 @@ class InputValidator {
   static validateBuildName(inputBuildName) {
     if (!inputBuildName) return InputValidator._getMetadata();
 
-    let buildNameWithHyphen = inputBuildName.split(/\s+/).join('-');
-    const prIndex = buildNameWithHyphen.toLowerCase().indexOf('meta#');
+    const prIndex = inputBuildName.toLowerCase().indexOf('build_info');
 
-    if (prIndex === -1) return buildNameWithHyphen;
+    if (prIndex === -1) return inputBuildName;
 
     const metadata = InputValidator._getMetadata();
-
-    if (prIndex === 0) {
-      buildNameWithHyphen = buildNameWithHyphen.split(/meta#-/i)[1];
-      return buildNameWithHyphen ? `${metadata}-${buildNameWithHyphen}` : metadata;
-    }
-
-    buildNameWithHyphen = buildNameWithHyphen.split(/-meta#/i)[0];
-    return buildNameWithHyphen ? `${buildNameWithHyphen}-${metadata}` : metadata;
+    return inputBuildName.replace(/build_info/i, metadata);
   }
 
   /**
@@ -208,4 +220,4 @@ class InputValidator {
   }
 }
 
-export default InputValidator;
+module.exports = InputValidator;

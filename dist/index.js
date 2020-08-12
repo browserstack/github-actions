@@ -40,10 +40,8 @@ module.exports =
 /******/ 	// the startup function
 /******/ 	function startup() {
 /******/ 		// Load entry module and return exports
-/******/ 		return __webpack_require__(41);
+/******/ 		return __webpack_require__(676);
 /******/ 	};
-/******/ 	// initialize runtime
-/******/ 	runtime(__webpack_require__);
 /******/
 /******/ 	// run startup
 /******/ 	return startup();
@@ -1062,6 +1060,235 @@ exports.default = _default;
 
 /***/ }),
 
+/***/ 24:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const tc = __webpack_require__(533);
+const io = __webpack_require__(1);
+const exec = __webpack_require__(986);
+const core = __webpack_require__(470);
+const github = __webpack_require__(469);
+const os = __webpack_require__(87);
+const path = __webpack_require__(622);
+const fs = __webpack_require__(747);
+const ArtifactsManager = __webpack_require__(513);
+const constants = __webpack_require__(613);
+
+const {
+  BINARY_LINKS,
+  LOCAL_BINARY_FOLDER,
+  PLATFORMS,
+  LOCAL_BINARY_NAME,
+  LOCAL_LOG_FILE_PREFIX,
+  LOCAL_BINARY_TRIGGER,
+  ALLOWED_INPUT_VALUES: {
+    LOCAL_TESTING,
+  },
+} = constants;
+
+/**
+ * BinaryControl handles the operations to be performed on the Local Binary.
+ * It takes care of logs generation and triggering the upload as well.
+ */
+class BinaryControl {
+  constructor(stateForBinary) {
+    this.platform = os.platform();
+    this.stateForBinary = stateForBinary;
+
+    this._decidePlatformAndBinary();
+  }
+
+  /**
+   * decides the binary link and the folder to store the binary based on the
+   * platform and the architecture
+   */
+  _decidePlatformAndBinary() {
+    if (this.platform === PLATFORMS.DARWIN) {
+      this.binaryLink = BINARY_LINKS.DARWIN;
+      this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+    } else if (this.platform === PLATFORMS.LINUX) {
+      this.binaryLink = os.arch() === 'x32' ? BINARY_LINKS.LINUX_32 : BINARY_LINKS.LINUX_64;
+      this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+    } else if (this.platform === PLATFORMS.WIN32) {
+      this.binaryLink = BINARY_LINKS.WINDOWS;
+      this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+    }
+  }
+
+  /**
+   * Creates directory recursively for storing Local Binary & its logs.
+   */
+  async _makeDirectory() {
+    await io.mkdirP(this.binaryFolder);
+  }
+
+  /**
+   * Generates logging file name and its path for Local Binary
+   */
+  _generateLogFileMetadata() {
+    this.logFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}.log`;
+    this.logFilePath = path.resolve(this.binaryFolder, this.logFileName);
+  }
+
+  /**
+   * Generates the args to be provided for the Local Binary based on the operation, i.e.
+   * start/stop.
+   * These are generated based on the input state provided to the Binary Control.
+   */
+  _generateArgsForBinary() {
+    const {
+      accessKey: key,
+      localArgs,
+      localIdentifier,
+      localLoggingLevel: verbose,
+      localTesting: binaryAction,
+    } = this.stateForBinary;
+
+    let argsString = `--key ${key} --only-automate --ci-plugin GitHubAction `;
+
+    switch (binaryAction) {
+      case LOCAL_TESTING.START: {
+        if (localArgs) argsString += `${localArgs} `;
+        if (localIdentifier) argsString += `--local-identifier ${localIdentifier} `;
+        if (verbose) {
+          this._generateLogFileMetadata();
+          argsString += `--verbose ${verbose} --log-file ${this.logFilePath} `;
+        }
+        break;
+      }
+      case LOCAL_TESTING.STOP: {
+        if (localIdentifier) argsString += `--local-identifier ${localIdentifier} `;
+        break;
+      }
+      default: {
+        throw Error('Invalid Binary Action');
+      }
+    }
+
+    this.binaryArgs = argsString;
+  }
+
+  /**
+   * Triggers the Local Binary. It is used for starting/stopping.
+   * @param {String} operation start/stop operation
+   */
+  async _triggerBinary(operation) {
+    let triggerOutput = '';
+    let triggerError = '';
+    await exec.exec(
+      `${LOCAL_BINARY_NAME} ${this.binaryArgs} --daemon ${operation}`,
+      [],
+      {
+        listeners: {
+          stdout: (data) => {
+            triggerOutput += data.toString();
+          },
+          stderr: (data) => {
+            triggerError += data.toString();
+          },
+        },
+      },
+    );
+
+    return {
+      output: triggerOutput,
+      error: triggerError,
+    };
+  }
+
+  /**
+   * Downloads the Local Binary, extracts it and adds it in the PATH variable
+   */
+  async downloadBinary() {
+    try {
+      await this._makeDirectory();
+      core.info('Downloading BrowserStackLocal binary...');
+      const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
+      const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
+      core.info(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
+      const cachedPath = await tc.cacheDir(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
+      core.addPath(cachedPath);
+      this.binaryPath = extractedPath;
+    } catch (e) {
+      throw Error(`BrowserStackLocal binary could not be downloaded due to ${e.message}`);
+    }
+  }
+
+  /**
+   * Starts Local Binary using the args generated for this action
+   */
+  async startBinary() {
+    try {
+      this._generateArgsForBinary();
+      let { localIdentifier } = this.stateForBinary;
+      localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
+      core.info(`Starting local tunnel ${localIdentifier} in daemon mode...`);
+
+      const { output, error } = await this._triggerBinary(LOCAL_TESTING.START);
+
+      if (!error) {
+        const outputParsed = JSON.parse(output);
+        if (outputParsed.state === LOCAL_BINARY_TRIGGER.START.CONNECTED) {
+          core.info(`Local tunnel status: ${outputParsed.message}`);
+        } else {
+          throw Error(JSON.stringify(outputParsed.message));
+        }
+      } else {
+        throw Error(JSON.stringify(error));
+      }
+    } catch (e) {
+      throw Error(`Local tunnel could not be started. Error message from binary: ${e.message}`);
+    }
+  }
+
+  /**
+   * Stops Local Binary using the args generated for this action
+   */
+  async stopBinary() {
+    try {
+      this._generateArgsForBinary();
+      let { localIdentifier } = this.stateForBinary;
+      localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
+      core.info(`Stopping local tunnel ${localIdentifier} in daemon mode...`);
+
+      const { output, error } = await this._triggerBinary(LOCAL_TESTING.STOP);
+
+      if (!error) {
+        const outputParsed = JSON.parse(output);
+        if (outputParsed.status === LOCAL_BINARY_TRIGGER.STOP.SUCCESS) {
+          core.info(`Local tunnel stopping status: ${outputParsed.message}`);
+        } else {
+          throw Error(JSON.stringify(outputParsed.message));
+        }
+      } else {
+        throw Error(JSON.stringify(error));
+      }
+    } catch (e) {
+      core.info(`[Warning] Error in stopping local tunnel: ${e.message}. Continuing the workflow without breaking...`);
+    }
+  }
+
+  /**
+   * Uploads BrowserStackLocal generated logs (if the file exists for the job)
+   */
+  async uploadLogFilesIfAny() {
+    this._generateLogFileMetadata();
+    if (fs.existsSync(this.logFilePath)) {
+      await ArtifactsManager.uploadArtifacts(
+        this.logFileName,
+        [this.logFilePath],
+        this.binaryFolder,
+      );
+      await io.rmRF(this.logFilePath);
+    }
+  }
+}
+
+module.exports = BinaryControl;
+
+
+/***/ }),
+
 /***/ 31:
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -1172,737 +1399,6 @@ function _readLinuxVersionFile() {
 }
 exports._readLinuxVersionFile = _readLinuxVersionFile;
 //# sourceMappingURL=manifest.js.map
-
-/***/ }),
-
-/***/ 41:
-/***/ (function(__unusedmodule, __webpack_exports__, __webpack_require__) {
-
-"use strict";
-__webpack_require__.r(__webpack_exports__);
-
-// EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
-var core = __webpack_require__(470);
-
-// EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
-var github = __webpack_require__(469);
-
-// EXTERNAL MODULE: ./node_modules/uuid/dist/index.js
-var dist = __webpack_require__(62);
-
-// EXTERNAL MODULE: ./node_modules/minimist/index.js
-var minimist = __webpack_require__(109);
-var minimist_default = /*#__PURE__*/__webpack_require__.n(minimist);
-
-// CONCATENATED MODULE: ./config/constants.js
-/* harmony default export */ var constants = ({
-  INPUT: {
-    USERNAME: 'username',
-    ACCESS_KEY: 'access-key',
-    LOCAL_TESING: 'local-testing',
-    LOCAL_LOGGING_LEVEL: 'local-logging-level',
-    LOCAL_IDENTIFIER: 'local-identifier',
-    LOCAL_ARGS: 'local-args',
-    BUILD_NAME: 'build-name',
-    PROJECT_NAME: 'project-name',
-  },
-
-  PLATFORMS: {
-    LINUX: 'linux',
-    DARWIN: 'darwin',
-    WIN32: 'win32',
-  },
-
-  ENV_VARS: {
-    BROWSERSTACK_USERNAME: 'BROWSERSTACK_USERNAME',
-    BROWSERSTACK_ACCESS_KEY: 'BROWSERSTACK_ACCESS_KEY',
-    BROWSERSTACK_LOCAL_IDENTIFIER: 'BROWSERSTACK_LOCAL_IDENTIFIER',
-    BROWSERSTACK_BUILD_NAME: 'BROWSERSTACK_BUILD_NAME',
-    BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME',
-  },
-
-  BINARY_LINKS: {
-    LINUX_32: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-linux-ia32.zip',
-    LINUX_64: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-linux-x64.zip',
-    WINDOWS: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-win32.zip',
-    DARWIN: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-darwin-x64.zip',
-  },
-
-  ALLOWED_INPUT_VALUES: {
-    LOCAL_TESTING: {
-      START: 'start',
-      STOP: 'stop',
-      FALSE: 'false',
-    },
-    LOCAL_LOG_LEVEL: {
-      SETUP_LOGS: 'setup-logs',
-      NETWORK_LOGS: 'network-logs',
-      ALL_LOGS: 'all-logs',
-      FALSE: 'false',
-    },
-    LOCAL_IDENTIFIER_RANDOM: 'random',
-  },
-
-  LOCAL_BINARY_TRIGGER: {
-    START: {
-      CONNECTED: 'connected',
-      DISCONNECTED: 'disconnected',
-    },
-    STOP: {
-      SUCCESS: 'success',
-    },
-  },
-
-  RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file', 'ci-plugin'],
-
-  LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
-  LOCAL_BINARY_NAME: 'BrowserStackLocal',
-  LOCAL_LOG_FILE_PREFIX: 'BrowserStackLocal',
-});
-
-// CONCATENATED MODULE: ./src/actionInput/inputValidator.js
-
-
-
-
-
-
-
-const {
-  ALLOWED_INPUT_VALUES: {
-    LOCAL_LOG_LEVEL,
-    LOCAL_TESTING,
-    LOCAL_IDENTIFIER_RANDOM,
-  },
-  INPUT,
-  RESTRICTED_LOCAL_ARGS,
-} = constants;
-
-/**
- * InputValidator performs validation on the input fields of this
- * action. The fields are parsed and converted into the required format.
- */
-class inputValidator_InputValidator {
-  /**
-   * Generates metadata of the triggered workflow in the form of
-   * 1. Push event (Non PR): Commit-\<commit-id>-\<commit-message>
-   * 2. Pull Request event: PR-\<PR-number>-Commit-\<commit-id>
-   * @returns {String} Metadata
-   */
-  static _getMetadata() {
-    const githubEvent = github.context.eventName;
-    switch (githubEvent) {
-      case 'push': {
-        const {
-          context: {
-            payload: {
-              head_commit: {
-                message: commitMessage,
-              },
-            },
-            sha: commitSHA,
-          },
-        } = github;
-
-        const parsedCommitMessage = commitMessage.split(/\s+/).join('-');
-        return `COMMIT-${commitSHA.slice(0, 7)}-MESSAGE-${parsedCommitMessage}`;
-      }
-      case 'pull_request': {
-        const {
-          context: {
-            payload: {
-              pull_request: {
-                head: {
-                  sha: commitSHA,
-                },
-              },
-              number: prNumber,
-            },
-          },
-        } = github;
-
-        return `PR-${prNumber}-COMMIT-${commitSHA.slice(0, 7)}`;
-      }
-      default: {
-        return `${githubEvent}-${Object(github.context.sha.slice)(0, 7)}`;
-      }
-    }
-  }
-
-  /**
-   * Appends the username with '-GitHubAction' for internal instrumentation
-   * @param {String} inputUsername BrowserStack Username
-   * @returns {String} Modified Username
-   */
-  static validateUsername(inputUsername) {
-    return `${inputUsername}-GitHubAction`;
-  }
-
-  /**
-   * Validates the action input 'local-testing' and returns the
-   * parsed value.
-   * Throws error if it's not a valid value
-   * @param {String} inputLocalTesting Action input for 'local-testing'
-   * @returns {String} One of the values from start/stop/false
-   */
-  static validateLocalTesting(inputLocalTesting) {
-    if (!inputLocalTesting) return 'false';
-
-    const localTestingLowered = inputLocalTesting.toString().toLowerCase();
-    // eslint-disable-next-line max-len
-    const validValue = Object.values(LOCAL_TESTING).some((allowedValue) => allowedValue === localTestingLowered);
-
-    if (!validValue) {
-      throw Error(`Invalid input for ${INPUT.LOCAL_TESING}. The valid inputs are: ${Object.values(LOCAL_TESTING).join(', ')}. Refer the README for more details`);
-    }
-
-    return localTestingLowered;
-  }
-
-  /**
-   * Validates the action input 'local-logging-level' and returns the
-   * verbosity level of logging.
-   * @param {String} inputLocalLoggingLevel Action input for 'local-logging-level'
-   * @returns {Number} Logging Level (0 - 3)
-   */
-  static validateLocalLoggingLevel(inputLocalLoggingLevel) {
-    if (!inputLocalLoggingLevel) return 0;
-
-    const loggingLevelLowered = inputLocalLoggingLevel.toString().toLowerCase();
-
-    switch (loggingLevelLowered) {
-      case LOCAL_LOG_LEVEL.SETUP_LOGS: {
-        return 1;
-      }
-      case LOCAL_LOG_LEVEL.NETWORK_LOGS: {
-        return 2;
-      }
-      case LOCAL_LOG_LEVEL.ALL_LOGS: {
-        return 3;
-      }
-      case LOCAL_LOG_LEVEL.FALSE: {
-        return 0;
-      }
-      default: {
-        Object(core.info)(`[Warning] Invalid input for ${INPUT.LOCAL_LOGGING_LEVEL}. No logs will be captured. The valid inputs are: ${Object.values(LOCAL_LOG_LEVEL).join(', ')}`);
-        return 0;
-      }
-    }
-  }
-
-  /**
-   * Validates the local-identifier input. It handles the generation of random
-   * identifier if required.
-   * @param {String} inputLocalIdentifier Action input for 'local-identifier'
-   * @returns {String} Parsed/Random local-identifier
-   */
-  static validateLocalIdentifier(inputLocalIdentifier) {
-    if (!inputLocalIdentifier) return '';
-
-    const localIdentifierParsed = inputLocalIdentifier.toString().toLowerCase().split(/\s+/).join('-');
-    if (localIdentifierParsed === LOCAL_IDENTIFIER_RANDOM) {
-      return `GitHubAction-${Object(dist.v4)()}`;
-    }
-
-    return localIdentifierParsed;
-  }
-
-  /**
-   * Validates the local-args input. Removes any args which might conflict with
-   * the input args taken from the action input for the Local Binary.
-   * @param {String} inputLocalArgs Action input for 'local-args'
-   * @returns {String} Parsed args
-   */
-  static validateLocalArgs(inputLocalArgs) {
-    const parsedArgs = minimist_default()(inputLocalArgs.split(/\s+/));
-
-    delete parsedArgs._;
-    RESTRICTED_LOCAL_ARGS.forEach((arg) => {
-      delete parsedArgs[arg];
-    });
-
-    let parsedArgsString = '';
-    for (const [key, value] of Object.entries(parsedArgs)) {
-      const argKey = key.length === 1 ? `-${key}` : `--${key}`;
-      const argValue = value === true ? '' : value;
-      parsedArgsString += `${argKey} ${argValue} `;
-    }
-
-    return parsedArgsString;
-  }
-
-  /**
-   * Validates the build-name based on the input type. It performs the following:
-   * 1. Removes any spaces from the input provided.
-   * 2. Adds metadata information of the PR/Commit if required (based on the input format).
-   * @param {String} inputBuildName Action input for 'build-name'
-   * @returns {String} Parsed/Modified Build Name
-   */
-  static validateBuildName(inputBuildName) {
-    if (!inputBuildName) return inputValidator_InputValidator._getMetadata();
-
-    let buildNameWithHyphen = inputBuildName.split(/\s+/).join('-');
-    const prIndex = buildNameWithHyphen.toLowerCase().indexOf('meta#');
-
-    if (prIndex === -1) return buildNameWithHyphen;
-
-    const metadata = inputValidator_InputValidator._getMetadata();
-
-    if (prIndex === 0) {
-      buildNameWithHyphen = buildNameWithHyphen.split(/meta#-/i)[1];
-      return buildNameWithHyphen ? `${metadata}-${buildNameWithHyphen}` : metadata;
-    }
-
-    buildNameWithHyphen = buildNameWithHyphen.split(/-meta#/i)[0];
-    return buildNameWithHyphen ? `${buildNameWithHyphen}-${metadata}` : metadata;
-  }
-
-  /**
-   * Validates the project-name. It performs the following:
-   * 1. Removes any spaces from the input provided.
-   * 2. (or) Considers the Repository name as the project name if no input is provided.
-   * @param {String} inputProjectName Action input for 'project-name'
-   * @returns {String} Parsed/Repository name as Project Name
-   */
-  static validateProjectName(inputProjectName) {
-    if (inputProjectName) return inputProjectName.split(/\s+/).join('-');
-
-    return github.context.repo.repo;
-  }
-}
-
-/* harmony default export */ var inputValidator = (inputValidator_InputValidator);
-
-// CONCATENATED MODULE: ./src/actionInput/index.js
-
-
-
-
-const {
-  INPUT: actionInput_INPUT,
-  ENV_VARS,
-  ALLOWED_INPUT_VALUES: {
-    LOCAL_TESTING: actionInput_LOCAL_TESTING,
-  },
-} = constants;
-
-/**
- * ActionInput manages the fetching of action input values and
- * helps in setting env variables post validation.
- */
-class actionInput_ActionInput {
-  constructor() {
-    this._fetchAllInput();
-    this._validateInput();
-  }
-
-  /**
-   * Fetches all the input values given to the action.
-   * Raises error if the required values are not provided.
-   */
-  _fetchAllInput() {
-    try {
-      // required fields
-      this.username = Object(core.getInput)(actionInput_INPUT.USERNAME, { required: true });
-      this.accessKey = Object(core.getInput)(actionInput_INPUT.ACCESS_KEY, { required: true });
-
-      // non-compulsory fields
-      this.buildName = Object(core.getInput)(actionInput_INPUT.BUILD_NAME);
-      this.projectName = Object(core.getInput)(actionInput_INPUT.PROJECT_NAME);
-      this.localTesting = Object(core.getInput)(actionInput_INPUT.LOCAL_TESING);
-      this.localLoggingLevel = Object(core.getInput)(actionInput_INPUT.LOCAL_LOGGING_LEVEL);
-      this.localIdentifier = Object(core.getInput)(actionInput_INPUT.LOCAL_IDENTIFIER);
-      this.localArgs = Object(core.getInput)(actionInput_INPUT.LOCAL_ARGS);
-    } catch (e) {
-      throw Error(`Action input failed for reason: ${e.message}`);
-    }
-  }
-
-  /**
-   * Sets env variables to be used in the test script for BrowserStack
-   */
-  setEnvVariables() {
-    Object(core.startGroup)('Setting Environment Variables');
-
-    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_USERNAME, this.username);
-    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
-
-    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
-    Object(core.info)(`${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable set as: ${this.projectName}`);
-    Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable for your project name capability in your tests\n`);
-
-    Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
-    Object(core.info)(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
-    Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable for your build name capability in your tests\n`);
-
-    if ((this.localTesting === actionInput_LOCAL_TESTING.START) && this.localIdentifier) {
-      Object(core.exportVariable)(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
-      Object(core.info)(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} environment variable set as: ${this.localIdentifier}`);
-      Object(core.info)(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test script as the local identifier\n`);
-    }
-
-    Object(core.endGroup)();
-  }
-
-  /**
-   * Triggers conditional validation of action input values based on the operation
-   * to be performed, i.e. start/no local connection required, stopping of local connection
-   */
-  _validateInput() {
-    this.localTesting = inputValidator.validateLocalTesting(this.localTesting);
-
-    if ([actionInput_LOCAL_TESTING.START, actionInput_LOCAL_TESTING.FALSE].includes(this.localTesting)) {
-      // properties common to local/non-local testing comes here
-      this.username = inputValidator.validateUsername(this.username);
-      this.projectName = inputValidator.validateProjectName(this.projectName);
-      this.buildName = inputValidator.validateBuildName(this.buildName);
-
-      // properties specific to requiring local testing shall come in this block
-      if (this.localTesting === actionInput_LOCAL_TESTING.START) {
-        this.localLoggingLevel = inputValidator.validateLocalLoggingLevel(this.localLoggingLevel);
-        this.localIdentifier = inputValidator.validateLocalIdentifier(this.localIdentifier);
-        this.localArgs = inputValidator.validateLocalArgs(this.localArgs);
-      }
-    } else {
-      this.localIdentifier = process.env[ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER];
-    }
-  }
-
-  /**
-   * Returns the information required for setting up of Local Binary
-   * @returns {{
-   *  accessKey: String,
-   *  localTesting: String,
-   *  localArgs: String,
-   *  localIdentifier: String,
-   *  localLoggingLevel: Number
-   * }}
-   */
-  getInputStateForBinary() {
-    return {
-      accessKey: this.accessKey,
-      localTesting: this.localTesting,
-      localArgs: this.localArgs,
-      localIdentifier: this.localIdentifier,
-      localLoggingLevel: this.localLoggingLevel,
-    };
-  }
-}
-
-/* harmony default export */ var actionInput = (actionInput_ActionInput);
-
-// EXTERNAL MODULE: ./node_modules/@actions/tool-cache/lib/tool-cache.js
-var tool_cache = __webpack_require__(533);
-
-// EXTERNAL MODULE: ./node_modules/@actions/io/lib/io.js
-var io = __webpack_require__(1);
-
-// EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
-var exec = __webpack_require__(986);
-
-// EXTERNAL MODULE: external "os"
-var external_os_ = __webpack_require__(87);
-
-// EXTERNAL MODULE: external "path"
-var external_path_ = __webpack_require__(622);
-
-// EXTERNAL MODULE: external "fs"
-var external_fs_ = __webpack_require__(747);
-
-// EXTERNAL MODULE: ./node_modules/@actions/artifact/lib/artifact-client.js
-var artifact_client = __webpack_require__(214);
-
-// CONCATENATED MODULE: ./src/artifacts.js
-
-
-
-const artifactClient = Object(artifact_client.create)();
-
-/**
- * Upload artifacts to GitHub workflow
- * @param {String} artifactName Name by which the artifact should be available post uploading
- * @param {String[]} files Files to upload
- * @param {String} rootFolder Folder in which the files reside
- * @returns {artifact.UploadResponse} Response of the upload operation
- */
-const uploadArtifacts = async (artifactName, files, rootFolder) => {
-  const response = await artifactClient.uploadArtifact(
-    artifactName,
-    files,
-    rootFolder, {
-      continueOnError: true,
-    },
-  );
-  Object(core.info)(`Response for upload: ${JSON.stringify(response)}`);
-  return response;
-};
-
-// eslint-disable-next-line import/prefer-default-export
-
-
-// CONCATENATED MODULE: ./src/binaryControl.js
-
-
-
-
-
-
-
-
-
-
-
-const {
-  BINARY_LINKS,
-  LOCAL_BINARY_FOLDER,
-  PLATFORMS,
-  LOCAL_BINARY_NAME,
-  LOCAL_LOG_FILE_PREFIX,
-  LOCAL_BINARY_TRIGGER,
-  ALLOWED_INPUT_VALUES: {
-    LOCAL_TESTING: binaryControl_LOCAL_TESTING,
-  },
-} = constants;
-
-/**
- * BinaryControl handles the operations to be performed on the Local Binary.
- * It takes care of logs generation and triggering the upload as well.
- */
-class binaryControl_BinaryControl {
-  constructor(stateForBinary) {
-    this.platform = Object(external_os_.platform)();
-    this.stateForBinary = stateForBinary;
-
-    this._decidePlatformAndBinary();
-  }
-
-  /**
-   * decides the binary link and the folder to store the binary based on the
-   * platform and the architecture
-   */
-  _decidePlatformAndBinary() {
-    if (this.platform === PLATFORMS.DARWIN) {
-      this.binaryLink = BINARY_LINKS.DARWIN;
-      this.binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
-    } else if (this.platform === PLATFORMS.LINUX) {
-      this.binaryLink = Object(external_os_.arch)() === 'x32' ? BINARY_LINKS.LINUX_32 : BINARY_LINKS.LINUX_64;
-      this.binaryFolder = Object(external_path_.resolve)(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
-    } else if (this.platform === PLATFORMS.WIN32) {
-      this.binaryLink = BINARY_LINKS.WINDOWS;
-      this.binaryFolder = Object(external_path_.resolve)(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
-    }
-  }
-
-  /**
-   * Creates directory recursively for storing Local Binary & its logs.
-   */
-  async _makeDirectory() {
-    await Object(io.mkdirP)(this.binaryFolder);
-  }
-
-  /**
-   * Generates logging file name and its path for Local Binary
-   */
-  _generateLogFileMetadata() {
-    this.logFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}.log`;
-    this.logFilePath = Object(external_path_.resolve)(this.binaryFolder, this.logFileName);
-  }
-
-  /**
-   * Generates the args to be provided for the Local Binary based on the operation, i.e.
-   * start/stop.
-   * These are generated based on the input state provided to the Binary Control.
-   */
-  _generateArgsForBinary() {
-    const {
-      accessKey: key,
-      localArgs,
-      localIdentifier,
-      localLoggingLevel: verbose,
-      localTesting: binaryAction,
-    } = this.stateForBinary;
-
-    let argsString = `--key ${key} --only-automate --ci-plugin GitHubAction `;
-
-    switch (binaryAction) {
-      case binaryControl_LOCAL_TESTING.START: {
-        if (localArgs) argsString += `${localArgs} `;
-        if (localIdentifier) argsString += `--local-identifier ${localIdentifier} `;
-        if (verbose) {
-          this._generateLogFileMetadata();
-          argsString += `--verbose ${verbose} --log-file ${this.logFilePath} `;
-        }
-        break;
-      }
-      case binaryControl_LOCAL_TESTING.STOP: {
-        if (localIdentifier) argsString += `--local-identifier ${localIdentifier} `;
-        break;
-      }
-      default: {
-        throw Error('Invalid Binary Action');
-      }
-    }
-
-    this.binaryArgs = argsString;
-  }
-
-  /**
-   * Triggers the Local Binary. It is used for starting/stopping.
-   * @param {String} operation start/stop operation
-   */
-  async _triggerBinary(operation) {
-    let triggerOutput = '';
-    let triggerError = '';
-    await Object(exec.exec)(
-      `${LOCAL_BINARY_NAME} ${this.binaryArgs} --daemon ${operation}`,
-      [],
-      {
-        listeners: {
-          stdout: (data) => {
-            triggerOutput += data.toString();
-          },
-          stderr: (data) => {
-            triggerError += data.toString();
-          },
-        },
-      },
-    );
-
-    return {
-      output: triggerOutput,
-      error: triggerError,
-    };
-  }
-
-  /**
-   * Downloads the Local Binary, extracts it and adds it in the PATH variable
-   */
-  async downloadBinary() {
-    try {
-      await this._makeDirectory();
-      Object(core.info)('Downloading BrowserStackLocal binary...');
-      const downloadPath = await Object(tool_cache.downloadTool)(this.binaryLink, Object(external_path_.resolve)(this.binaryFolder, 'binaryZip'));
-      const extractedPath = await Object(tool_cache.extractZip)(downloadPath, this.binaryFolder);
-      Object(core.info)(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
-      const cachedPath = await Object(tool_cache.cacheDir)(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
-      Object(core.addPath)(cachedPath);
-      this.binaryPath = extractedPath;
-    } catch (e) {
-      throw Error(`BrowserStackLocal binary could not be downloaded due to ${e.message}`);
-    }
-  }
-
-  /**
-   * Starts Local Binary using the args generated for this action
-   */
-  async startBinary() {
-    try {
-      this._generateArgsForBinary();
-      let { localIdentifier } = this.stateForBinary;
-      localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
-      Object(core.info)(`Starting local tunnel ${localIdentifier} in daemon mode...`);
-
-      const { output, error } = await this._triggerBinary(binaryControl_LOCAL_TESTING.START);
-
-      if (!error) {
-        const outputParsed = JSON.parse(output);
-        if (outputParsed.state === LOCAL_BINARY_TRIGGER.START.CONNECTED) {
-          Object(core.info)(`Local tunnel status: ${outputParsed.message}`);
-        } else {
-          throw Error(JSON.stringify(outputParsed.message));
-        }
-      } else {
-        throw Error(JSON.stringify(error));
-      }
-    } catch (e) {
-      throw Error(`Local tunnel could not be started. Error message from binary: ${e.message}`);
-    }
-  }
-
-  /**
-   * Stops Local Binary using the args generated for this action
-   */
-  async stopBinary() {
-    try {
-      this._generateArgsForBinary();
-      let { localIdentifier } = this.stateForBinary;
-      localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
-      Object(core.info)(`Stopping local tunnel ${localIdentifier} in daemon mode...`);
-
-      const { output, error } = await this._triggerBinary(binaryControl_LOCAL_TESTING.STOP);
-
-      if (!error) {
-        const outputParsed = JSON.parse(output);
-        if (outputParsed.status === LOCAL_BINARY_TRIGGER.STOP.SUCCESS) {
-          Object(core.info)(`Local tunnel stopping status: ${outputParsed.message}`);
-        } else {
-          throw Error(JSON.stringify(outputParsed.message));
-        }
-      } else {
-        throw Error(JSON.stringify(error));
-      }
-    } catch (e) {
-      Object(core.info)(`[Warning] Error in stopping local tunnel: ${e.message}. Continuing the workflow without breaking...`);
-    }
-  }
-
-  /**
-   * Uploads BrowserStackLocal generated logs (if the file exists for the job)
-   */
-  async uploadLogFilesIfAny() {
-    this._generateLogFileMetadata();
-    if (Object(external_fs_.existsSync)(this.logFilePath)) {
-      await uploadArtifacts(this.logFileName, [this.logFilePath], this.binaryFolder);
-      await Object(io.rmRF)(this.logFilePath);
-    }
-  }
-}
-
-/* harmony default export */ var src_binaryControl = (binaryControl_BinaryControl);
-
-// CONCATENATED MODULE: ./src/index.js
-
-
-
-
-
-const {
-  ALLOWED_INPUT_VALUES: {
-    LOCAL_TESTING: src_LOCAL_TESTING,
-  },
-} = constants;
-
-/**
- * Entry point to initiate the Action.
- * 1. Triggers parsing of action input values
- * 2. Decides requirement of Local Binary
- * 3. Start/Stop Local Binary if required
- * 4. Triggers uploading of artifacts
- */
-const run = async () => {
-  try {
-    const inputParser = new actionInput();
-    const stateForBinary = inputParser.getInputStateForBinary();
-    const binaryControl = new src_binaryControl(stateForBinary);
-
-    if ([src_LOCAL_TESTING.START, src_LOCAL_TESTING.FALSE].includes(stateForBinary.localTesting)) {
-      inputParser.setEnvVariables();
-
-      if (stateForBinary.localTesting === src_LOCAL_TESTING.START) {
-        await binaryControl.downloadBinary();
-        await binaryControl.startBinary();
-      }
-    } else {
-      await binaryControl.stopBinary();
-      await binaryControl.uploadLogFilesIfAny();
-    }
-  } catch (e) {
-    Object(core.setFailed)(`Action Failed: ${e}`);
-  }
-};
-
-run();
-
 
 /***/ }),
 
@@ -5541,6 +5037,236 @@ function register (state, name, method, options) {
       }, method)()
     })
 }
+
+
+/***/ }),
+
+/***/ 288:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const github = __webpack_require__(469);
+const core = __webpack_require__(470);
+const { v4: uuidv4 } = __webpack_require__(62);
+const parseArgs = __webpack_require__(109);
+const constants = __webpack_require__(613);
+
+const {
+  ALLOWED_INPUT_VALUES: {
+    LOCAL_LOG_LEVEL,
+    LOCAL_TESTING,
+    LOCAL_IDENTIFIER_RANDOM,
+  },
+  INPUT,
+  RESTRICTED_LOCAL_ARGS,
+} = constants;
+
+/**
+ * InputValidator performs validation on the input fields of this
+ * action. The fields are parsed and converted into the required format.
+ */
+class InputValidator {
+  /**
+   * Generates metadata of the triggered workflow in the form of
+   * 1. Push event (Non PR): Commit-\<commit-id>-\<commit-message>
+   * 2. Pull Request event: PR-\<PR-number>-Commit-\<commit-id>
+   * @returns {String} Metadata
+   */
+  static _getMetadata() {
+    const githubEvent = github.context.eventName;
+    switch (githubEvent) {
+      case 'push': {
+        const {
+          context: {
+            payload: {
+              head_commit: {
+                message: commitMessage,
+              },
+            },
+            sha: commitSHA,
+            runNumber: workflowNumber,
+            ref,
+          },
+        } = github;
+
+        const probableBranchOrTag = ref.split('/').pop();
+        const slicedSHA = commitSHA.slice(0, 7);
+        return `[${probableBranchOrTag}] Commit ${slicedSHA}: ${commitMessage} [Workflow: ${workflowNumber}]`;
+      }
+      case 'pull_request': {
+        const {
+          context: {
+            payload: {
+              pull_request: {
+                head: {
+                  ref: branchName,
+                },
+                title: prTitle,
+              },
+              number: prNumber,
+            },
+            runNumber: workflowNumber,
+          },
+        } = github;
+
+        return `[${branchName}] PR ${prNumber}: ${prTitle} [Workflow: ${workflowNumber}]`;
+      }
+      case 'release': {
+        const {
+          context: {
+            payload: {
+              release: {
+                tag_name: tagName,
+                target_commitish: branchName,
+                name: releaseName,
+              },
+            },
+            runNumber: workflowNumber,
+          },
+        } = github;
+
+        return `[${branchName}] Release ${tagName}${releaseName === tagName ? ' ' : `: ${releaseName} `}[Workflow: ${workflowNumber}]`;
+      }
+      default: {
+        return `${githubEvent} [Workflow: ${github.context.runNumber}]`;
+      }
+    }
+  }
+
+  /**
+   * Appends the username with '-GitHubAction' for internal instrumentation
+   * @param {String} inputUsername BrowserStack Username
+   * @returns {String} Modified Username
+   */
+  static validateUsername(inputUsername) {
+    return `${inputUsername}-GitHubAction`;
+  }
+
+  /**
+   * Validates the action input 'local-testing' and returns the
+   * parsed value.
+   * Throws error if it's not a valid value
+   * @param {String} inputLocalTesting Action input for 'local-testing'
+   * @returns {String} One of the values from start/stop/false
+   */
+  static validateLocalTesting(inputLocalTesting) {
+    if (!inputLocalTesting) return 'false';
+
+    const localTestingLowered = inputLocalTesting.toString().toLowerCase();
+    // eslint-disable-next-line max-len
+    const validValue = Object.values(LOCAL_TESTING).some((allowedValue) => allowedValue === localTestingLowered);
+
+    if (!validValue) {
+      throw Error(`Invalid input for ${INPUT.LOCAL_TESING}. The valid inputs are: ${Object.values(LOCAL_TESTING).join(', ')}. Refer the README for more details`);
+    }
+
+    return localTestingLowered;
+  }
+
+  /**
+   * Validates the action input 'local-logging-level' and returns the
+   * verbosity level of logging.
+   * @param {String} inputLocalLoggingLevel Action input for 'local-logging-level'
+   * @returns {Number} Logging Level (0 - 3)
+   */
+  static validateLocalLoggingLevel(inputLocalLoggingLevel) {
+    if (!inputLocalLoggingLevel) return 0;
+
+    const loggingLevelLowered = inputLocalLoggingLevel.toString().toLowerCase();
+
+    switch (loggingLevelLowered) {
+      case LOCAL_LOG_LEVEL.SETUP_LOGS: {
+        return 1;
+      }
+      case LOCAL_LOG_LEVEL.NETWORK_LOGS: {
+        return 2;
+      }
+      case LOCAL_LOG_LEVEL.ALL_LOGS: {
+        return 3;
+      }
+      case LOCAL_LOG_LEVEL.FALSE: {
+        return 0;
+      }
+      default: {
+        core.info(`[Warning] Invalid input for ${INPUT.LOCAL_LOGGING_LEVEL}. No logs will be captured. The valid inputs are: ${Object.values(LOCAL_LOG_LEVEL).join(', ')}`);
+        return 0;
+      }
+    }
+  }
+
+  /**
+   * Validates the local-identifier input. It handles the generation of random
+   * identifier if required.
+   * @param {String} inputLocalIdentifier Action input for 'local-identifier'
+   * @returns {String} Parsed/Random local-identifier
+   */
+  static validateLocalIdentifier(inputLocalIdentifier) {
+    if (!inputLocalIdentifier) return '';
+
+    const localIdentifierParsed = inputLocalIdentifier.toString().toLowerCase().split(/\s+/).join('-');
+    if (localIdentifierParsed === LOCAL_IDENTIFIER_RANDOM) {
+      return `GitHubAction-${uuidv4()}`;
+    }
+
+    return localIdentifierParsed;
+  }
+
+  /**
+   * Validates the local-args input. Removes any args which might conflict with
+   * the input args taken from the action input for the Local Binary.
+   * @param {String} inputLocalArgs Action input for 'local-args'
+   * @returns {String} Parsed args
+   */
+  static validateLocalArgs(inputLocalArgs) {
+    const parsedArgs = parseArgs(inputLocalArgs.split(/\s+/));
+
+    delete parsedArgs._;
+    RESTRICTED_LOCAL_ARGS.forEach((arg) => {
+      delete parsedArgs[arg];
+    });
+
+    let parsedArgsString = '';
+    for (const [key, value] of Object.entries(parsedArgs)) {
+      const argKey = key.length === 1 ? `-${key}` : `--${key}`;
+      const argValue = value === true ? '' : value;
+      parsedArgsString += `${argKey} ${argValue} `;
+    }
+
+    return parsedArgsString;
+  }
+
+  /**
+   * Validates the build-name based on the input type. It performs the following:
+   * 1. Removes any spaces from the input provided.
+   * 2. Adds metadata information of the PR/Commit if required (based on the input format).
+   * @param {String} inputBuildName Action input for 'build-name'
+   * @returns {String} Parsed/Modified Build Name
+   */
+  static validateBuildName(inputBuildName) {
+    if (!inputBuildName) return InputValidator._getMetadata();
+
+    const prIndex = inputBuildName.toLowerCase().indexOf('build_info');
+
+    if (prIndex === -1) return inputBuildName;
+
+    const metadata = InputValidator._getMetadata();
+    return inputBuildName.replace(/build_info/i, metadata);
+  }
+
+  /**
+   * Validates the project-name. It performs the following:
+   * 1. Removes any spaces from the input provided.
+   * 2. (or) Considers the Repository name as the project name if no input is provided.
+   * @param {String} inputProjectName Action input for 'project-name'
+   * @returns {String} Parsed/Repository name as Project Name
+   */
+  static validateProjectName(inputProjectName) {
+    if (inputProjectName) return inputProjectName.split(/\s+/).join('-');
+
+    return github.context.repo.repo;
+  }
+}
+
+module.exports = InputValidator;
 
 
 /***/ }),
@@ -9894,6 +9620,40 @@ function addHook (state, kind, name, hook) {
 
 /***/ }),
 
+/***/ 513:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const artifact = __webpack_require__(214);
+const core = __webpack_require__(470);
+
+class ArtifactsManager {
+  /**
+   * Upload artifacts to GitHub workflow
+   * @param {String} artifactName Name by which the artifact should be available post uploading
+   * @param {String[]} files Files to upload
+   * @param {String} rootFolder Folder in which the files reside
+   * @returns {Promise<artifact.UploadResponse>} Response of the upload operation
+   */
+  static async uploadArtifacts(artifactName, files, rootFolder) {
+    const artifactClient = artifact.create();
+    const response = await artifactClient.uploadArtifact(
+      artifactName,
+      files,
+      rootFolder, {
+        continueOnError: true,
+      },
+    );
+    core.info(`Response for upload: ${JSON.stringify(response)}`);
+    return response;
+  }
+}
+
+// eslint-disable-next-line import/prefer-default-export
+module.exports = ArtifactsManager;
+
+
+/***/ }),
+
 /***/ 521:
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
 
@@ -12091,6 +11851,77 @@ exports.UploadHttpClient = UploadHttpClient;
 
 /***/ }),
 
+/***/ 613:
+/***/ (function(module) {
+
+module.exports = {
+  INPUT: {
+    USERNAME: 'username',
+    ACCESS_KEY: 'access-key',
+    LOCAL_TESING: 'local-testing',
+    LOCAL_LOGGING_LEVEL: 'local-logging-level',
+    LOCAL_IDENTIFIER: 'local-identifier',
+    LOCAL_ARGS: 'local-args',
+    BUILD_NAME: 'build-name',
+    PROJECT_NAME: 'project-name',
+  },
+
+  PLATFORMS: {
+    LINUX: 'linux',
+    DARWIN: 'darwin',
+    WIN32: 'win32',
+  },
+
+  ENV_VARS: {
+    BROWSERSTACK_USERNAME: 'BROWSERSTACK_USERNAME',
+    BROWSERSTACK_ACCESS_KEY: 'BROWSERSTACK_ACCESS_KEY',
+    BROWSERSTACK_LOCAL_IDENTIFIER: 'BROWSERSTACK_LOCAL_IDENTIFIER',
+    BROWSERSTACK_BUILD_NAME: 'BROWSERSTACK_BUILD_NAME',
+    BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME',
+  },
+
+  BINARY_LINKS: {
+    LINUX_32: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-linux-ia32.zip',
+    LINUX_64: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-linux-x64.zip',
+    WINDOWS: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-win32.zip',
+    DARWIN: 'https://www.browserstack.com/browserstack-local/BrowserStackLocal-darwin-x64.zip',
+  },
+
+  ALLOWED_INPUT_VALUES: {
+    LOCAL_TESTING: {
+      START: 'start',
+      STOP: 'stop',
+      FALSE: 'false',
+    },
+    LOCAL_LOG_LEVEL: {
+      SETUP_LOGS: 'setup-logs',
+      NETWORK_LOGS: 'network-logs',
+      ALL_LOGS: 'all-logs',
+      FALSE: 'false',
+    },
+    LOCAL_IDENTIFIER_RANDOM: 'random',
+  },
+
+  LOCAL_BINARY_TRIGGER: {
+    START: {
+      CONNECTED: 'connected',
+      DISCONNECTED: 'disconnected',
+    },
+    STOP: {
+      SUCCESS: 'success',
+    },
+  },
+
+  RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file', 'ci-plugin'],
+
+  LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
+  LOCAL_BINARY_NAME: 'BrowserStackLocal',
+  LOCAL_LOG_FILE_PREFIX: 'BrowserStackLocal',
+};
+
+
+/***/ }),
+
 /***/ 614:
 /***/ (function(module) {
 
@@ -12596,6 +12427,54 @@ function slice (args) {
   for (var i = 0; i < length; i++) array[i] = args[i]
   return array
 }
+
+
+/***/ }),
+
+/***/ 676:
+/***/ (function(__unusedmodule, __unusedexports, __webpack_require__) {
+
+const core = __webpack_require__(470);
+const ActionInput = __webpack_require__(972);
+const BinaryControl = __webpack_require__(24);
+const constants = __webpack_require__(613);
+
+const {
+  ALLOWED_INPUT_VALUES: {
+    LOCAL_TESTING,
+  },
+} = constants;
+
+/**
+ * Entry point to initiate the Action.
+ * 1. Triggers parsing of action input values
+ * 2. Decides requirement of Local Binary
+ * 3. Start/Stop Local Binary if required
+ * 4. Triggers uploading of artifacts
+ */
+const run = async () => {
+  try {
+    const inputParser = new ActionInput();
+    const stateForBinary = inputParser.getInputStateForBinary();
+    const binaryControl = new BinaryControl(stateForBinary);
+
+    if ([LOCAL_TESTING.START, LOCAL_TESTING.FALSE].includes(stateForBinary.localTesting)) {
+      inputParser.setEnvVariables();
+
+      if (stateForBinary.localTesting === LOCAL_TESTING.START) {
+        await binaryControl.downloadBinary();
+        await binaryControl.startBinary();
+      }
+    } else {
+      await binaryControl.stopBinary();
+      await binaryControl.uploadLogFilesIfAny();
+    }
+  } catch (e) {
+    core.setFailed(`Action Failed: ${e}`);
+  }
+};
+
+run();
 
 
 /***/ }),
@@ -17106,6 +16985,129 @@ module.exports = v4;
 
 /***/ }),
 
+/***/ 972:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const core = __webpack_require__(470);
+const InputValidator = __webpack_require__(288);
+const constants = __webpack_require__(613);
+
+const {
+  INPUT,
+  ENV_VARS,
+  ALLOWED_INPUT_VALUES: {
+    LOCAL_TESTING,
+  },
+} = constants;
+
+/**
+ * ActionInput manages the fetching of action input values and
+ * helps in setting env variables post validation.
+ */
+class ActionInput {
+  constructor() {
+    this._fetchAllInput();
+    this._validateInput();
+  }
+
+  /**
+   * Fetches all the input values given to the action.
+   * Raises error if the required values are not provided.
+   */
+  _fetchAllInput() {
+    try {
+      // required fields
+      this.username = core.getInput(INPUT.USERNAME, { required: true });
+      this.accessKey = core.getInput(INPUT.ACCESS_KEY, { required: true });
+
+      // non-compulsory fields
+      this.buildName = core.getInput(INPUT.BUILD_NAME);
+      this.projectName = core.getInput(INPUT.PROJECT_NAME);
+      this.localTesting = core.getInput(INPUT.LOCAL_TESING);
+      this.localLoggingLevel = core.getInput(INPUT.LOCAL_LOGGING_LEVEL);
+      this.localIdentifier = core.getInput(INPUT.LOCAL_IDENTIFIER);
+      this.localArgs = core.getInput(INPUT.LOCAL_ARGS);
+    } catch (e) {
+      throw Error(`Action input failed for reason: ${e.message}`);
+    }
+  }
+
+  /**
+   * Sets env variables to be used in the test script for BrowserStack
+   */
+  setEnvVariables() {
+    core.startGroup('Setting Environment Variables');
+
+    core.exportVariable(ENV_VARS.BROWSERSTACK_USERNAME, this.username);
+    core.exportVariable(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
+
+    core.exportVariable(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
+    core.info(`${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable set as: ${this.projectName}`);
+    core.info(`Use ${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable for your project name capability in your tests\n`);
+
+    core.exportVariable(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
+    core.info(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
+    core.info(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable for your build name capability in your tests\n`);
+
+    if ((this.localTesting === LOCAL_TESTING.START) && this.localIdentifier) {
+      core.exportVariable(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
+      core.info(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} environment variable set as: ${this.localIdentifier}`);
+      core.info(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test script as the local identifier\n`);
+    }
+
+    core.endGroup();
+  }
+
+  /**
+   * Triggers conditional validation of action input values based on the operation
+   * to be performed, i.e. start/no local connection required, stopping of local connection
+   */
+  _validateInput() {
+    this.localTesting = InputValidator.validateLocalTesting(this.localTesting);
+
+    if ([LOCAL_TESTING.START, LOCAL_TESTING.FALSE].includes(this.localTesting)) {
+      // properties common to local/non-local testing comes here
+      this.username = InputValidator.validateUsername(this.username);
+      this.projectName = InputValidator.validateProjectName(this.projectName);
+      this.buildName = InputValidator.validateBuildName(this.buildName);
+
+      // properties specific to requiring local testing shall come in this block
+      if (this.localTesting === LOCAL_TESTING.START) {
+        this.localLoggingLevel = InputValidator.validateLocalLoggingLevel(this.localLoggingLevel);
+        this.localIdentifier = InputValidator.validateLocalIdentifier(this.localIdentifier);
+        this.localArgs = InputValidator.validateLocalArgs(this.localArgs);
+      }
+    } else {
+      this.localIdentifier = process.env[ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER];
+    }
+  }
+
+  /**
+   * Returns the information required for setting up of Local Binary
+   * @returns {{
+   *  accessKey: String,
+   *  localTesting: String,
+   *  localArgs: String,
+   *  localIdentifier: String,
+   *  localLoggingLevel: Number
+   * }}
+   */
+  getInputStateForBinary() {
+    return {
+      accessKey: this.accessKey,
+      localTesting: this.localTesting,
+      localArgs: this.localArgs,
+      localIdentifier: this.localIdentifier,
+      localLoggingLevel: this.localLoggingLevel,
+    };
+  }
+}
+
+module.exports = ActionInput;
+
+
+/***/ }),
+
 /***/ 979:
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
 
@@ -17234,62 +17236,4 @@ exports.exec = exec;
 
 /***/ })
 
-/******/ },
-/******/ function(__webpack_require__) { // webpackRuntimeModules
-/******/ 	"use strict";
-/******/ 
-/******/ 	/* webpack/runtime/make namespace object */
-/******/ 	!function() {
-/******/ 		// define __esModule on exports
-/******/ 		__webpack_require__.r = function(exports) {
-/******/ 			if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
-/******/ 				Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
-/******/ 			}
-/******/ 			Object.defineProperty(exports, '__esModule', { value: true });
-/******/ 		};
-/******/ 	}();
-/******/ 	
-/******/ 	/* webpack/runtime/define property getter */
-/******/ 	!function() {
-/******/ 		// define getter function for harmony exports
-/******/ 		var hasOwnProperty = Object.prototype.hasOwnProperty;
-/******/ 		__webpack_require__.d = function(exports, name, getter) {
-/******/ 			if(!hasOwnProperty.call(exports, name)) {
-/******/ 				Object.defineProperty(exports, name, { enumerable: true, get: getter });
-/******/ 			}
-/******/ 		};
-/******/ 	}();
-/******/ 	
-/******/ 	/* webpack/runtime/create fake namespace object */
-/******/ 	!function() {
-/******/ 		// create a fake namespace object
-/******/ 		// mode & 1: value is a module id, require it
-/******/ 		// mode & 2: merge all properties of value into the ns
-/******/ 		// mode & 4: return value when already ns object
-/******/ 		// mode & 8|1: behave like require
-/******/ 		__webpack_require__.t = function(value, mode) {
-/******/ 			if(mode & 1) value = this(value);
-/******/ 			if(mode & 8) return value;
-/******/ 			if((mode & 4) && typeof value === 'object' && value && value.__esModule) return value;
-/******/ 			var ns = Object.create(null);
-/******/ 			__webpack_require__.r(ns);
-/******/ 			Object.defineProperty(ns, 'default', { enumerable: true, value: value });
-/******/ 			if(mode & 2 && typeof value != 'string') for(var key in value) __webpack_require__.d(ns, key, function(key) { return value[key]; }.bind(null, key));
-/******/ 			return ns;
-/******/ 		};
-/******/ 	}();
-/******/ 	
-/******/ 	/* webpack/runtime/compat get default export */
-/******/ 	!function() {
-/******/ 		// getDefaultExport function for compatibility with non-harmony modules
-/******/ 		__webpack_require__.n = function(module) {
-/******/ 			var getter = module && module.__esModule ?
-/******/ 				function getDefault() { return module['default']; } :
-/******/ 				function getModuleExports() { return module; };
-/******/ 			__webpack_require__.d(getter, 'a', getter);
-/******/ 			return getter;
-/******/ 		};
-/******/ 	}();
-/******/ 	
-/******/ }
-);
+/******/ });

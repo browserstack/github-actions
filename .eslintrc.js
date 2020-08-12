@@ -2,11 +2,12 @@ module.exports = {
   env: {
     node: true,
     es2020: true,
+    mocha: true,
   },
   extends: 'airbnb-base',
   parserOptions: {
     ecmaVersion: 11,
-    sourceType: 'module',
+    sourceType: 'script',
   },
   rules: {
     semi: ['error', 'always'],

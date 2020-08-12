@@ -4,9 +4,9 @@
   "description": "",
   "main": "src/index.js",
   "scripts": {
-    "lint": "./node_modules/.bin/eslint src/*",
+    "lint": "./node_modules/.bin/eslint 'src/*' 'test/**/*.js' 'config/*.js'",
     "build": "./node_modules/.bin/ncc build src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "nyc --reporter=html ./node_modules/.bin/mocha 'test/**/*test.js'"
   },
   "repository": {
     "type": "git",
@@ -31,8 +31,23 @@
   },
   "devDependencies": {
     "@zeit/ncc": "^0.22.3",
+    "chai": "^4.2.0",
     "eslint": "^7.2.0",
     "eslint-config-airbnb-base": "^14.2.0",
-    "eslint-plugin-import": "^2.22.0"
+    "eslint-plugin-import": "^2.22.0",
+    "mocha": "^8.1.1",
+    "nyc": "^15.1.0",
+    "sinon": "^9.0.2"
+  },
+  "nyc": {
+    "all": true,
+    "exclude": [
+      "**/*.test.js",
+      "node_modules",
+      ".eslintrc.js",
+      "coverage",
+      "dist/*",
+      "config"
+    ]
   }
 }

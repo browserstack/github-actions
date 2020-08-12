@@ -1,4 +1,4 @@
-export default {
+module.exports = {
   INPUT: {
     USERNAME: 'username',
     ACCESS_KEY: 'access-key',

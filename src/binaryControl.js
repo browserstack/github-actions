@@ -1,13 +1,13 @@
-import * as tc from '@actions/tool-cache';
-import * as io from '@actions/io';
-import * as exec from '@actions/exec';
-import * as core from '@actions/core';
-import * as github from '@actions/github';
-import * as os from 'os';
-import * as path from 'path';
-import * as fs from 'fs';
-import { uploadArtifacts } from './artifacts';
-import constants from '../config/constants';
+const tc = require('@actions/tool-cache');
+const io = require('@actions/io');
+const exec = require('@actions/exec');
+const core = require('@actions/core');
+const github = require('@actions/github');
+const os = require('os');
+const path = require('path');
+const fs = require('fs');
+const ArtifactsManager = require('./artifacts');
+const constants = require('../config/constants');
 
 const {
   BINARY_LINKS,
@@ -209,10 +209,14 @@ class BinaryControl {
   async uploadLogFilesIfAny() {
     this._generateLogFileMetadata();
     if (fs.existsSync(this.logFilePath)) {
-      await uploadArtifacts(this.logFileName, [this.logFilePath], this.binaryFolder);
+      await ArtifactsManager.uploadArtifacts(
+        this.logFileName,
+        [this.logFilePath],
+        this.binaryFolder,
+      );
       await io.rmRF(this.logFilePath);
     }
   }
 }
 
-export default BinaryControl;
+module.exports = BinaryControl;
