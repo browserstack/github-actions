@@ -592,12 +592,14 @@ const github = __webpack_require__(469);
  */
 class InputValidator {
   /**
-   * Generates metadata of the triggered workflow in the form of
-   * 1. Push event (Non PR): Commit-\<commit-id>-\<commit-message>
-   * 2. Pull Request event: PR-\<PR-number>-Commit-\<commit-id>
+   * Generates metadata of the triggered workflow based on the type of event.
+   * Supported events:
+   * 1. Push
+   * 2. Pull Request
+   * 3. Release
    * @returns {String} Metadata
    */
-  static _getMetadata() {
+  static _getBuildInfo() {
     const githubEvent = github.context.eventName;
     switch (githubEvent) {
       case 'push': {
@@ -669,33 +671,33 @@ class InputValidator {
 
   /**
    * Validates the build-name based on the input type. It performs the following:
-   * 1. Removes any spaces from the input provided.
+   * 1. Checks if 'build_info' (case insensitive) exists in the input
    * 2. Adds metadata information of the PR/Commit if required (based on the input format).
    * @param {String} inputBuildName Action input for 'build-name'
    * @returns {String} Parsed/Modified Build Name
    */
   static validateBuildName(inputBuildName) {
-    if (!inputBuildName) return InputValidator._getMetadata();
+    if (!inputBuildName) return InputValidator._getBuildInfo();
 
     const prIndex = inputBuildName.toLowerCase().indexOf('build_info');
 
     if (prIndex === -1) return inputBuildName;
 
-    const metadata = InputValidator._getMetadata();
+    const metadata = InputValidator._getBuildInfo();
     return inputBuildName.replace(/build_info/i, metadata);
   }
 
   /**
    * Validates the project-name. It performs the following:
-   * 1. Removes any spaces from the input provided.
-   * 2. (or) Considers the Repository name as the project name if no input is provided.
+   * 1. Checks if there is no input or the input is 'repo_name' (case insensitive)
+   * 2. If input is provided for the project name other than 'repo_name'
    * @param {String} inputProjectName Action input for 'project-name'
-   * @returns {String} Parsed/Repository name as Project Name
+   * @returns {String} Project name
    */
   static validateProjectName(inputProjectName) {
-    if (inputProjectName) return inputProjectName.split(/\s+/).join('-');
+    if (!inputProjectName || inputProjectName.toLowerCase() === 'repo_name') return github.context.repo.repo;
 
-    return github.context.repo.repo;
+    return inputProjectName;
   }
 }
 
@@ -6101,6 +6103,16 @@ class ActionInput {
   }
 
   /**
+   * Triggers conditional validation of action input values based on the operation
+   * to be performed, i.e. start/no local connection required, stopping of local connection
+   */
+  _validateInput() {
+    this.username = InputValidator.validateUsername(this.username);
+    this.buildName = InputValidator.validateBuildName(this.buildName);
+    this.projectName = InputValidator.validateProjectName(this.projectName);
+  }
+
+  /**
    * Sets env variables to be used in the test script for BrowserStack
    */
   setEnvVariables() {
@@ -6118,16 +6130,6 @@ class ActionInput {
     core.info(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable for your build name capability in your tests\n`);
 
     core.endGroup();
-  }
-
-  /**
-   * Triggers conditional validation of action input values based on the operation
-   * to be performed, i.e. start/no local connection required, stopping of local connection
-   */
-  _validateInput() {
-    this.username = InputValidator.validateUsername(this.username);
-    this.buildName = InputValidator.validateBuildName(this.buildName);
-    this.projectName = InputValidator.validateProjectName(this.projectName);
   }
 }
 

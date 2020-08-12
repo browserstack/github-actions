@@ -36,6 +36,16 @@ class ActionInput {
   }
 
   /**
+   * Triggers conditional validation of action input values based on the operation
+   * to be performed, i.e. start/no local connection required, stopping of local connection
+   */
+  _validateInput() {
+    this.username = InputValidator.validateUsername(this.username);
+    this.buildName = InputValidator.validateBuildName(this.buildName);
+    this.projectName = InputValidator.validateProjectName(this.projectName);
+  }
+
+  /**
    * Sets env variables to be used in the test script for BrowserStack
    */
   setEnvVariables() {
@@ -53,16 +63,6 @@ class ActionInput {
     core.info(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable for your build name capability in your tests\n`);
 
     core.endGroup();
-  }
-
-  /**
-   * Triggers conditional validation of action input values based on the operation
-   * to be performed, i.e. start/no local connection required, stopping of local connection
-   */
-  _validateInput() {
-    this.username = InputValidator.validateUsername(this.username);
-    this.buildName = InputValidator.validateBuildName(this.buildName);
-    this.projectName = InputValidator.validateProjectName(this.projectName);
   }
 }
 
