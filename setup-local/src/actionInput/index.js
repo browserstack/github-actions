@@ -30,7 +30,7 @@ class ActionInput {
       this.localTesting = core.getInput(INPUT.LOCAL_TESING, { required: true });
       this.accessKey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
 
-      if (!this.accessKey) throw Error(`${ENV_VARS.BROWSERSTACK_ACCESS_KEY} not found`);
+      if (!this.accessKey) throw Error(`${ENV_VARS.BROWSERSTACK_ACCESS_KEY} not found. Use 'browserstack/github-actions/setup-env@master' Action to set up the environment variables before invoking this Action`);
 
       // non-compulsory fields
       this.localLoggingLevel = core.getInput(INPUT.LOCAL_LOGGING_LEVEL);
@@ -39,21 +39,6 @@ class ActionInput {
     } catch (e) {
       throw Error(`Action input failed for reason: ${e.message}`);
     }
-  }
-
-  /**
-   * Sets env variables to be used in the test script for BrowserStack
-   */
-  setEnvVariables() {
-    core.startGroup('Setting Environment Variables');
-
-    if ((this.localTesting === LOCAL_TESTING.START) && this.localIdentifier) {
-      core.exportVariable(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
-      core.info(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} environment variable set as: ${this.localIdentifier}`);
-      core.info(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test script as the local identifier\n`);
-    }
-
-    core.endGroup();
   }
 
   /**
@@ -70,6 +55,21 @@ class ActionInput {
     } else {
       this.localIdentifier = process.env[ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER];
     }
+  }
+
+  /**
+   * Sets env variables to be used in the test script for BrowserStack
+   */
+  setEnvVariables() {
+    core.startGroup('Setting Environment Variables');
+
+    if ((this.localTesting === LOCAL_TESTING.START) && this.localIdentifier) {
+      core.exportVariable(ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER, this.localIdentifier);
+      core.info(`${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} environment variable set as: ${this.localIdentifier}`);
+      core.info(`Use ${ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER} env variable in your test script as the local identifier\n`);
+    }
+
+    core.endGroup();
   }
 
   /**
