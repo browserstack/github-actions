@@ -58,6 +58,19 @@ describe('Action Input operations for fetching all inputs, triggering validation
       sinon.assert.notCalled(InputValidator.validateBuildName);
       sinon.assert.notCalled(InputValidator.validateProjectName);
     });
+
+    it('Takes input and throws error if accesskey is not provided in input', () => {
+      stubbedInput.withArgs(INPUT.ACCESS_KEY, { required: true }).throws(Error('Access Key Required'));
+      try {
+        // eslint-disable-next-line no-new
+        new ActionInput();
+      } catch (e) {
+        expect(e.message).to.eq('Action input failed for reason: Access Key Required');
+      }
+      sinon.assert.notCalled(InputValidator.validateUsername);
+      sinon.assert.notCalled(InputValidator.validateBuildName);
+      sinon.assert.notCalled(InputValidator.validateProjectName);
+    });
   });
 
   context('Set Environment Variables', () => {
