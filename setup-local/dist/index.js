@@ -6632,7 +6632,7 @@ class InputValidator {
   static validateLocalLoggingLevel(inputLocalLoggingLevel) {
     if (!inputLocalLoggingLevel) return 0;
 
-    const loggingLevelLowered = inputLocalLoggingLevel.toString().toLowerCase();
+    const loggingLevelLowered = inputLocalLoggingLevel.toLowerCase();
 
     switch (loggingLevelLowered) {
       case LOCAL_LOG_LEVEL.SETUP_LOGS: {
@@ -6663,12 +6663,11 @@ class InputValidator {
   static validateLocalIdentifier(inputLocalIdentifier) {
     if (!inputLocalIdentifier) return '';
 
-    const localIdentifierParsed = inputLocalIdentifier.toString().toLowerCase().split(/\s+/).join('-');
-    if (localIdentifierParsed === LOCAL_IDENTIFIER_RANDOM) {
+    if (inputLocalIdentifier.toLowerCase() === LOCAL_IDENTIFIER_RANDOM) {
       return `GitHubAction-${uuidv4()}`;
     }
 
-    return localIdentifierParsed;
+    return inputLocalIdentifier.split(/\s+/).join('-');
   }
 
   /**
