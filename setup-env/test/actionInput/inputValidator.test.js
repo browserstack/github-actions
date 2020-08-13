@@ -65,4 +65,93 @@ describe('InputValidator class to validate individual fields of the action input
       });
     });
   });
+
+  context('Private Static Methods', () => {
+    context('Build Info Generation based on the GitHub EventType', () => {
+      context('Push event', () => {
+        beforeEach(() => {
+          sinon.stub(github, 'context').value({
+            payload: {
+              head_commit: {
+                message: 'messageOfHeadCommit',
+              },
+            },
+            sha: 'someSHA',
+            runNumber: 123,
+            ref: 'refs/head/branchOrTagName',
+            eventName: 'push',
+          });
+        });
+
+        it('Generate build info with commit information', () => {
+          const expectedValue = '[branchOrTagName] Commit someSHA: messageOfHeadCommit [Workflow: 123]';
+          expect(InputValidator._getBuildInfo()).to.eq(expectedValue);
+        });
+      });
+
+      context('Pull Request event', () => {
+        beforeEach(() => {
+          sinon.stub(github, 'context').value({
+            payload: {
+              pull_request: {
+                head: {
+                  ref: 'branchName',
+                },
+                title: 'prTitle',
+              },
+              number: 'prNumber',
+            },
+            runNumber: 123,
+            eventName: 'pull_request',
+          });
+        });
+
+        it('Generate build info with PR information', () => {
+          const expectedValue = '[branchName] PR prNumber: prTitle [Workflow: 123]';
+          expect(InputValidator._getBuildInfo()).to.eq(expectedValue);
+        });
+      });
+
+      context('Release event', () => {
+        beforeEach(() => {
+          sinon.stub(github, 'context').value({
+            payload: {
+              release: {
+                tag_name: 'tagName',
+                target_commitish: 'branchName',
+                name: 'releaseName',
+              },
+            },
+            runNumber: 123,
+            eventName: 'release',
+          });
+        });
+
+        it('Generate build info with Release information where release name != tag name', () => {
+          const expectedValue = '[branchName] Release tagName: releaseName [Workflow: 123]';
+          expect(InputValidator._getBuildInfo()).to.eq(expectedValue);
+        });
+
+        it('Generate build info with Release information where release name == tag name', () => {
+          github.context.payload.release.name = 'tagName';
+          const expectedValue = '[branchName] Release tagName [Workflow: 123]';
+          expect(InputValidator._getBuildInfo()).to.eq(expectedValue);
+        });
+      });
+
+      context('Other event', () => {
+        beforeEach(() => {
+          sinon.stub(github, 'context').value({
+            runNumber: 123,
+            eventName: 'anyOtherEvent',
+          });
+        });
+
+        it('Generate build info with basic event type and workflow run number', () => {
+          const expectedValue = 'anyOtherEvent [Workflow: 123]';
+          expect(InputValidator._getBuildInfo()).to.eq(expectedValue);
+        });
+      });
+    });
+  });
 });
