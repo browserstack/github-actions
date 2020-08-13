@@ -1,4 +1,4 @@
-name: 'BrowserStack-Action'
+name: 'setup-env'
 description: 'Setup BrowserStack Test Environment'
 inputs:
   username:
@@ -15,4 +15,4 @@ inputs:
     required: false
 runs:
   using: 'node12'
-  main: 'setup-env/dist/index.js'
+  main: 'dist/index.js'

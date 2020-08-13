@@ -1,13 +1,9 @@
 module.exports = {
   INPUT: {
-    USERNAME: 'username',
-    ACCESS_KEY: 'access-key',
     LOCAL_TESING: 'local-testing',
     LOCAL_LOGGING_LEVEL: 'local-logging-level',
     LOCAL_IDENTIFIER: 'local-identifier',
     LOCAL_ARGS: 'local-args',
-    BUILD_NAME: 'build-name',
-    PROJECT_NAME: 'project-name',
   },
 
   PLATFORMS: {
@@ -17,11 +13,8 @@ module.exports = {
   },
 
   ENV_VARS: {
-    BROWSERSTACK_USERNAME: 'BROWSERSTACK_USERNAME',
     BROWSERSTACK_ACCESS_KEY: 'BROWSERSTACK_ACCESS_KEY',
     BROWSERSTACK_LOCAL_IDENTIFIER: 'BROWSERSTACK_LOCAL_IDENTIFIER',
-    BROWSERSTACK_BUILD_NAME: 'BROWSERSTACK_BUILD_NAME',
-    BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME',
   },
 
   BINARY_LINKS: {
@@ -35,7 +28,6 @@ module.exports = {
     LOCAL_TESTING: {
       START: 'start',
       STOP: 'stop',
-      FALSE: 'false',
     },
     LOCAL_LOG_LEVEL: {
       SETUP_LOGS: 'setup-logs',

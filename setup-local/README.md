@@ -1,0 +1,1 @@
+Setup BrowserStack Local Binary

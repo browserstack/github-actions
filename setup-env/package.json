@@ -1,0 +1,47 @@
+{
+  "name": "setup-env",
+  "version": "1.0.0",
+  "description": "Setup BrowserStack Test Environment",
+  "main": "src/index.js",
+  "scripts": {
+    "lint": "./node_modules/.bin/eslint 'src/*' 'test/**/*.js' 'config/*.js'",
+    "build": "./node_modules/.bin/ncc build src/index.js",
+    "test": "npm run lint && nyc --reporter=html ./node_modules/.bin/mocha 'test/**/*test.js'"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rchougule/local-action.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/rchougule/local-action/issues"
+  },
+  "homepage": "https://github.com/rchougule/local-action/setup-env#readme",
+  "dependencies": {
+    "@actions/core": "^1.2.4",
+    "@actions/github": "^4.0.0"
+  },
+  "devDependencies": {
+    "@zeit/ncc": "^0.22.3",
+    "chai": "^4.2.0",
+    "eslint": "^7.2.0",
+    "eslint-config-airbnb-base": "^14.2.0",
+    "eslint-plugin-import": "^2.22.0",
+    "mocha": "^8.1.1",
+    "nyc": "^15.1.0",
+    "sinon": "^9.0.2"
+  },
+  "nyc": {
+    "all": true,
+    "exclude": [
+      "**/*.test.js",
+      "node_modules",
+      ".eslintrc.js",
+      "coverage",
+      "dist/*",
+      "config"
+    ]
+  }
+}
