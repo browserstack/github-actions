@@ -1,4 +1,4 @@
-name: 'BrowserStack-Action'
+name: 'BrowserStack Actions'
 description: 'Setup BrowserStack Test Environment'
 inputs:
   username:

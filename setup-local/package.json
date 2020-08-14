@@ -8,17 +8,23 @@
     "build": "./node_modules/.bin/ncc build src/index.js",
     "test": "npm run lint && nyc --reporter=html ./node_modules/.bin/mocha 'test/**/*test.js'"
   },
+  "husky": {
+    "hooks": {
+      "pre-commit": "npm run build && git add dist/"
+    }
+  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rchougule/local-action.git"
+    "url": "git+https://github.com/browserstack/github-actions.git"
   },
-  "keywords": [],
+  "keywords": [
+    "actions",
+    "browserstack",
+    "setup local",
+    "test environment"
+  ],
   "author": "",
   "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/rchougule/local-action/issues"
-  },
-  "homepage": "https://github.com/rchougule/local-action/setup-local#readme",
   "dependencies": {
     "@actions/artifact": "^0.3.5",
     "@actions/core": "^1.2.4",
@@ -35,6 +41,7 @@
     "eslint": "^7.2.0",
     "eslint-config-airbnb-base": "^14.2.0",
     "eslint-plugin-import": "^2.22.0",
+    "husky": "^4.2.5",
     "mocha": "^8.1.1",
     "nyc": "^15.1.0",
     "sinon": "^9.0.2"
