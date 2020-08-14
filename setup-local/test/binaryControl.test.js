@@ -39,22 +39,22 @@ describe('Binary Control Operations', () => {
     const platformAndBinary = [
       {
         binary: BINARY_LINKS.DARWIN,
-        folder: ['/work', 'binary', LOCAL_BINARY_FOLDER, 'darwin'],
+        folder: `/work/binary/${LOCAL_BINARY_FOLDER}/darwin`,
         arch: 'x64',
         platform: PLATFORMS.DARWIN,
       }, {
         binary: BINARY_LINKS.LINUX_32,
-        folder: ['/work', 'binary', LOCAL_BINARY_FOLDER, 'linux'],
+        folder: `/work/binary/${LOCAL_BINARY_FOLDER}/linux`,
         arch: 'x32',
         platform: PLATFORMS.LINUX,
       }, {
         binary: BINARY_LINKS.LINUX_64,
-        folder: ['/work', 'binary', LOCAL_BINARY_FOLDER, 'linux'],
+        folder: `/work/binary/${LOCAL_BINARY_FOLDER}/linux`,
         arch: 'x64',
         platform: PLATFORMS.LINUX,
       }, {
         binary: BINARY_LINKS.WINDOWS,
-        folder: ['/work', 'binary', LOCAL_BINARY_FOLDER, 'win32'],
+        folder: `/work/binary/${LOCAL_BINARY_FOLDER}/win32`,
         arch: 'x32',
         platform: PLATFORMS.WIN32,
       },
@@ -64,11 +64,13 @@ describe('Binary Control Operations', () => {
       it(`decides the binary and the folder based on the platform and architecture for ${system.platform} - ${system.arch}`, () => {
         sinon.stub(os, 'platform').returns(system.platform);
         sinon.stub(os, 'arch').returns(system.arch);
+        sinon.stub(path, 'resolve').returns(system.folder);
         const binaryControl = new BinaryControl();
         expect(binaryControl.binaryLink).to.eql(system.binary);
-        expect(binaryControl.binaryFolder).to.include(path.resolve(...system.folder));
+        expect(binaryControl.binaryFolder).to.eq(system.folder);
         os.platform.restore();
         os.arch.restore();
+        path.resolve.restore();
       });
     });
 
