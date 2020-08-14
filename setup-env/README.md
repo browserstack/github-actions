@@ -1,1 +1,1 @@
-Setup BrowserStack Test Environment
+README for Setup BrowserStack Test Environment
