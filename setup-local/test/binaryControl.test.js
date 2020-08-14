@@ -120,7 +120,7 @@ describe('Binary Control Operations', () => {
             localTesting: 'start',
           };
 
-          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction --arg1 val1 --arg2 val2 --local-identifier someIdentifier --verbose 1 --log-file ${process.env.HOME}/work/binary/LocalBinaryFolder/darwin/BrowserStackLocal_someJobName.log `;
+          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction --arg1 val1 --arg2 val2 --local-identifier someIdentifier --verbose 1 --log-file ${path.resolve(process.env.HOME,'work','binary','LocalBinaryFolder','darwin','BrowserStackLocal_someJobName.log')} `;
           const binaryControl = new BinaryControl(stateForBinary);
           binaryControl._generateArgsForBinary();
           expect(binaryControl.binaryArgs).to.eq(expectedFinalArgs);
