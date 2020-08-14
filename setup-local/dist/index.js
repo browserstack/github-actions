@@ -1130,7 +1130,7 @@ class BinaryControl {
    * Generates logging file name and its path for Local Binary
    */
   _generateLogFileMetadata() {
-    this.logFileName = process.env[BROWSERSTACK_LOCAL_LOGS_FILE] || `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_${new Date().toISOString()}.log`;
+    this.logFileName = process.env[BROWSERSTACK_LOCAL_LOGS_FILE] || `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_${Date.now()}.log`;
     this.logFilePath = path.resolve(this.binaryFolder, this.logFileName);
     core.exportVariable(BROWSERSTACK_LOCAL_LOGS_FILE, this.logFileName);
   }
