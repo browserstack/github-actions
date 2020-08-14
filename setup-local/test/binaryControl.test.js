@@ -66,7 +66,7 @@ describe('Binary Control Operations', () => {
         sinon.stub(os, 'arch').returns(system.arch);
         const binaryControl = new BinaryControl();
         expect(binaryControl.binaryLink).to.eql(system.binary);
-        expect(binaryControl.binaryFolder).to.include(system.folder);
+        expect(binaryControl.binaryFolder).to.include(path.resolve(system.folder));
         os.platform.restore();
         os.arch.restore();
       });
