@@ -11,6 +11,7 @@ const fs = require('fs');
 const BinaryControl = require('../src/binaryControl');
 const ArtifactsManager = require('../src/artifacts');
 const constants = require('../config/constants');
+const Utils = require('../src/utils');
 
 const {
   BINARY_LINKS,
@@ -21,6 +22,9 @@ const {
   LOCAL_BINARY_TRIGGER,
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING,
+  },
+  ENV_VARS: {
+    BROWSERSTACK_LOCAL_LOGS_FILE,
   },
 } = constants;
 
@@ -84,18 +88,51 @@ describe('Binary Control Operations', () => {
       os.platform.restore();
     });
 
-    it('Generates log-file name and path for Binary', () => {
-      sinon.stub(os, 'platform').returns('darwin');
-      sinon.stub(github, 'context').value({
-        job: 'someJobName',
+    context('Log File metadata', () => {
+      beforeEach(() => {
+        sinon.stub(core, 'exportVariable');
+        sinon.stub(os, 'platform').returns('darwin');
+        sinon.stub(github, 'context').value({
+          job: 'someJobName',
+        });
       });
-      const expectedLogFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}.log`;
-      const expectedLogFilePath = path.resolve(path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, 'darwin'), expectedLogFileName);
-      const binaryControl = new BinaryControl();
-      binaryControl._generateLogFileMetadata();
-      expect(binaryControl.logFileName).to.eq(expectedLogFileName);
-      expect(binaryControl.logFilePath).to.eq(expectedLogFilePath);
-      os.platform.restore();
+
+      afterEach(() => {
+        delete process.env[BROWSERSTACK_LOCAL_LOGS_FILE];
+        core.exportVariable.restore();
+        os.platform.restore();
+      });
+
+      it('Generates log-file name and path for Binary', () => {
+        sinon.stub(Date, 'now').returns('now');
+        const expectedLogFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_now.log`;
+        const expectedLogFilePath = path.resolve(path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, 'darwin'), expectedLogFileName);
+        const binaryControl = new BinaryControl();
+        binaryControl._generateLogFileMetadata();
+        expect(binaryControl.logFileName).to.eq(expectedLogFileName);
+        expect(binaryControl.logFilePath).to.eq(expectedLogFilePath);
+        sinon.assert.calledWith(
+          core.exportVariable,
+          BROWSERSTACK_LOCAL_LOGS_FILE,
+          expectedLogFileName,
+        );
+        Date.now.restore();
+      });
+
+      it('Fetches log-file name and generates path for Binary if logs file name was already defined', () => {
+        process.env[BROWSERSTACK_LOCAL_LOGS_FILE] = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_now.log`;
+        const expectedLogFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_now.log`;
+        const expectedLogFilePath = path.resolve(path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, 'darwin'), expectedLogFileName);
+        const binaryControl = new BinaryControl();
+        binaryControl._generateLogFileMetadata();
+        expect(binaryControl.logFileName).to.eq(expectedLogFileName);
+        expect(binaryControl.logFilePath).to.eq(expectedLogFilePath);
+        sinon.assert.calledWith(
+          core.exportVariable,
+          BROWSERSTACK_LOCAL_LOGS_FILE,
+          expectedLogFileName,
+        );
+      });
     });
 
     context('Generates args string based on the input to Binary Control & the operation required, i.e. start/stop', () => {
@@ -104,10 +141,14 @@ describe('Binary Control Operations', () => {
         sinon.stub(github, 'context').value({
           job: 'someJobName',
         });
+        sinon.stub(Date, 'now').returns('now');
+        sinon.stub(core, 'exportVariable');
       });
 
       afterEach(() => {
         os.platform.restore();
+        Date.now.restore();
+        core.exportVariable.restore();
       });
 
       context('Start Operation', () => {
@@ -120,7 +161,7 @@ describe('Binary Control Operations', () => {
             localTesting: 'start',
           };
 
-          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction --arg1 val1 --arg2 val2 --local-identifier someIdentifier --verbose 1 --log-file ${path.resolve(process.env.HOME, 'work', 'binary', 'LocalBinaryFolder', 'darwin', 'BrowserStackLocal_someJobName.log')} `;
+          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction --arg1 val1 --arg2 val2 --local-identifier someIdentifier --verbose 1 --log-file ${path.resolve(process.env.HOME, 'work', 'binary', 'LocalBinaryFolder', 'darwin', 'BrowserStackLocal_someJobName_now.log')} `;
           const binaryControl = new BinaryControl(stateForBinary);
           binaryControl._generateArgsForBinary();
           expect(binaryControl.binaryArgs).to.eq(expectedFinalArgs);
@@ -274,6 +315,7 @@ describe('Binary Control Operations', () => {
       });
 
       it('Downloads and sets the binary path without any error', async () => {
+        sinon.stub(Utils, 'checkToolInCache').returns(false);
         sinon.stub(tc, 'downloadTool').returns('downloadPath');
         sinon.stub(tc, 'extractZip').returns('extractedPath');
         sinon.stub(tc, 'cacheDir').returns('cachedPath');
@@ -282,9 +324,28 @@ describe('Binary Control Operations', () => {
         tc.downloadTool.restore();
         tc.extractZip.restore();
         tc.cacheDir.restore();
+        Utils.checkToolInCache.restore();
+      });
+
+      it('Uses cached binary if it already exists (was already downloaded)', async () => {
+        sinon.stub(Utils, 'checkToolInCache').returns(true);
+        sinon.stub(tc, 'downloadTool').returns('downloadPath');
+        sinon.stub(tc, 'extractZip').returns('extractedPath');
+        sinon.stub(tc, 'cacheDir').returns('cachedPath');
+        await binaryControl.downloadBinary();
+        sinon.assert.calledWith(core.info, 'BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
+        sinon.assert.notCalled(tc.downloadTool);
+        sinon.assert.notCalled(tc.extractZip);
+        sinon.assert.notCalled(tc.cacheDir);
+        sinon.assert.notCalled(binaryControl._makeDirectory);
+        tc.downloadTool.restore();
+        tc.extractZip.restore();
+        tc.cacheDir.restore();
+        Utils.checkToolInCache.restore();
       });
 
       it('Throws error if download of Binary fails', async () => {
+        sinon.stub(Utils, 'checkToolInCache').returns(false);
         sinon.stub(tc, 'downloadTool').throws(Error('someError'));
         try {
           await binaryControl.downloadBinary();
@@ -292,6 +353,7 @@ describe('Binary Control Operations', () => {
           expect(e.message).to.eq('BrowserStackLocal binary could not be downloaded due to someError');
         }
         tc.downloadTool.restore();
+        Utils.checkToolInCache.restore();
       });
     });
 
@@ -467,6 +529,7 @@ describe('Binary Control Operations', () => {
         sinon.stub(binaryControl, '_generateLogFileMetadata');
         sinon.stub(io, 'rmRF');
         sinon.stub(ArtifactsManager, 'uploadArtifacts').returns(true);
+        sinon.stub(Utils, 'clearEnvironmentVariable');
         binaryControl.logFilePath = 'somePath';
         binaryControl.logFileName = 'someName';
         binaryControl.binaryFolder = 'someFolderPath';
@@ -475,6 +538,7 @@ describe('Binary Control Operations', () => {
       afterEach(() => {
         io.rmRF.restore();
         ArtifactsManager.uploadArtifacts.restore();
+        Utils.clearEnvironmentVariable.restore();
       });
 
       it('Uploads the log files if they exists', async () => {
@@ -487,6 +551,7 @@ describe('Binary Control Operations', () => {
           'someFolderPath',
         );
         sinon.assert.calledWith(io.rmRF, 'somePath');
+        sinon.assert.calledWith(Utils.clearEnvironmentVariable, BROWSERSTACK_LOCAL_LOGS_FILE);
         fs.existsSync.restore();
       });
 
@@ -495,6 +560,7 @@ describe('Binary Control Operations', () => {
         await binaryControl.uploadLogFilesIfAny();
         sinon.assert.notCalled(ArtifactsManager.uploadArtifacts);
         sinon.assert.notCalled(io.rmRF);
+        sinon.assert.calledWith(Utils.clearEnvironmentVariable, BROWSERSTACK_LOCAL_LOGS_FILE);
         fs.existsSync.restore();
       });
     });

@@ -6,6 +6,7 @@ const github = require('@actions/github');
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
+const Utils = require('./utils');
 const ArtifactsManager = require('./artifacts');
 const constants = require('../config/constants');
 
@@ -18,6 +19,9 @@ const {
   LOCAL_BINARY_TRIGGER,
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING,
+  },
+  ENV_VARS: {
+    BROWSERSTACK_LOCAL_LOGS_FILE,
   },
 } = constants;
 
@@ -61,8 +65,9 @@ class BinaryControl {
    * Generates logging file name and its path for Local Binary
    */
   _generateLogFileMetadata() {
-    this.logFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}.log`;
+    this.logFileName = process.env[BROWSERSTACK_LOCAL_LOGS_FILE] || `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_${Date.now()}.log`;
     this.logFilePath = path.resolve(this.binaryFolder, this.logFileName);
+    core.exportVariable(BROWSERSTACK_LOCAL_LOGS_FILE, this.logFileName);
   }
 
   /**
@@ -136,6 +141,10 @@ class BinaryControl {
    */
   async downloadBinary() {
     try {
+      if (Utils.checkToolInCache(LOCAL_BINARY_NAME)) {
+        core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
+        return;
+      }
       await this._makeDirectory();
       core.info('Downloading BrowserStackLocal binary...');
       const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
@@ -216,6 +225,7 @@ class BinaryControl {
       );
       await io.rmRF(this.logFilePath);
     }
+    Utils.clearEnvironmentVariable(BROWSERSTACK_LOCAL_LOGS_FILE);
   }
 }
 
