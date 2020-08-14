@@ -7181,10 +7181,12 @@ exports.default = _default;
 /***/ 353:
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
+const core = __webpack_require__(470);
 const tc = __webpack_require__(533);
 
 class Utils {
   static clearEnvironmentVariable(environmentVariable) {
+    core.exportVariable(environmentVariable, '');
     delete process.env[environmentVariable];
   }
 
