@@ -1207,10 +1207,12 @@ class BinaryControl {
   async downloadBinary() {
     try {
       if (this._binaryExists()) {
+        console.log(core.getState('jinga'));
         core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
         return;
       }
       await this._makeDirectory();
+      core.saveState('jinga', 'lala');
       core.info('Downloading BrowserStackLocal binary...');
       const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
       const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
@@ -1281,6 +1283,7 @@ class BinaryControl {
    * Uploads BrowserStackLocal generated logs (if the file exists for the job)
    */
   async uploadLogFilesIfAny() {
+    core.saveState
     this._generateLogFileMetadata();
     if (fs.existsSync(this.logFilePath)) {
       await ArtifactsManager.uploadArtifacts(
