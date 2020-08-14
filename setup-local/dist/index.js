@@ -1071,6 +1071,7 @@ const github = __webpack_require__(469);
 const os = __webpack_require__(87);
 const path = __webpack_require__(622);
 const fs = __webpack_require__(747);
+const Utils = __webpack_require__(353);
 const ArtifactsManager = __webpack_require__(513);
 const constants = __webpack_require__(613);
 
@@ -1083,6 +1084,9 @@ const {
   LOCAL_BINARY_TRIGGER,
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING,
+  },
+  ENV_VARS: {
+    BROWSERSTACK_LOCAL_LOGS_FILE,
   },
 } = constants;
 
@@ -1126,8 +1130,9 @@ class BinaryControl {
    * Generates logging file name and its path for Local Binary
    */
   _generateLogFileMetadata() {
-    this.logFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}.log`;
+    this.logFileName = process.env[BROWSERSTACK_LOCAL_LOGS_FILE] || `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_${new Date().toISOString()}.log`;
     this.logFilePath = path.resolve(this.binaryFolder, this.logFileName);
+    core.exportVariable(BROWSERSTACK_LOCAL_LOGS_FILE, this.logFileName);
   }
 
   /**
@@ -1196,23 +1201,16 @@ class BinaryControl {
     };
   }
 
-  _binaryExists() {
-    const localBinary = tc.findAllVersions(LOCAL_BINARY_NAME);
-    return localBinary.length ? true : false;
-  }
-
   /**
    * Downloads the Local Binary, extracts it and adds it in the PATH variable
    */
   async downloadBinary() {
     try {
-      if (this._binaryExists()) {
-        console.log(core.getState('jinga'));
+      if (Utils.checkToolInCache(LOCAL_BINARY_NAME)) {
         core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
         return;
       }
       await this._makeDirectory();
-      core.saveState('jinga', 'lala');
       core.info('Downloading BrowserStackLocal binary...');
       const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
       const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
@@ -1283,7 +1281,6 @@ class BinaryControl {
    * Uploads BrowserStackLocal generated logs (if the file exists for the job)
    */
   async uploadLogFilesIfAny() {
-    core.saveState
     this._generateLogFileMetadata();
     if (fs.existsSync(this.logFilePath)) {
       await ArtifactsManager.uploadArtifacts(
@@ -1293,6 +1290,7 @@ class BinaryControl {
       );
       await io.rmRF(this.logFilePath);
     }
+    Utils.clearEnvironmentVariable(BROWSERSTACK_LOCAL_LOGS_FILE);
   }
 }
 
@@ -7177,6 +7175,27 @@ Object.defineProperty(exports, "__esModule", {
 exports.default = void 0;
 var _default = '00000000-0000-0000-0000-000000000000';
 exports.default = _default;
+
+/***/ }),
+
+/***/ 353:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const tc = __webpack_require__(533);
+
+class Utils {
+  static clearEnvironmentVariable(environmentVariable) {
+    delete process.env[environmentVariable];
+  }
+
+  static checkToolInCache(toolName) {
+    const toolCache = tc.findAllVersions(toolName);
+    return toolCache.length !== 0;
+  }
+}
+
+module.exports = Utils;
+
 
 /***/ }),
 
@@ -13383,6 +13402,7 @@ module.exports = {
   ENV_VARS: {
     BROWSERSTACK_ACCESS_KEY: 'BROWSERSTACK_ACCESS_KEY',
     BROWSERSTACK_LOCAL_IDENTIFIER: 'BROWSERSTACK_LOCAL_IDENTIFIER',
+    BROWSERSTACK_LOCAL_LOGS_FILE: 'BROWSERSTACK_LOCAL_LOGS_FILE',
   },
 
   BINARY_LINKS: {
