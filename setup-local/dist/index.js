@@ -1196,11 +1196,20 @@ class BinaryControl {
     };
   }
 
+  _binaryExists() {
+    const localBinary = tc.findAllVersions(LOCAL_BINARY_NAME);
+    return localBinary.length ? true : false;
+  }
+
   /**
    * Downloads the Local Binary, extracts it and adds it in the PATH variable
    */
   async downloadBinary() {
     try {
+      if (this._binaryExists()) {
+        core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
+        return;
+      }
       await this._makeDirectory();
       core.info('Downloading BrowserStackLocal binary...');
       const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
