@@ -18,6 +18,7 @@ module.exports = {
     'no-case-declarations': 'error',
     'prefer-destructuring': ['error', { object: true, array: false }],
     'no-restricted-syntax': 'off',
+    'linebreak-style': 'off',
   },
   ignorePatterns: ['dist/index.js'],
 };

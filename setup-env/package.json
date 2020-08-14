@@ -4,9 +4,9 @@
   "description": "Setup BrowserStack Test Environment",
   "main": "src/index.js",
   "scripts": {
-    "lint": "./node_modules/.bin/eslint . --ext .js",
-    "build": "./node_modules/.bin/ncc build src/index.js",
-    "test": "npm run lint && nyc --reporter=html ./node_modules/.bin/mocha 'test/**/*test.js'"
+    "lint": "eslint . --ext .js",
+    "build": "ncc build src/index.js",
+    "test": "npm run lint && nyc --reporter=html mocha 'test/**/*test.js'"
   },
   "husky": {
     "hooks": {
