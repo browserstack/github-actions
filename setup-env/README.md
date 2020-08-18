@@ -4,8 +4,8 @@ This action sets up the following environment variables in the runner environmen
 
 1. `BROWSERSTACK_BUILD_NAME`: This environment variable is set on the basis of the input to `build-name` field. By default, the value will be decided based on the event, i.e. push, pull_request etc for the workflow:
    1. `push` event: `[<Branch-Name>] Commit <commit-sha>: <commit-message> [Workflow: <Workflow-number>]`
-   2. `pull_request` event: `[<Branch-Name>] PR <PR-number>: <PR-title> [Workflow-number]`
-   3. `release` event: `[<Branch-Name>] Release <Release-tag>: <Release-name> [Workflow-number]`
+   2. `pull_request` event: `[<Branch-Name>] PR <PR-number>: <PR-title> [Workflow: <Workflow-number>]`
+   3. `release` event: `[<Branch-Name>] Release <Release-tag>: <Release-name> [Workflow: <Workflow-number>]`
    4. Other events: `<Event-Name> [Workflow: <Workflow-number>]`
 
 2. `BROWSERSTACK_PROJECT_NAME`: This environment variable is set one basis of the input to `project-name` field. By default, i.e. if any input is not provided, the value will be set as the Repository Name.
