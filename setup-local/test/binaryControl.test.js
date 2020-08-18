@@ -9,7 +9,7 @@ const github = require('@actions/github');
 const os = require('os');
 const fs = require('fs');
 const BinaryControl = require('../src/binaryControl');
-const ArtifactsManager = require('../src/artifacts');
+const ArtifactsManager = require('../src/artifactsManager');
 const constants = require('../config/constants');
 const Utils = require('../src/utils');
 
@@ -76,6 +76,17 @@ describe('Binary Control Operations', () => {
         os.arch.restore();
         path.resolve.restore();
       });
+    });
+
+    it(`Throws error and exits the workflow if the platform is not supported`, () => {
+      sinon.stub(os, 'platform').returns('somePlatform');
+      try {
+        // eslint-disable-next-line no-new
+        new BinaryControl();
+      } catch (e) {
+        expect(e.message).to.eq('Unsupported Platform: somePlatform. No BrowserStackLocal binary found.');
+      }
+      os.platform.restore();
     });
 
     it('Makes Directory for the binary folder in recursive manner', async () => {

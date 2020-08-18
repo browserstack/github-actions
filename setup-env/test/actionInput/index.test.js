@@ -16,14 +16,14 @@ describe('Action Input operations for fetching all inputs, triggering validation
 
     beforeEach(() => {
       stubbedInput = sinon.stub(core, 'getInput');
-      sinon.stub(InputValidator, 'validateUsername').returns('validatedUsername');
+      sinon.stub(InputValidator, 'updateUsername').returns('validatedUsername');
       sinon.stub(InputValidator, 'validateBuildName').returns('validatedBuildName');
       sinon.stub(InputValidator, 'validateProjectName').returns('validatedProjectName');
     });
 
     afterEach(() => {
       core.getInput.restore();
-      InputValidator.validateUsername.restore();
+      InputValidator.updateUsername.restore();
       InputValidator.validateBuildName.restore();
       InputValidator.validateProjectName.restore();
     });
@@ -38,7 +38,7 @@ describe('Action Input operations for fetching all inputs, triggering validation
       sinon.assert.calledWith(core.getInput, INPUT.ACCESS_KEY, { required: true });
       sinon.assert.calledWith(core.getInput, INPUT.BUILD_NAME);
       sinon.assert.calledWith(core.getInput, INPUT.PROJECT_NAME);
-      sinon.assert.calledWith(InputValidator.validateUsername, 'someUsername');
+      sinon.assert.calledWith(InputValidator.updateUsername, 'someUsername');
       sinon.assert.calledWith(InputValidator.validateBuildName, 'someBuildName');
       sinon.assert.calledWith(InputValidator.validateProjectName, 'someProjectName');
       expect(actionInput.username).to.eq('validatedUsername');
@@ -54,7 +54,7 @@ describe('Action Input operations for fetching all inputs, triggering validation
       } catch (e) {
         expect(e.message).to.eq('Action input failed for reason: Username Required');
       }
-      sinon.assert.notCalled(InputValidator.validateUsername);
+      sinon.assert.notCalled(InputValidator.updateUsername);
       sinon.assert.notCalled(InputValidator.validateBuildName);
       sinon.assert.notCalled(InputValidator.validateProjectName);
     });
@@ -67,7 +67,7 @@ describe('Action Input operations for fetching all inputs, triggering validation
       } catch (e) {
         expect(e.message).to.eq('Action input failed for reason: Access Key Required');
       }
-      sinon.assert.notCalled(InputValidator.validateUsername);
+      sinon.assert.notCalled(InputValidator.updateUsername);
       sinon.assert.notCalled(InputValidator.validateBuildName);
       sinon.assert.notCalled(InputValidator.validateProjectName);
     });
