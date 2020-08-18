@@ -43,7 +43,7 @@ class ActionInput {
 
   /**
    * Triggers conditional validation of action input values based on the operation
-   * to be performed, i.e. start/no local connection required, stopping of local connection
+   * to be performed, i.e. starting/stopping of local connection
    */
   _validateInput() {
     this.localTesting = InputValidator.validateLocalTesting(this.localTesting);

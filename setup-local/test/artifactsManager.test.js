@@ -2,7 +2,7 @@ const chai = require('chai');
 const sinon = require('sinon');
 const artifact = require('@actions/artifact');
 const core = require('@actions/core');
-const ArtifactsManager = require('../src/artifacts');
+const ArtifactsManager = require('../src/artifactsManager');
 
 const { expect } = chai;
 
@@ -26,7 +26,7 @@ describe('Artifacts Handling', () => {
     it('by specifying the file location', () => {
       const artifactName = 'RandomName';
       const files = ['/some/path/file'];
-      const rootFolder = ['/some/path'];
+      const rootFolder = '/some/path';
       const options = {
         continueOnError: true,
       };

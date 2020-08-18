@@ -1072,7 +1072,7 @@ const os = __webpack_require__(87);
 const path = __webpack_require__(622);
 const fs = __webpack_require__(747);
 const Utils = __webpack_require__(353);
-const ArtifactsManager = __webpack_require__(513);
+const ArtifactsManager = __webpack_require__(275);
 const constants = __webpack_require__(613);
 
 const {
@@ -1107,15 +1107,21 @@ class BinaryControl {
    * platform and the architecture
    */
   _decidePlatformAndBinary() {
-    if (this.platform === PLATFORMS.DARWIN) {
-      this.binaryLink = BINARY_LINKS.DARWIN;
-      this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
-    } else if (this.platform === PLATFORMS.LINUX) {
-      this.binaryLink = os.arch() === 'x32' ? BINARY_LINKS.LINUX_32 : BINARY_LINKS.LINUX_64;
-      this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
-    } else if (this.platform === PLATFORMS.WIN32) {
-      this.binaryLink = BINARY_LINKS.WINDOWS;
-      this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+    switch (this.platform) {
+      case PLATFORMS.DARWIN:
+        this.binaryLink = BINARY_LINKS.DARWIN;
+        this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+        break;
+      case PLATFORMS.LINUX:
+        this.binaryLink = os.arch() === 'x32' ? BINARY_LINKS.LINUX_32 : BINARY_LINKS.LINUX_64;
+        this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+        break;
+      case PLATFORMS.WIN32:
+        this.binaryLink = BINARY_LINKS.WINDOWS;
+        this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+        break;
+      default:
+        throw Error(`Unsupported Platform: ${this.platform}. No BrowserStackLocal binary found.`);
     }
   }
 
@@ -1205,11 +1211,11 @@ class BinaryControl {
    * Downloads the Local Binary, extracts it and adds it in the PATH variable
    */
   async downloadBinary() {
+    if (Utils.checkToolInCache(LOCAL_BINARY_NAME)) {
+      core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
+      return;
+    }
     try {
-      if (Utils.checkToolInCache(LOCAL_BINARY_NAME)) {
-        core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
-        return;
-      }
       await this._makeDirectory();
       core.info('Downloading BrowserStackLocal binary...');
       const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
@@ -4985,6 +4991,40 @@ class Context {
 }
 exports.Context = Context;
 //# sourceMappingURL=context.js.map
+
+/***/ }),
+
+/***/ 275:
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+const artifact = __webpack_require__(214);
+const core = __webpack_require__(470);
+
+class ArtifactsManager {
+  /**
+   * Upload artifacts to GitHub workflow
+   * @param {String} artifactName Name by which the artifact should be available post uploading
+   * @param {String[]} files Files to upload
+   * @param {String} rootFolder Folder in which the files reside
+   * @returns {Promise<artifact.UploadResponse>} Response of the upload operation
+   */
+  static async uploadArtifacts(artifactName, files, rootFolder) {
+    const artifactClient = artifact.create();
+    const response = await artifactClient.uploadArtifact(
+      artifactName,
+      files,
+      rootFolder, {
+        continueOnError: true,
+      },
+    );
+    core.info(`Response for upload: ${JSON.stringify(response)}`);
+    return response;
+  }
+}
+
+// eslint-disable-next-line import/prefer-default-export
+module.exports = ArtifactsManager;
+
 
 /***/ }),
 
@@ -11145,40 +11185,6 @@ function addHook (state, kind, name, hook) {
 
 /***/ }),
 
-/***/ 513:
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-const artifact = __webpack_require__(214);
-const core = __webpack_require__(470);
-
-class ArtifactsManager {
-  /**
-   * Upload artifacts to GitHub workflow
-   * @param {String} artifactName Name by which the artifact should be available post uploading
-   * @param {String[]} files Files to upload
-   * @param {String} rootFolder Folder in which the files reside
-   * @returns {Promise<artifact.UploadResponse>} Response of the upload operation
-   */
-  static async uploadArtifacts(artifactName, files, rootFolder) {
-    const artifactClient = artifact.create();
-    const response = await artifactClient.uploadArtifact(
-      artifactName,
-      files,
-      rootFolder, {
-        continueOnError: true,
-      },
-    );
-    core.info(`Response for upload: ${JSON.stringify(response)}`);
-    return response;
-  }
-}
-
-// eslint-disable-next-line import/prefer-default-export
-module.exports = ArtifactsManager;
-
-
-/***/ }),
-
 /***/ 521:
 /***/ (function(__unusedmodule, exports, __webpack_require__) {
 
@@ -13975,8 +13981,8 @@ const {
  * Entry point to initiate the Action.
  * 1. Triggers parsing of action input values
  * 2. Decides requirement of Local Binary
- * 3. Start/Stop Local Binary if required
- * 4. Triggers uploading of artifacts
+ * 3. Start/Stop Local Binary
+ * 4. Triggers uploading of artifacts after stopping binary
  */
 const run = async () => {
   try {
@@ -16953,7 +16959,7 @@ class ActionInput {
 
   /**
    * Triggers conditional validation of action input values based on the operation
-   * to be performed, i.e. start/no local connection required, stopping of local connection
+   * to be performed, i.e. starting/stopping of local connection
    */
   _validateInput() {
     this.localTesting = InputValidator.validateLocalTesting(this.localTesting);

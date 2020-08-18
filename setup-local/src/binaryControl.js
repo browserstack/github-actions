@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const Utils = require('./utils');
-const ArtifactsManager = require('./artifacts');
+const ArtifactsManager = require('./artifactsManager');
 const constants = require('../config/constants');
 
 const {
@@ -42,15 +42,21 @@ class BinaryControl {
    * platform and the architecture
    */
   _decidePlatformAndBinary() {
-    if (this.platform === PLATFORMS.DARWIN) {
-      this.binaryLink = BINARY_LINKS.DARWIN;
-      this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
-    } else if (this.platform === PLATFORMS.LINUX) {
-      this.binaryLink = os.arch() === 'x32' ? BINARY_LINKS.LINUX_32 : BINARY_LINKS.LINUX_64;
-      this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
-    } else if (this.platform === PLATFORMS.WIN32) {
-      this.binaryLink = BINARY_LINKS.WINDOWS;
-      this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+    switch (this.platform) {
+      case PLATFORMS.DARWIN:
+        this.binaryLink = BINARY_LINKS.DARWIN;
+        this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+        break;
+      case PLATFORMS.LINUX:
+        this.binaryLink = os.arch() === 'x32' ? BINARY_LINKS.LINUX_32 : BINARY_LINKS.LINUX_64;
+        this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+        break;
+      case PLATFORMS.WIN32:
+        this.binaryLink = BINARY_LINKS.WINDOWS;
+        this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+        break;
+      default:
+        throw Error(`Unsupported Platform: ${this.platform}. No BrowserStackLocal binary found.`);
     }
   }
 
@@ -140,11 +146,11 @@ class BinaryControl {
    * Downloads the Local Binary, extracts it and adds it in the PATH variable
    */
   async downloadBinary() {
+    if (Utils.checkToolInCache(LOCAL_BINARY_NAME)) {
+      core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
+      return;
+    }
     try {
-      if (Utils.checkToolInCache(LOCAL_BINARY_NAME)) {
-        core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
-        return;
-      }
       await this._makeDirectory();
       core.info('Downloading BrowserStackLocal binary...');
       const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
