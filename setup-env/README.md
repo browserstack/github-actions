@@ -18,22 +18,22 @@ This action sets up the following environment variables in the runner environmen
 ## Usage
 ```
 - name: 'BrowserStack Env Setup'
-        uses: 'browserstack/github-actions/setup-env@master'
-        with:
-          username:  ${{ secrets.BROWSERSTACK_USERNAME }}
-          access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
-          build-name: BUILD_INFO
-          project-name: REPO_NAME
+  uses: 'browserstack/github-actions/setup-env@master'
+  with:
+    username:  ${{ secrets.BROWSERSTACK_USERNAME }}
+    access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+    build-name: BUILD_INFO
+    project-name: REPO_NAME
 ```
 
 or
 
 ```
 - name: 'BrowserStack Env Setup'
-        uses: 'browserstack/github-actions/setup-env@master'
-        with:
-          username:  ${{ secrets.BROWSERSTACK_USERNAME }}
-          access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+  uses: 'browserstack/github-actions/setup-env@master'
+  with:
+    username:  ${{ secrets.BROWSERSTACK_USERNAME }}
+    access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
 ```
 
 ## Inputs
