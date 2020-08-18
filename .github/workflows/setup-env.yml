@@ -1,0 +1,33 @@
+name: 'unit tests: setting test env for BrowserStack'
+on:
+  pull_request:
+    paths:
+    - 'setup-env/**'
+    - '.github/workflows/setup-env*'
+  push:
+    paths:
+    - 'setup-env/**'
+    - '.github/workflows/setup-env*'
+    
+
+jobs:
+  unit-tests:
+    runs-on: ${{ matrix.operating-system }}
+    strategy:
+      matrix:
+        operating-system: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set Node.js 12.x
+      uses: actions/setup-node@master
+      with:
+        node-version: 12.x
+
+    - name: npm install
+      working-directory: ./setup-env
+      run: npm install
+
+    - name: Lint and Unit tests
+      working-directory: ./setup-env
+      run: npm run test

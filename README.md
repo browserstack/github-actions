@@ -1,2 +1,4 @@
-# github-actions
-A collection of GitHub Actions for BrowserStack. For internal reference: https://browserstack.atlassian.net/wiki/spaces/ENG/pages/1750928573/GitHub+Integration+via+GitHub+Actions
+BrowserStack Actions
+
+1. Setup Test Environment: [Readme](./setup-env/README.md)
+2. Local Binary Setup: [Readme](./setup-local/README.md)

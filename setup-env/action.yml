@@ -1,0 +1,18 @@
+name: 'setup-env'
+description: 'Setup BrowserStack Test Environment'
+inputs:
+  username:
+    description: 'BrowserStack Username'
+    required: true
+  access-key:
+    description: 'BrowserStack Access Key'
+    required: true
+  build-name:
+    description: 'Build name for the tests'
+    required: false
+  project-name:
+    description: 'Project name for the tests'
+    required: false
+runs:
+  using: 'node12'
+  main: 'dist/index.js'
