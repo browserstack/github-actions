@@ -8,7 +8,7 @@ This action sets up the following environment variables in the runner environmen
    3. `release` event: `[<Branch-Name>] Release <Release-tag>: <Release-name> [Workflow: <Workflow-number>]`
    4. Other events: `<Event-Name> [Workflow: <Workflow-number>]`
 
-2. `BROWSERSTACK_PROJECT_NAME`: This environment variable is set one basis of the input to `project-name` field. By default, i.e. if any input is not provided, the value will be set as the Repository Name.
+2. `BROWSERSTACK_PROJECT_NAME`: This environment variable is set on the basis of the input to `project-name` field. By default, i.e. if any input is not provided, the value will be set as the Repository Name.
 3. `BROWSERSTACK_USERNAME`: This environment variable's value is taken from the input to `username` field. Ideal way would be to pass the GitHub Secret as the input, i.e. `username: ${{ secrets.BROWSERSTACK_USERNAME }}`.
 4. `BROWSERSTACK_ACCESS_KEY`: This environment variable's value is taken from the input to `access-key` field. Ideal way would be to pass the GitHub Secret as the input, i.e. `access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}`.
 
