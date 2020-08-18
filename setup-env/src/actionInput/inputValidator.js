@@ -11,6 +11,7 @@ class InputValidator {
    * 1. Push
    * 2. Pull Request
    * 3. Release
+   * 4. Other events
    * @returns {String} Metadata
    */
   static _getBuildInfo() {
@@ -79,7 +80,7 @@ class InputValidator {
    * @param {String} inputUsername BrowserStack Username
    * @returns {String} Modified Username
    */
-  static validateUsername(inputUsername) {
+  static updateUsername(inputUsername) {
     return `${inputUsername}-GitHubAction`;
   }
 

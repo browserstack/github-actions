@@ -36,11 +36,10 @@ class ActionInput {
   }
 
   /**
-   * Triggers conditional validation of action input values based on the operation
-   * to be performed, i.e. start/no local connection required, stopping of local connection
+   * Validates the input values
    */
   _validateInput() {
-    this.username = InputValidator.validateUsername(this.username);
+    this.username = InputValidator.updateUsername(this.username);
     this.buildName = InputValidator.validateBuildName(this.buildName);
     this.projectName = InputValidator.validateProjectName(this.projectName);
   }
@@ -52,7 +51,10 @@ class ActionInput {
     core.startGroup('Setting Environment Variables');
 
     core.exportVariable(ENV_VARS.BROWSERSTACK_USERNAME, this.username);
+    core.info(`Use ${ENV_VARS.BROWSERSTACK_USERNAME} environment variable for your username in your tests\n`);
+
     core.exportVariable(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
+    core.info(`Use ${ENV_VARS.BROWSERSTACK_ACCESS_KEY} environment variable for your access key in your tests\n`);
 
     core.exportVariable(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
     core.info(`${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable set as: ${this.projectName}`);

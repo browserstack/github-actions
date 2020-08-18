@@ -8,7 +8,7 @@ describe('InputValidator class to validate individual fields of the action input
     context('Validates Username', () => {
       it("Returns the username with '-GitHubAction' suffix", () => {
         const inputUsername = 'someUsername';
-        expect(InputValidator.validateUsername(inputUsername)).to.eq(`${inputUsername}-GitHubAction`);
+        expect(InputValidator.updateUsername(inputUsername)).to.eq(`${inputUsername}-GitHubAction`);
       });
     });
 

@@ -597,6 +597,7 @@ class InputValidator {
    * 1. Push
    * 2. Pull Request
    * 3. Release
+   * 4. Other events
    * @returns {String} Metadata
    */
   static _getBuildInfo() {
@@ -665,7 +666,7 @@ class InputValidator {
    * @param {String} inputUsername BrowserStack Username
    * @returns {String} Modified Username
    */
-  static validateUsername(inputUsername) {
+  static updateUsername(inputUsername) {
     return `${inputUsername}-GitHubAction`;
   }
 
@@ -4297,9 +4298,7 @@ const ActionInput = __webpack_require__(972);
 /**
  * Entry point to initiate the Action.
  * 1. Triggers parsing of action input values
- * 2. Decides requirement of Local Binary
- * 3. Start/Stop Local Binary if required
- * 4. Triggers uploading of artifacts
+ * 2. Sets the environment variables required for BrowserStack
  */
 const run = async () => {
   try {
@@ -6103,11 +6102,10 @@ class ActionInput {
   }
 
   /**
-   * Triggers conditional validation of action input values based on the operation
-   * to be performed, i.e. start/no local connection required, stopping of local connection
+   * Validates the input values
    */
   _validateInput() {
-    this.username = InputValidator.validateUsername(this.username);
+    this.username = InputValidator.updateUsername(this.username);
     this.buildName = InputValidator.validateBuildName(this.buildName);
     this.projectName = InputValidator.validateProjectName(this.projectName);
   }
@@ -6119,7 +6117,10 @@ class ActionInput {
     core.startGroup('Setting Environment Variables');
 
     core.exportVariable(ENV_VARS.BROWSERSTACK_USERNAME, this.username);
+    core.info(`Use ${ENV_VARS.BROWSERSTACK_USERNAME} environment variable for your username in your tests\n`);
+
     core.exportVariable(ENV_VARS.BROWSERSTACK_ACCESS_KEY, this.accessKey);
+    core.info(`Use ${ENV_VARS.BROWSERSTACK_ACCESS_KEY} environment variable for your access key in your tests\n`);
 
     core.exportVariable(ENV_VARS.BROWSERSTACK_PROJECT_NAME, this.projectName);
     core.info(`${ENV_VARS.BROWSERSTACK_PROJECT_NAME} environment variable set as: ${this.projectName}`);
