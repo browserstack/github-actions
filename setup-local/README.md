@@ -6,7 +6,7 @@ This action fulfils the following objectives in your runner environment:
 * The action allows you to pass any combination of arguments for the invocation of the BrowserStackLocal binary as given [here](https://www.browserstack.com/local-testing/binary-params).
 
 ## Prerequisites
-The **browserstack/github-actions/setup-env@master** action should have been invoked prior to invoking this Action as a part of the same job.
+The **browserstack/github-actions/setup-env@master** action should have been invoked prior to invoking this action as a part of the same job.
 
 ## Inputs
 * `local-testing`: (**Mandatory**)
