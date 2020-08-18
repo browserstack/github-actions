@@ -48,7 +48,7 @@ or
   * The keyword `BUILD_INFO` will be replaced by the information based on the event of the workflow as described above for `BROWSERSTACK_BUILD_NAME` environment variable.
 * `project-name`: (**Optional**)
   * You can pass any string that you want to set as the `BROWSERSTACK_PROJECT_NAME`. E.g. `project-name: My Project Name Goes Here`.
-  * You can also pass the keywork `REPO_NAME` as the input. This will set the Repository Name for the `BROWSERSTACK_PROJECT_NAME` environment variable.
+  * You can also pass the keyword `REPO_NAME` as the input. This will set the Repository Name for the `BROWSERSTACK_PROJECT_NAME` environment variable.
   * If no input is provided, `REPO_NAME` will be considered as the default input.
 
 ---
