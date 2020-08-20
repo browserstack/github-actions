@@ -28,7 +28,7 @@ As this is a library of Actions, invoking this Action will trigger the `setup-en
 We recommend you to invoke individual Actions from this library separately. A sample of two Actions being invoked back to back is shown below. You can additionally refer to the individual `README` ([setup-env](./setup-env), [setup-local](./setup-local)) of the Actions to know more about how they work, the inputs they support and their usage examples.
 
 ## Sample Workflow with usage of both Actions
-The workflow example below would be useful for anyone who wants to run their automated tests on the BrowserStack cloud when the web application to be tested, is hosted on a GitHub Actions runner i.e. not accessible from public Internet
+The workflow example below would be useful when the web application to be tested is hosted on the GitHub Actions runner environment, i.e. not accessible from the public Internet.
 
 ```yaml
 name: 'BrowserStack Test'
