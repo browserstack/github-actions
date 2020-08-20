@@ -8,7 +8,7 @@ If you want to test your open source project on BrowserStack then [sign-up here]
 ## Available Actions
 * [setup-env](./setup-env): This Action helps in setting up the required environment variables that are to be used in your test scripts. The environment variables set up here shall be used by other BrowserStack actions as well for their functioning.
   
-* [setup-local](./setup-local): This Action downloads and starts the appropriate BrowserStackLocal binary, thereby creating a secure tunnel connection from the GitHub Actions runner environment to the BrowserStack device cloud. This secure tunnel will be used by the remote browsers in BrowserStack to access your web application hosted in the GitHub Actions runner machine. You do not need this Action, if the application to be tested is accessible over public internet.
+* [setup-local](./setup-local): This Action downloads and starts the appropriate BrowserStackLocal binary, thereby creating a secure tunnel connection from the GitHub Actions runner environment to the BrowserStack device cloud. This secure tunnel will be used by the remote browsers in BrowserStack to access your web application hosted in the GitHub Actions runner environment. **You do not need this Action if the application to be tested is accessible over the public internet.**
 
 ## Pre-requisites
 * You should set your BrowserStack Username and Access Key as GitHub Secrets `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY` respectively.
