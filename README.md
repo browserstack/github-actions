@@ -4,7 +4,7 @@ This respository contains a library of GitHub Actions to help you integrate your
 
 You need a BrowserStack username and access-key to run your tests on the BrowserStack device cloud. You can [sign-up for free trial](https://www.browserstack.com/users/sign_up) if you do not have an existing account.
 
-If you want to test your open source project on BrowserStack then [sign-up here](https://www.browserstack.com/open-source) for lifetime free access to all our products.
+If you want to test your open source project on BrowserStack, then [sign-up here](https://www.browserstack.com/open-source) for lifetime free access to all our products.
 
 ## Available Actions
 * [setup-env](./setup-env): This Action helps in setting up the required environment variables that are to be used in your test scripts. The environment variables set up here shall be used by other BrowserStack actions as well for their functioning.
