@@ -39,7 +39,7 @@ The **browserstack/github-actions/setup-env@master** action should have been inv
 
 ## Usage
 Use the code snippet below in your workflow to start the BrowserStackLocal binary and establish the tunnel connection:
-```
+```yaml
 - name: 'Start BrowserStackLocal Tunnel'
   uses: 'browserstack/github-actions/setup-local@master'
   with:
@@ -49,7 +49,7 @@ Use the code snippet below in your workflow to start the BrowserStackLocal binar
 ```
 
 Use the code snippet below at the end of your workflow after the tests have completed. This will stop the BrowserStackLocal binary and upload the local binary logs (if any):
-```
+```yaml
 - name: 'Stop BrowserStackLocal'
   uses: 'browserstack/github-actions/setup-local@master'
   with:

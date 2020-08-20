@@ -16,7 +16,7 @@ This action sets up the following environment variables in the runner environmen
 * This action does not have any prerequisites.
 
 ## Usage
-```
+```yaml
 - name: 'BrowserStack Env Setup'
   uses: 'browserstack/github-actions/setup-env@master'
   with:
@@ -28,7 +28,7 @@ This action sets up the following environment variables in the runner environmen
 
 or
 
-```
+```yaml
 - name: 'BrowserStack Env Setup'
   uses: 'browserstack/github-actions/setup-env@master'
   with:
