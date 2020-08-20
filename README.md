@@ -14,7 +14,7 @@ If you want to test your open source project on BrowserStack then [sign-up here]
 * You should set your BrowserStack Username and Access Key as GitHub Secrets `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY` respectively.
 
 ## Usage
-As this is actually a library of Actions, invoking only this Action will only invoke the `setup-env` Action internally. The following usage example will only set up the required environment variables:
+As this is a library of Actions, invoking this Action will trigger the `setup-env` Action internally. The following usage example will **only** set up the required environment variables:
 
 ```yaml
 - name: BrowserStack Action
