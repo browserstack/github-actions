@@ -2,8 +2,8 @@
 
 ![BrowserStack Logo](https://d98b8t1nnulk5.cloudfront.net/production/images/layout/logo-invoice.svg)
 
-![setup-env badge](https://github.com/rchougule/github-actions/workflows/setup-env/badge.svg)
-![setup-env badge](https://github.com/rchougule/github-actions/workflows/setup-local/badge.svg)
+![setup-env badge](https://github.com/browserstack/github-actions/workflows/setup-env/badge.svg)
+![setup-env badge](https://github.com/browserstack/github-actions/workflows/setup-local/badge.svg)
 
 This respository contains a library of GitHub Actions to help you integrate your test suite with the [BrowserStack](https://browserstack.com) device cloud. 
 
