@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/browserstack/github-actions/tree/master/setup-env"><img alt="setup-env build status" src="https://github.com/browserstack/github-actions/workflows/setup-env/badge.svg"></a>
-  <a href="https://github.com/browserstack/github-actions/tree/master/setup-local"><img alt="setup-local build status" src="https://github.com/browserstack/github-actions/workflows/setup-local/badge.svg"></a>
+  <a href="https://github.com/browserstack/github-actions/actions?query=workflow%3Asetup-env"><img alt="setup-env build status" src="https://github.com/browserstack/github-actions/workflows/setup-env/badge.svg"></a>
+  <a href="https://github.com/browserstack/github-actions/actions?query=workflow%3Asetup-local"><img alt="setup-local build status" src="https://github.com/browserstack/github-actions/workflows/setup-local/badge.svg"></a>
 </p>
 
 This respository contains a library of GitHub Actions to help you integrate your test suite with the [BrowserStack](https://browserstack.com) device cloud. 
