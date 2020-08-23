@@ -152,7 +152,7 @@ class BinaryControl {
     }
     try {
       await this._makeDirectory();
-      core.info('Deleting any existing partially downloaded binary...');
+      core.info('BrowserStackLocal binary not found in cache. Deleting any stale/existing binary from the download path...');
       const binaryZip = path.resolve(this.binaryFolder, 'binaryZip');
       const previousLocalBinary = path.resolve(this.binaryFolder, LOCAL_BINARY_NAME);
       await Promise.all([io.rmRF(binaryZip), io.rmRF(previousLocalBinary)]);
