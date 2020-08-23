@@ -1214,6 +1214,8 @@ class BinaryControl {
     const cachedBinaryPath = Utils.checkToolInCache(LOCAL_BINARY_NAME, '1.0.0');
     if (cachedBinaryPath) {
       core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
+      // A cached tool is persisted across runs. But the PATH is reset back to its original
+      // between each run. Thus, adding the cached tool path back to PATH again
       core.addPath(cachedBinaryPath);
       return;
     }
@@ -1239,7 +1241,7 @@ class BinaryControl {
   /**
    * Starts Local Binary using the args generated for this action
    */
-  async startBinary() {
+  async startBinary(retry = 1) {
     try {
       this._generateArgsForBinary();
       let { localIdentifier } = this.stateForBinary;
@@ -1259,7 +1261,12 @@ class BinaryControl {
         throw Error(JSON.stringify(error));
       }
     } catch (e) {
-      throw Error(`Local tunnel could not be started. Error message from binary: ${e.message}`);
+      if (retry) {
+        core.info(`Error in starting local tunnel. Trying again...`);
+        await this.startBinary(retry - 1);
+      } else {
+        throw Error(`Local tunnel could not be started. Error message from binary: ${e.message}`);
+      }
     }
   }
 
@@ -7239,8 +7246,6 @@ class Utils {
 
   static checkToolInCache(toolName, version) {
     const toolCachePath = tc.find(toolName, version);
-    console.dir(process.env.PATH);
-    console.dir(toolCachePath);
     return toolCachePath;
   }
 }
