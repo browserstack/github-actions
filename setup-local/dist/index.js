@@ -7240,7 +7240,7 @@ class Utils {
   static checkToolInCache(toolName, version) {
     const toolCachePath = tc.find(toolName, version);
     console.dir(process.env.PATH);
-    console.dir(toolCache);
+    console.dir(toolCachePath);
     return toolCachePath;
   }
 }
