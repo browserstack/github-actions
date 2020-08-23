@@ -1218,7 +1218,9 @@ class BinaryControl {
     try {
       await this._makeDirectory();
       core.info('Downloading BrowserStackLocal binary...');
-      const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
+      const binaryZip = path.resolve(this.binaryFolder, 'binaryZip');
+      await io.rmRF(binaryZip);
+      const downloadPath = await tc.downloadTool(this.binaryLink, binaryZip);
       const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
       core.info(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
       const cachedPath = await tc.cacheDir(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
