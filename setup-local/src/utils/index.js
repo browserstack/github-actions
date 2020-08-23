@@ -11,6 +11,10 @@ class Utils {
     const toolCachePath = tc.find(toolName, version);
     return toolCachePath;
   }
+
+  static async sleepFor(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
 }
 
 module.exports = Utils;

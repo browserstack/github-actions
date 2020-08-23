@@ -152,8 +152,8 @@ class BinaryControl {
       core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
       // A cached tool is persisted across runs. But the PATH is reset back to its original
       // state between each run. Thus, adding the cached tool path back to PATH again.
-      core.addPath(cachedBinaryPath);
-      return;
+      // core.addPath(cachedBinaryPath);
+      // return;
     }
 
     try {
@@ -204,7 +204,9 @@ class BinaryControl {
         }
       } catch (e) {
         if (triesAvailable) {
-          core.info(`Error in starting local tunnel: ${e.message}. Trying again...`);
+          core.info(`Error in starting local tunnel: ${e.message}. Trying again in 5 seconds...`);
+          // eslint-disable-next-line no-await-in-loop
+          await Utils.sleepFor(5000);
         } else {
           throw Error(`Local tunnel could not be started. Error message from binary: ${e.message}`);
         }
