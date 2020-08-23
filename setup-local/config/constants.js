@@ -55,5 +55,6 @@ module.exports = {
 
   LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
   LOCAL_BINARY_NAME: 'BrowserStackLocal',
+  LOCAL_BINARY_ZIP: 'binaryZip',
   LOCAL_LOG_FILE_PREFIX: 'BrowserStackLocal',
 };

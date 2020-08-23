@@ -18,6 +18,7 @@ const {
   LOCAL_BINARY_FOLDER,
   PLATFORMS,
   LOCAL_BINARY_NAME,
+  LOCAL_BINARY_ZIP,
   LOCAL_LOG_FILE_PREFIX,
   LOCAL_BINARY_TRIGGER,
   ALLOWED_INPUT_VALUES: {
@@ -387,7 +388,7 @@ describe('Binary Control Operations', () => {
       it('Delete any stale local binary (non windows)', () => {
         binaryControl.platform = PLATFORMS.DARWIN;
         binaryControl._removeAnyStaleBinary();
-        const binaryZipPath = path.resolve(binaryControl.binaryFolder, 'binaryZip');
+        const binaryZipPath = path.resolve(binaryControl.binaryFolder, LOCAL_BINARY_ZIP);
         const staleBinaryPath = path.resolve(
           binaryControl.binaryFolder,
           `${LOCAL_BINARY_NAME}`,
@@ -399,7 +400,7 @@ describe('Binary Control Operations', () => {
       it('Delete any stale local binary (windows)', () => {
         binaryControl.platform = PLATFORMS.WIN32;
         binaryControl._removeAnyStaleBinary();
-        const binaryZipPath = path.resolve(binaryControl.binaryFolder, 'binaryZip');
+        const binaryZipPath = path.resolve(binaryControl.binaryFolder, LOCAL_BINARY_ZIP);
         const staleBinaryPath = path.resolve(
           binaryControl.binaryFolder,
           `${LOCAL_BINARY_NAME}.exe`,

@@ -15,6 +15,7 @@ const {
   LOCAL_BINARY_FOLDER,
   PLATFORMS,
   LOCAL_BINARY_NAME,
+  LOCAL_BINARY_ZIP,
   LOCAL_LOG_FILE_PREFIX,
   LOCAL_BINARY_TRIGGER,
   BINARY_MAX_TRIES,
@@ -149,7 +150,7 @@ class BinaryControl {
   }
 
   async _removeAnyStaleBinary() {
-    const binaryZip = path.resolve(this.binaryFolder, 'binaryZip');
+    const binaryZip = path.resolve(this.binaryFolder, LOCAL_BINARY_ZIP);
     const previousLocalBinary = path.resolve(
       this.binaryFolder,
       `${LOCAL_BINARY_NAME}${this.platform === PLATFORMS.WIN32 ? '.exe' : ''}`,
@@ -176,7 +177,10 @@ class BinaryControl {
       this._removeAnyStaleBinary();
 
       core.info('Downloading BrowserStackLocal binary...');
-      const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
+      const downloadPath = await tc.downloadTool(
+        this.binaryLink,
+        path.resolve(this.binaryFolder, LOCAL_BINARY_ZIP),
+      );
       const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
       core.info(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
       const cachedPath = await tc.cacheDir(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
