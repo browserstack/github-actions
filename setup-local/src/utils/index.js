@@ -9,6 +9,7 @@ class Utils {
 
   static checkToolInCache(toolName) {
     const toolCache = tc.findAllVersions(toolName);
+    console.dir(process.env.PATH);
     console.dir(toolCache);
     return toolCache.length !== 0;
   }
