@@ -40,25 +40,33 @@ describe('Binary Control Operations', () => {
   });
 
   context('Private Methods Behaviour', () => {
+    before(() => {
+      process.env.GITHUB_WORKSPACE = '/some/work/space';
+    });
+
+    after(() => {
+      process.env.GITHUB_WORKSPACE = '';
+    });
+
     const platformAndBinary = [
       {
         binary: BINARY_LINKS.DARWIN,
-        folder: `/work/binary/${LOCAL_BINARY_FOLDER}/darwin`,
+        folder: `/_work/binary/${LOCAL_BINARY_FOLDER}/darwin`,
         arch: 'x64',
         platform: PLATFORMS.DARWIN,
       }, {
         binary: BINARY_LINKS.LINUX_32,
-        folder: `/work/binary/${LOCAL_BINARY_FOLDER}/linux`,
+        folder: `/_work/binary/${LOCAL_BINARY_FOLDER}/linux`,
         arch: 'x32',
         platform: PLATFORMS.LINUX,
       }, {
         binary: BINARY_LINKS.LINUX_64,
-        folder: `/work/binary/${LOCAL_BINARY_FOLDER}/linux`,
+        folder: `/_work/binary/${LOCAL_BINARY_FOLDER}/linux`,
         arch: 'x64',
         platform: PLATFORMS.LINUX,
       }, {
         binary: BINARY_LINKS.WINDOWS,
-        folder: `/work/binary/${LOCAL_BINARY_FOLDER}/win32`,
+        folder: `/_work/binary/${LOCAL_BINARY_FOLDER}/win32`,
         arch: 'x32',
         platform: PLATFORMS.WIN32,
       },
@@ -91,18 +99,22 @@ describe('Binary Control Operations', () => {
 
     it('Makes Directory for the binary folder in recursive manner', async () => {
       sinon.stub(io, 'mkdirP').returns(true);
-      sinon.stub(os, 'platform').returns('darwin');
       const binaryControl = new BinaryControl();
       await binaryControl._makeDirectory();
-      sinon.assert.calledWith(io.mkdirP, path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, 'darwin'));
+      sinon.assert.calledWith(io.mkdirP, path.resolve(
+        process.env.GITHUB_WORKSPACE,
+        '..', '..', '..',
+        '_work',
+        'binary',
+        LOCAL_BINARY_FOLDER,
+        os.platform(),
+      ));
       io.mkdirP.restore();
-      os.platform.restore();
     });
 
     context('Log File metadata', () => {
       beforeEach(() => {
         sinon.stub(core, 'exportVariable');
-        sinon.stub(os, 'platform').returns('darwin');
         sinon.stub(github, 'context').value({
           job: 'someJobName',
         });
@@ -111,13 +123,22 @@ describe('Binary Control Operations', () => {
       afterEach(() => {
         delete process.env[BROWSERSTACK_LOCAL_LOGS_FILE];
         core.exportVariable.restore();
-        os.platform.restore();
       });
 
       it('Generates log-file name and path for Binary', () => {
         sinon.stub(Date, 'now').returns('now');
         const expectedLogFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_now.log`;
-        const expectedLogFilePath = path.resolve(path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, 'darwin'), expectedLogFileName);
+        const expectedLogFilePath = path.resolve(
+          path.resolve(
+            process.env.GITHUB_WORKSPACE,
+            '..', '..', '..',
+            '_work',
+            'binary',
+            LOCAL_BINARY_FOLDER,
+            os.platform(),
+          ),
+          expectedLogFileName,
+        );
         const binaryControl = new BinaryControl();
         binaryControl._generateLogFileMetadata();
         expect(binaryControl.logFileName).to.eq(expectedLogFileName);
@@ -133,7 +154,17 @@ describe('Binary Control Operations', () => {
       it('Fetches log-file name and generates path for Binary if logs file name was already defined', () => {
         process.env[BROWSERSTACK_LOCAL_LOGS_FILE] = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_now.log`;
         const expectedLogFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_now.log`;
-        const expectedLogFilePath = path.resolve(path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, 'darwin'), expectedLogFileName);
+        const expectedLogFilePath = path.resolve(
+          path.resolve(
+            process.env.GITHUB_WORKSPACE,
+            '..', '..', '..',
+            '_work',
+            'binary',
+            LOCAL_BINARY_FOLDER,
+            os.platform(),
+          ),
+          expectedLogFileName,
+        );
         const binaryControl = new BinaryControl();
         binaryControl._generateLogFileMetadata();
         expect(binaryControl.logFileName).to.eq(expectedLogFileName);
@@ -148,18 +179,18 @@ describe('Binary Control Operations', () => {
 
     context('Generates args string based on the input to Binary Control & the operation required, i.e. start/stop', () => {
       beforeEach(() => {
-        sinon.stub(os, 'platform').returns('darwin');
         sinon.stub(github, 'context').value({
           job: 'someJobName',
         });
         sinon.stub(Date, 'now').returns('now');
         sinon.stub(core, 'exportVariable');
+        process.env.GITHUB_WORKSPACE = '/some/work/space';
       });
 
       afterEach(() => {
-        os.platform.restore();
         Date.now.restore();
         core.exportVariable.restore();
+        process.env.GITHUB_WORKSPACE = '';
       });
 
       context('Start Operation', () => {
@@ -172,7 +203,16 @@ describe('Binary Control Operations', () => {
             localTesting: 'start',
           };
 
-          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction --arg1 val1 --arg2 val2 --local-identifier someIdentifier --verbose 1 --log-file ${path.resolve(process.env.HOME, 'work', 'binary', 'LocalBinaryFolder', 'darwin', 'BrowserStackLocal_someJobName_now.log')} `;
+          const expectedLogFilePath = path.resolve(
+            process.env.GITHUB_WORKSPACE,
+            '..', '..', '..',
+            '_work',
+            'binary',
+            'LocalBinaryFolder',
+            os.platform(),
+            'BrowserStackLocal_someJobName_now.log',
+          );
+          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction --arg1 val1 --arg2 val2 --local-identifier someIdentifier --verbose 1 --log-file ${expectedLogFilePath} `;
           const binaryControl = new BinaryControl(stateForBinary);
           binaryControl._generateArgsForBinary();
           expect(binaryControl.binaryArgs).to.eq(expectedFinalArgs);
