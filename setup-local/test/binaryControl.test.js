@@ -385,6 +385,7 @@ describe('Binary Control Operations', () => {
       });
 
       it('Delete any stale local binary (non windows)', () => {
+        binaryControl.platform = PLATFORMS.DARWIN;
         binaryControl._removeAnyStaleBinary();
         const binaryZipPath = path.resolve(binaryControl.binaryFolder, 'binaryZip');
         const staleBinaryPath = path.resolve(
