@@ -168,14 +168,14 @@ class BinaryControl {
     try {
       await this._makeDirectory();
       core.debug('BrowserStackLocal binary not found in cache. Deleting any stale/existing binary before downloading...');
-      this._removeAnyStaleBinary();
+      // this._removeAnyStaleBinary();
 
       core.info('Downloading BrowserStackLocal binary...');
       const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
-      const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
+      // const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
       core.info(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
-      const cachedPath = await tc.cacheDir(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
-      core.addPath(cachedPath);
+      // const cachedPath = await tc.cacheDir(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
+      // core.addPath(cachedPath);
     } catch (e) {
       throw Error(`BrowserStackLocal binary could not be downloaded due to ${e.message}`);
     }
@@ -211,7 +211,7 @@ class BinaryControl {
         }
       } catch (e) {
         if (triesAvailable) {
-          core.debug(`Error in starting local tunnel: ${e.message}. Trying again in 5 seconds...`);
+          core.info(`Error in starting local tunnel: ${e.message}. Trying again in 5 seconds...`);
           // eslint-disable-next-line no-await-in-loop
           await Utils.sleepFor(5000);
         } else {

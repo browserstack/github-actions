@@ -405,13 +405,11 @@ describe('Binary Control Operations', () => {
         binaryControl = new BinaryControl();
         sinon.stub(binaryControl, '_generateArgsForBinary').returns(true);
         sinon.stub(core, 'info');
-        sinon.stub(core, 'debug');
         sinon.stub(Utils, 'sleepFor');
       });
 
       afterEach(() => {
         core.info.restore();
-        core.debug.restore();
         Utils.sleepFor.restore();
       });
 
@@ -470,7 +468,7 @@ describe('Binary Control Operations', () => {
             await binaryControl.startBinary();
           } catch (e) {
             sinon.assert.calledWith(Utils.sleepFor, 5000);
-            sinon.assert.calledWith(core.debug, 'Error in starting local tunnel: "some message". Trying again in 5 seconds...');
+            sinon.assert.calledWith(core.info, 'Error in starting local tunnel: "some message". Trying again in 5 seconds...');
             expect(e.message).to.eq('Local tunnel could not be started. Error message from binary: "some message"');
           }
         });
@@ -490,7 +488,7 @@ describe('Binary Control Operations', () => {
             await binaryControl.startBinary();
           } catch (e) {
             sinon.assert.calledWith(Utils.sleepFor, 5000);
-            sinon.assert.calledWith(core.debug, `Error in starting local tunnel: ${JSON.stringify(response.error)}. Trying again in 5 seconds...`);
+            sinon.assert.calledWith(core.info, `Error in starting local tunnel: ${JSON.stringify(response.error)}. Trying again in 5 seconds...`);
             expect(e.message).to.eq(`Local tunnel could not be started. Error message from binary: ${JSON.stringify(response.error)}`);
           }
         });
