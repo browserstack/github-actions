@@ -1192,20 +1192,20 @@ class BinaryControl {
   async _triggerBinary(operation) {
     let triggerOutput = '';
     let triggerError = '';
-    await exec.exec(
-      `${LOCAL_BINARY_NAME} ${this.binaryArgs} --daemon ${operation}`,
-      [],
-      {
-        listeners: {
-          stdout: (data) => {
-            triggerOutput += data.toString();
-          },
-          stderr: (data) => {
-            triggerError += data.toString();
-          },
-        },
-      },
-    );
+    // await exec.exec(
+    //   `${LOCAL_BINARY_NAME} ${this.binaryArgs} --daemon ${operation}`,
+    //   [],
+    //   {
+    //     listeners: {
+    //       stdout: (data) => {
+    //         triggerOutput += data.toString();
+    //       },
+    //       stderr: (data) => {
+    //         triggerError += data.toString();
+    //       },
+    //     },
+    //   },
+    // );
 
     return {
       output: triggerOutput,
