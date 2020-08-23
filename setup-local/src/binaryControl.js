@@ -46,15 +46,15 @@ class BinaryControl {
     switch (this.platform) {
       case PLATFORMS.DARWIN:
         this.binaryLink = BINARY_LINKS.DARWIN;
-        this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+        this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', '_work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
         break;
       case PLATFORMS.LINUX:
         this.binaryLink = os.arch() === 'x32' ? BINARY_LINKS.LINUX_32 : BINARY_LINKS.LINUX_64;
-        this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+        this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', '_work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
         break;
       case PLATFORMS.WIN32:
         this.binaryLink = BINARY_LINKS.WINDOWS;
-        this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
+        this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', '_work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
         break;
       default:
         throw Error(`Unsupported Platform: ${this.platform}. No BrowserStackLocal binary found.`);
