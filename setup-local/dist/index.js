@@ -1233,7 +1233,7 @@ class BinaryControl {
     try {
       await this._makeDirectory();
       core.debug('BrowserStackLocal binary not found in cache. Deleting any stale/existing binary before downloading...');
-      // this._removeAnyStaleBinary();
+      this._removeAnyStaleBinary();
 
       core.info('Downloading BrowserStackLocal binary...');
       const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
