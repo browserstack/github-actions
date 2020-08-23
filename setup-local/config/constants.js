@@ -49,6 +49,8 @@ module.exports = {
     },
   },
 
+  BINARY_MAX_TRIES: 2,
+
   RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file', 'ci-plugin'],
 
   LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',

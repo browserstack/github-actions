@@ -19,6 +19,7 @@ module.exports = {
     'prefer-destructuring': ['error', { object: true, array: false }],
     'no-restricted-syntax': 'off',
     'linebreak-style': 'off',
+    'no-plusplus': 'off',
   },
   ignorePatterns: ['dist/index.js'],
 };

@@ -17,6 +17,7 @@ const {
   LOCAL_BINARY_NAME,
   LOCAL_LOG_FILE_PREFIX,
   LOCAL_BINARY_TRIGGER,
+  BINARY_MAX_TRIES,
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING,
   },
@@ -150,7 +151,7 @@ class BinaryControl {
     if (cachedBinaryPath) {
       core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
       // A cached tool is persisted across runs. But the PATH is reset back to its original
-      // between each run. Thus, adding the cached tool path back to PATH again
+      // state between each run. Thus, adding the cached tool path back to PATH again.
       core.addPath(cachedBinaryPath);
       return;
     }
@@ -176,31 +177,37 @@ class BinaryControl {
   /**
    * Starts Local Binary using the args generated for this action
    */
-  async startBinary(retry = 1) {
-    try {
-      this._generateArgsForBinary();
-      let { localIdentifier } = this.stateForBinary;
-      localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
-      core.info(`Starting local tunnel ${localIdentifier} in daemon mode...`);
+  async startBinary() {
+    let { localIdentifier } = this.stateForBinary;
+    localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
+    core.info(`Starting local tunnel ${localIdentifier} in daemon mode...`);
 
-      const { output, error } = await this._triggerBinary(LOCAL_TESTING.START);
+    let triesAvailable = BINARY_MAX_TRIES;
 
-      if (!error) {
-        const outputParsed = JSON.parse(output);
-        if (outputParsed.state === LOCAL_BINARY_TRIGGER.START.CONNECTED) {
-          core.info(`Local tunnel status: ${outputParsed.message}`);
-        } else {
+    while (triesAvailable--) {
+      try {
+        this._generateArgsForBinary();
+
+        // eslint-disable-next-line no-await-in-loop
+        const { output, error } = await this._triggerBinary(LOCAL_TESTING.START);
+
+        if (!error) {
+          const outputParsed = JSON.parse(output);
+          if (outputParsed.state === LOCAL_BINARY_TRIGGER.START.CONNECTED) {
+            core.info(`Local tunnel status: ${outputParsed.message}`);
+            return;
+          }
+
           throw Error(JSON.stringify(outputParsed.message));
+        } else {
+          throw Error(JSON.stringify(error));
         }
-      } else {
-        throw Error(JSON.stringify(error));
-      }
-    } catch (e) {
-      if (retry) {
-        core.info(`Error in starting local tunnel. Trying again...`);
-        await this.startBinary(retry - 1);
-      } else {
-        throw Error(`Local tunnel could not be started. Error message from binary: ${e.message}`);
+      } catch (e) {
+        if (triesAvailable) {
+          core.info(`Error in starting local tunnel: ${e.message}. Trying again...`);
+        } else {
+          throw Error(`Local tunnel could not be started. Error message from binary: ${e.message}`);
+        }
       }
     }
   }
