@@ -13,7 +13,9 @@ class Utils {
   }
 
   static async sleepFor(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    let parsedMilliseconds = parseFloat(ms);
+    parsedMilliseconds = parsedMilliseconds > 0 ? parsedMilliseconds : 0;
+    return new Promise((resolve) => setTimeout(resolve, parsedMilliseconds));
   }
 }
 

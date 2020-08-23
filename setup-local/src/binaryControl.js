@@ -143,6 +143,15 @@ class BinaryControl {
     };
   }
 
+  async _removeAnyStaleBinary() {
+    const binaryZip = path.resolve(this.binaryFolder, 'binaryZip');
+    const previousLocalBinary = path.resolve(
+      this.binaryFolder,
+      `${LOCAL_BINARY_NAME}${this.platform === PLATFORMS.WIN32 ? '.exe' : ''}`,
+    );
+    await Promise.all([io.rmRF(binaryZip), io.rmRF(previousLocalBinary)]);
+  }
+
   /**
    * Downloads the Local Binary, extracts it and adds it in the PATH variable
    */
@@ -152,22 +161,17 @@ class BinaryControl {
       core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
       // A cached tool is persisted across runs. But the PATH is reset back to its original
       // state between each run. Thus, adding the cached tool path back to PATH again.
-      // core.addPath(cachedBinaryPath);
-      // return;
+      core.addPath(cachedBinaryPath);
+      return;
     }
 
     try {
       await this._makeDirectory();
-      core.info('BrowserStackLocal binary not found in cache. Deleting any stale/existing binary from the download path...');
-      const binaryZip = path.resolve(this.binaryFolder, 'binaryZip');
-      const previousLocalBinary = path.resolve(
-        this.binaryFolder,
-        `${LOCAL_BINARY_NAME}${this.platform === PLATFORMS.WIN32 ? '.exe' : ''}`
-      );
-      await Promise.all([io.rmRF(binaryZip), io.rmRF(previousLocalBinary)]);
+      core.debug('BrowserStackLocal binary not found in cache. Deleting any stale/existing binary before downloading...');
+      this._removeAnyStaleBinary();
 
       core.info('Downloading BrowserStackLocal binary...');
-      const downloadPath = await tc.downloadTool(this.binaryLink, binaryZip);
+      const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
       const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
       core.info(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
       const cachedPath = await tc.cacheDir(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
@@ -207,7 +211,7 @@ class BinaryControl {
         }
       } catch (e) {
         if (triesAvailable) {
-          core.info(`Error in starting local tunnel: ${e.message}. Trying again in 5 seconds...`);
+          core.debug(`Error in starting local tunnel: ${e.message}. Trying again in 5 seconds...`);
           // eslint-disable-next-line no-await-in-loop
           await Utils.sleepFor(5000);
         } else {

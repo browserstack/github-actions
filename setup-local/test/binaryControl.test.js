@@ -317,12 +317,16 @@ describe('Binary Control Operations', () => {
         binaryControl.binaryLink = 'someLink';
         binaryControl.binaryFolder = 'someFolder';
         sinon.stub(core, 'info');
+        sinon.stub(core, 'debug');
         sinon.stub(core, 'addPath');
+        sinon.stub(io, 'rmRF');
       });
 
       afterEach(() => {
         core.info.restore();
+        core.debug.restore();
         core.addPath.restore();
+        io.rmRF.restore();
       });
 
       it('Downloads and sets the binary path without any error', async () => {
@@ -330,21 +334,47 @@ describe('Binary Control Operations', () => {
         sinon.stub(tc, 'downloadTool').returns('downloadPath');
         sinon.stub(tc, 'extractZip').returns('extractedPath');
         sinon.stub(tc, 'cacheDir').returns('cachedPath');
+        sinon.stub(binaryControl, '_removeAnyStaleBinary');
         await binaryControl.downloadBinary();
-        expect(binaryControl.binaryPath).to.eq('extractedPath');
+        sinon.assert.called(binaryControl._removeAnyStaleBinary);
         tc.downloadTool.restore();
         tc.extractZip.restore();
         tc.cacheDir.restore();
         Utils.checkToolInCache.restore();
+        binaryControl._removeAnyStaleBinary.restore();
+      });
+
+      it('Delete any stale local binary (non windows)', () => {
+        binaryControl._removeAnyStaleBinary();
+        const binaryZipPath = path.resolve(binaryControl.binaryFolder, 'binaryZip');
+        const staleBinaryPath = path.resolve(
+          binaryControl.binaryFolder,
+          `${LOCAL_BINARY_NAME}`,
+        );
+        sinon.assert.calledWith(io.rmRF, binaryZipPath);
+        sinon.assert.calledWith(io.rmRF, staleBinaryPath);
+      });
+
+      it('Delete any stale local binary (windows)', () => {
+        binaryControl.platform = PLATFORMS.WIN32;
+        binaryControl._removeAnyStaleBinary();
+        const binaryZipPath = path.resolve(binaryControl.binaryFolder, 'binaryZip');
+        const staleBinaryPath = path.resolve(
+          binaryControl.binaryFolder,
+          `${LOCAL_BINARY_NAME}.exe`,
+        );
+        sinon.assert.calledWith(io.rmRF, binaryZipPath);
+        sinon.assert.calledWith(io.rmRF, staleBinaryPath);
       });
 
       it('Uses cached binary if it already exists (was already downloaded)', async () => {
-        sinon.stub(Utils, 'checkToolInCache').returns(true);
+        sinon.stub(Utils, 'checkToolInCache').returns('some/path/of/tool');
         sinon.stub(tc, 'downloadTool').returns('downloadPath');
         sinon.stub(tc, 'extractZip').returns('extractedPath');
         sinon.stub(tc, 'cacheDir').returns('cachedPath');
         await binaryControl.downloadBinary();
         sinon.assert.calledWith(core.info, 'BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
+        sinon.assert.calledWith(core.addPath, 'some/path/of/tool');
         sinon.assert.notCalled(tc.downloadTool);
         sinon.assert.notCalled(tc.extractZip);
         sinon.assert.notCalled(tc.cacheDir);
@@ -375,10 +405,14 @@ describe('Binary Control Operations', () => {
         binaryControl = new BinaryControl();
         sinon.stub(binaryControl, '_generateArgsForBinary').returns(true);
         sinon.stub(core, 'info');
+        sinon.stub(core, 'debug');
+        sinon.stub(Utils, 'sleepFor');
       });
 
       afterEach(() => {
         core.info.restore();
+        core.debug.restore();
+        Utils.sleepFor.restore();
       });
 
       context('Starting Local Tunnel', () => {
@@ -419,7 +453,7 @@ describe('Binary Control Operations', () => {
           sinon.assert.calledWith(core.info, 'Local tunnel status: some message');
         });
 
-        it("Fails and doesn't connect the local tunnel if the response state is 'disconnected'", async () => {
+        it("Fails and doesn't connect the local tunnel if the response state is 'disconnected' after each available tries", async () => {
           const response = {
             output: JSON.stringify({
               state: LOCAL_BINARY_TRIGGER.START.DISCONNECTED,
@@ -435,11 +469,13 @@ describe('Binary Control Operations', () => {
           try {
             await binaryControl.startBinary();
           } catch (e) {
+            sinon.assert.calledWith(Utils.sleepFor, 5000);
+            sinon.assert.calledWith(core.debug, 'Error in starting local tunnel: "some message". Trying again in 5 seconds...');
             expect(e.message).to.eq('Local tunnel could not be started. Error message from binary: "some message"');
           }
         });
 
-        it("Fails and doesn't connect if binary throws an error message", async () => {
+        it("Fails and doesn't connect if binary throws an error message after each available tries", async () => {
           const response = {
             output: '',
             error: JSON.stringify({
@@ -453,6 +489,8 @@ describe('Binary Control Operations', () => {
           try {
             await binaryControl.startBinary();
           } catch (e) {
+            sinon.assert.calledWith(Utils.sleepFor, 5000);
+            sinon.assert.calledWith(core.debug, `Error in starting local tunnel: ${JSON.stringify(response.error)}. Trying again in 5 seconds...`);
             expect(e.message).to.eq(`Local tunnel could not be started. Error message from binary: ${JSON.stringify(response.error)}`);
           }
         });
