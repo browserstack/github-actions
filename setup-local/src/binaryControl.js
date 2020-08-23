@@ -43,18 +43,23 @@ class BinaryControl {
    * platform and the architecture
    */
   _decidePlatformAndBinary() {
+    this.binaryFolder = path.resolve(
+      process.env.GITHUB_WORKSPACE,
+      '..', '..', '..',
+      '_work',
+      'binary',
+      LOCAL_BINARY_FOLDER,
+      this.platform,
+    );
     switch (this.platform) {
       case PLATFORMS.DARWIN:
         this.binaryLink = BINARY_LINKS.DARWIN;
-        this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', '..', '_work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
         break;
       case PLATFORMS.LINUX:
         this.binaryLink = os.arch() === 'x32' ? BINARY_LINKS.LINUX_32 : BINARY_LINKS.LINUX_64;
-        this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', '..', '_work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
         break;
       case PLATFORMS.WIN32:
         this.binaryLink = BINARY_LINKS.WINDOWS;
-        this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', '..', '_work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
         break;
       default:
         throw Error(`Unsupported Platform: ${this.platform}. No BrowserStackLocal binary found.`);
@@ -173,8 +178,8 @@ class BinaryControl {
       core.info('Downloading BrowserStackLocal binary...');
       const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
       core.info(`Downloaded Path: ${downloadPath}`);
-      // const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
-      // core.info(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
+      const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
+      core.info(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
       // const cachedPath = await tc.cacheDir(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
       // core.addPath(cachedPath);
     } catch (e) {
