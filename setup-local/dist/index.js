@@ -1211,10 +1211,13 @@ class BinaryControl {
    * Downloads the Local Binary, extracts it and adds it in the PATH variable
    */
   async downloadBinary() {
-    if (Utils.checkToolInCache(LOCAL_BINARY_NAME)) {
+    const cachedBinaryPath = Utils.checkToolInCache(LOCAL_BINARY_NAME, '1.0.0');
+    if (cachedBinaryPath) {
       core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
-      // return;
+      core.addPath(cachedBinaryPath);
+      return;
     }
+
     try {
       await this._makeDirectory();
       core.info('BrowserStackLocal binary not found in cache. Deleting any stale/existing binary from the download path...');
@@ -1228,7 +1231,6 @@ class BinaryControl {
       core.info(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
       const cachedPath = await tc.cacheDir(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
       core.addPath(cachedPath);
-      this.binaryPath = extractedPath;
     } catch (e) {
       throw Error(`BrowserStackLocal binary could not be downloaded due to ${e.message}`);
     }
@@ -7235,11 +7237,11 @@ class Utils {
     delete process.env[environmentVariable];
   }
 
-  static checkToolInCache(toolName) {
-    const toolCache = tc.findAllVersions(toolName);
+  static checkToolInCache(toolName, version) {
+    const toolCachePath = tc.find(toolName, version);
     console.dir(process.env.PATH);
     console.dir(toolCache);
-    return toolCache.length !== 0;
+    return toolCachePath;
   }
 }
 

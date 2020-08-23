@@ -7,11 +7,11 @@ class Utils {
     delete process.env[environmentVariable];
   }
 
-  static checkToolInCache(toolName) {
-    const toolCache = tc.findAllVersions(toolName);
+  static checkToolInCache(toolName, version) {
+    const toolCachePath = tc.find(toolName, version);
     console.dir(process.env.PATH);
     console.dir(toolCache);
-    return toolCache.length !== 0;
+    return toolCachePath;
   }
 }
 
