@@ -1213,7 +1213,7 @@ class BinaryControl {
   async downloadBinary() {
     if (Utils.checkToolInCache(LOCAL_BINARY_NAME)) {
       core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
-      return;
+      // return;
     }
     try {
       await this._makeDirectory();
@@ -7237,6 +7237,7 @@ class Utils {
 
   static checkToolInCache(toolName) {
     const toolCache = tc.findAllVersions(toolName);
+    console.dir(toolCache);
     return toolCache.length !== 0;
   }
 }

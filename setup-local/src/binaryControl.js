@@ -148,7 +148,7 @@ class BinaryControl {
   async downloadBinary() {
     if (Utils.checkToolInCache(LOCAL_BINARY_NAME)) {
       core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
-      return;
+      // return;
     }
     try {
       await this._makeDirectory();
