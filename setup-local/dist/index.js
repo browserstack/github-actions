@@ -1219,7 +1219,9 @@ class BinaryControl {
       await this._makeDirectory();
       core.info('Deleting any existing partially downloaded binary...');
       const binaryZip = path.resolve(this.binaryFolder, 'binaryZip');
-      await io.rmRF(binaryZip);
+      const previousLocalBinary = path.resolve(this.binaryFolder, LOCAL_BINARY_NAME);
+      await Promise.all([io.rmRF(binaryZip), io.rmRF(previousLocalBinary)]);
+
       core.info('Downloading BrowserStackLocal binary...');
       const downloadPath = await tc.downloadTool(this.binaryLink, binaryZip);
       const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
