@@ -43,7 +43,6 @@ class BinaryControl {
    * platform and the architecture
    */
   _decidePlatformAndBinary() {
-    core.info(`GITHUB WORKSPACE CHECK: ${process.env.GITHUB_WORKSPACE}`);
     this.binaryFolder = path.resolve(
       process.env.GITHUB_WORKSPACE,
       '..', '..', '..',
