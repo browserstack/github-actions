@@ -18,8 +18,10 @@ const {
   LOCAL_BINARY_FOLDER,
   PLATFORMS,
   LOCAL_BINARY_NAME,
+  LOCAL_BINARY_ZIP,
   LOCAL_LOG_FILE_PREFIX,
   LOCAL_BINARY_TRIGGER,
+  RETRY_DELAY_BINARY,
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING,
   },
@@ -40,25 +42,33 @@ describe('Binary Control Operations', () => {
   });
 
   context('Private Methods Behaviour', () => {
+    before(() => {
+      process.env.GITHUB_WORKSPACE = '/some/work/space';
+    });
+
+    after(() => {
+      process.env.GITHUB_WORKSPACE = '';
+    });
+
     const platformAndBinary = [
       {
         binary: BINARY_LINKS.DARWIN,
-        folder: `/work/binary/${LOCAL_BINARY_FOLDER}/darwin`,
+        folder: `/_work/binary/${LOCAL_BINARY_FOLDER}/darwin`,
         arch: 'x64',
         platform: PLATFORMS.DARWIN,
       }, {
         binary: BINARY_LINKS.LINUX_32,
-        folder: `/work/binary/${LOCAL_BINARY_FOLDER}/linux`,
+        folder: `/_work/binary/${LOCAL_BINARY_FOLDER}/linux`,
         arch: 'x32',
         platform: PLATFORMS.LINUX,
       }, {
         binary: BINARY_LINKS.LINUX_64,
-        folder: `/work/binary/${LOCAL_BINARY_FOLDER}/linux`,
+        folder: `/_work/binary/${LOCAL_BINARY_FOLDER}/linux`,
         arch: 'x64',
         platform: PLATFORMS.LINUX,
       }, {
         binary: BINARY_LINKS.WINDOWS,
-        folder: `/work/binary/${LOCAL_BINARY_FOLDER}/win32`,
+        folder: `/_work/binary/${LOCAL_BINARY_FOLDER}/win32`,
         arch: 'x32',
         platform: PLATFORMS.WIN32,
       },
@@ -91,18 +101,22 @@ describe('Binary Control Operations', () => {
 
     it('Makes Directory for the binary folder in recursive manner', async () => {
       sinon.stub(io, 'mkdirP').returns(true);
-      sinon.stub(os, 'platform').returns('darwin');
       const binaryControl = new BinaryControl();
       await binaryControl._makeDirectory();
-      sinon.assert.calledWith(io.mkdirP, path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, 'darwin'));
+      sinon.assert.calledWith(io.mkdirP, path.resolve(
+        process.env.GITHUB_WORKSPACE,
+        '..', '..', '..',
+        '_work',
+        'binary',
+        LOCAL_BINARY_FOLDER,
+        os.platform(),
+      ));
       io.mkdirP.restore();
-      os.platform.restore();
     });
 
     context('Log File metadata', () => {
       beforeEach(() => {
         sinon.stub(core, 'exportVariable');
-        sinon.stub(os, 'platform').returns('darwin');
         sinon.stub(github, 'context').value({
           job: 'someJobName',
         });
@@ -111,13 +125,22 @@ describe('Binary Control Operations', () => {
       afterEach(() => {
         delete process.env[BROWSERSTACK_LOCAL_LOGS_FILE];
         core.exportVariable.restore();
-        os.platform.restore();
       });
 
       it('Generates log-file name and path for Binary', () => {
         sinon.stub(Date, 'now').returns('now');
         const expectedLogFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_now.log`;
-        const expectedLogFilePath = path.resolve(path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, 'darwin'), expectedLogFileName);
+        const expectedLogFilePath = path.resolve(
+          path.resolve(
+            process.env.GITHUB_WORKSPACE,
+            '..', '..', '..',
+            '_work',
+            'binary',
+            LOCAL_BINARY_FOLDER,
+            os.platform(),
+          ),
+          expectedLogFileName,
+        );
         const binaryControl = new BinaryControl();
         binaryControl._generateLogFileMetadata();
         expect(binaryControl.logFileName).to.eq(expectedLogFileName);
@@ -133,7 +156,17 @@ describe('Binary Control Operations', () => {
       it('Fetches log-file name and generates path for Binary if logs file name was already defined', () => {
         process.env[BROWSERSTACK_LOCAL_LOGS_FILE] = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_now.log`;
         const expectedLogFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_now.log`;
-        const expectedLogFilePath = path.resolve(path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, 'darwin'), expectedLogFileName);
+        const expectedLogFilePath = path.resolve(
+          path.resolve(
+            process.env.GITHUB_WORKSPACE,
+            '..', '..', '..',
+            '_work',
+            'binary',
+            LOCAL_BINARY_FOLDER,
+            os.platform(),
+          ),
+          expectedLogFileName,
+        );
         const binaryControl = new BinaryControl();
         binaryControl._generateLogFileMetadata();
         expect(binaryControl.logFileName).to.eq(expectedLogFileName);
@@ -148,18 +181,18 @@ describe('Binary Control Operations', () => {
 
     context('Generates args string based on the input to Binary Control & the operation required, i.e. start/stop', () => {
       beforeEach(() => {
-        sinon.stub(os, 'platform').returns('darwin');
         sinon.stub(github, 'context').value({
           job: 'someJobName',
         });
         sinon.stub(Date, 'now').returns('now');
         sinon.stub(core, 'exportVariable');
+        process.env.GITHUB_WORKSPACE = '/some/work/space';
       });
 
       afterEach(() => {
-        os.platform.restore();
         Date.now.restore();
         core.exportVariable.restore();
+        process.env.GITHUB_WORKSPACE = '';
       });
 
       context('Start Operation', () => {
@@ -172,7 +205,16 @@ describe('Binary Control Operations', () => {
             localTesting: 'start',
           };
 
-          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction --arg1 val1 --arg2 val2 --local-identifier someIdentifier --verbose 1 --log-file ${path.resolve(process.env.HOME, 'work', 'binary', 'LocalBinaryFolder', 'darwin', 'BrowserStackLocal_someJobName_now.log')} `;
+          const expectedLogFilePath = path.resolve(
+            process.env.GITHUB_WORKSPACE,
+            '..', '..', '..',
+            '_work',
+            'binary',
+            'LocalBinaryFolder',
+            os.platform(),
+            'BrowserStackLocal_someJobName_now.log',
+          );
+          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction --arg1 val1 --arg2 val2 --local-identifier someIdentifier --verbose 1 --log-file ${expectedLogFilePath} `;
           const binaryControl = new BinaryControl(stateForBinary);
           binaryControl._generateArgsForBinary();
           expect(binaryControl.binaryArgs).to.eq(expectedFinalArgs);
@@ -317,12 +359,16 @@ describe('Binary Control Operations', () => {
         binaryControl.binaryLink = 'someLink';
         binaryControl.binaryFolder = 'someFolder';
         sinon.stub(core, 'info');
+        sinon.stub(core, 'debug');
         sinon.stub(core, 'addPath');
+        sinon.stub(io, 'rmRF');
       });
 
       afterEach(() => {
         core.info.restore();
+        core.debug.restore();
         core.addPath.restore();
+        io.rmRF.restore();
       });
 
       it('Downloads and sets the binary path without any error', async () => {
@@ -330,21 +376,48 @@ describe('Binary Control Operations', () => {
         sinon.stub(tc, 'downloadTool').returns('downloadPath');
         sinon.stub(tc, 'extractZip').returns('extractedPath');
         sinon.stub(tc, 'cacheDir').returns('cachedPath');
+        sinon.stub(binaryControl, '_removeAnyStaleBinary');
         await binaryControl.downloadBinary();
-        expect(binaryControl.binaryPath).to.eq('extractedPath');
+        sinon.assert.called(binaryControl._removeAnyStaleBinary);
         tc.downloadTool.restore();
         tc.extractZip.restore();
         tc.cacheDir.restore();
         Utils.checkToolInCache.restore();
+        binaryControl._removeAnyStaleBinary.restore();
+      });
+
+      it('Delete any stale local binary (non windows)', async () => {
+        binaryControl.platform = PLATFORMS.DARWIN;
+        await binaryControl._removeAnyStaleBinary();
+        const binaryZipPath = path.resolve(binaryControl.binaryFolder, LOCAL_BINARY_ZIP);
+        const staleBinaryPath = path.resolve(
+          binaryControl.binaryFolder,
+          `${LOCAL_BINARY_NAME}`,
+        );
+        sinon.assert.calledWith(io.rmRF, binaryZipPath);
+        sinon.assert.calledWith(io.rmRF, staleBinaryPath);
+      });
+
+      it('Delete any stale local binary (windows)', async () => {
+        binaryControl.platform = PLATFORMS.WIN32;
+        await binaryControl._removeAnyStaleBinary();
+        const binaryZipPath = path.resolve(binaryControl.binaryFolder, LOCAL_BINARY_ZIP);
+        const staleBinaryPath = path.resolve(
+          binaryControl.binaryFolder,
+          `${LOCAL_BINARY_NAME}.exe`,
+        );
+        sinon.assert.calledWith(io.rmRF, binaryZipPath);
+        sinon.assert.calledWith(io.rmRF, staleBinaryPath);
       });
 
       it('Uses cached binary if it already exists (was already downloaded)', async () => {
-        sinon.stub(Utils, 'checkToolInCache').returns(true);
+        sinon.stub(Utils, 'checkToolInCache').returns('some/path/of/tool');
         sinon.stub(tc, 'downloadTool').returns('downloadPath');
         sinon.stub(tc, 'extractZip').returns('extractedPath');
         sinon.stub(tc, 'cacheDir').returns('cachedPath');
         await binaryControl.downloadBinary();
         sinon.assert.calledWith(core.info, 'BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
+        sinon.assert.calledWith(core.addPath, 'some/path/of/tool');
         sinon.assert.notCalled(tc.downloadTool);
         sinon.assert.notCalled(tc.extractZip);
         sinon.assert.notCalled(tc.cacheDir);
@@ -375,10 +448,12 @@ describe('Binary Control Operations', () => {
         binaryControl = new BinaryControl();
         sinon.stub(binaryControl, '_generateArgsForBinary').returns(true);
         sinon.stub(core, 'info');
+        sinon.stub(Utils, 'sleepFor');
       });
 
       afterEach(() => {
         core.info.restore();
+        Utils.sleepFor.restore();
       });
 
       context('Starting Local Tunnel', () => {
@@ -419,7 +494,7 @@ describe('Binary Control Operations', () => {
           sinon.assert.calledWith(core.info, 'Local tunnel status: some message');
         });
 
-        it("Fails and doesn't connect the local tunnel if the response state is 'disconnected'", async () => {
+        it("Fails and doesn't connect the local tunnel if the response state is 'disconnected' after each available tries", async () => {
           const response = {
             output: JSON.stringify({
               state: LOCAL_BINARY_TRIGGER.START.DISCONNECTED,
@@ -435,11 +510,13 @@ describe('Binary Control Operations', () => {
           try {
             await binaryControl.startBinary();
           } catch (e) {
+            sinon.assert.calledWith(Utils.sleepFor, RETRY_DELAY_BINARY);
+            sinon.assert.calledWith(core.info, 'Error in starting local tunnel: "some message". Trying again in 5 seconds...');
             expect(e.message).to.eq('Local tunnel could not be started. Error message from binary: "some message"');
           }
         });
 
-        it("Fails and doesn't connect if binary throws an error message", async () => {
+        it("Fails and doesn't connect if binary throws an error message after each available tries", async () => {
           const response = {
             output: '',
             error: JSON.stringify({
@@ -453,6 +530,8 @@ describe('Binary Control Operations', () => {
           try {
             await binaryControl.startBinary();
           } catch (e) {
+            sinon.assert.calledWith(Utils.sleepFor, RETRY_DELAY_BINARY);
+            sinon.assert.calledWith(core.info, `Error in starting local tunnel: ${JSON.stringify(response.error)}. Trying again in 5 seconds...`);
             expect(e.message).to.eq(`Local tunnel could not be started. Error message from binary: ${JSON.stringify(response.error)}`);
           }
         });

@@ -49,9 +49,13 @@ module.exports = {
     },
   },
 
+  BINARY_MAX_TRIES: 3,
+  RETRY_DELAY_BINARY: 5000,
+
   RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file', 'ci-plugin'],
 
   LOCAL_BINARY_FOLDER: 'LocalBinaryFolder',
   LOCAL_BINARY_NAME: 'BrowserStackLocal',
+  LOCAL_BINARY_ZIP: 'binaryZip',
   LOCAL_LOG_FILE_PREFIX: 'BrowserStackLocal',
 };

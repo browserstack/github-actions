@@ -7,9 +7,15 @@ class Utils {
     delete process.env[environmentVariable];
   }
 
-  static checkToolInCache(toolName) {
-    const toolCache = tc.findAllVersions(toolName);
-    return toolCache.length !== 0;
+  static checkToolInCache(toolName, version) {
+    const toolCachePath = tc.find(toolName, version);
+    return toolCachePath;
+  }
+
+  static async sleepFor(ms) {
+    let parsedMilliseconds = parseFloat(ms);
+    parsedMilliseconds = parsedMilliseconds > 0 ? parsedMilliseconds : 0;
+    return new Promise((resolve) => setTimeout(resolve, parsedMilliseconds));
   }
 }
 

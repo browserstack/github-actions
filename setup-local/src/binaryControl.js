@@ -15,8 +15,11 @@ const {
   LOCAL_BINARY_FOLDER,
   PLATFORMS,
   LOCAL_BINARY_NAME,
+  LOCAL_BINARY_ZIP,
   LOCAL_LOG_FILE_PREFIX,
   LOCAL_BINARY_TRIGGER,
+  RETRY_DELAY_BINARY,
+  BINARY_MAX_TRIES,
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING,
   },
@@ -42,18 +45,23 @@ class BinaryControl {
    * platform and the architecture
    */
   _decidePlatformAndBinary() {
+    this.binaryFolder = path.resolve(
+      process.env.GITHUB_WORKSPACE,
+      '..', '..', '..',
+      '_work',
+      'binary',
+      LOCAL_BINARY_FOLDER,
+      this.platform,
+    );
     switch (this.platform) {
       case PLATFORMS.DARWIN:
         this.binaryLink = BINARY_LINKS.DARWIN;
-        this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
         break;
       case PLATFORMS.LINUX:
         this.binaryLink = os.arch() === 'x32' ? BINARY_LINKS.LINUX_32 : BINARY_LINKS.LINUX_64;
-        this.binaryFolder = path.resolve(process.env.HOME, 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
         break;
       case PLATFORMS.WIN32:
         this.binaryLink = BINARY_LINKS.WINDOWS;
-        this.binaryFolder = path.resolve(process.env.GITHUB_WORKSPACE, '..', '..', 'work', 'binary', LOCAL_BINARY_FOLDER, this.platform);
         break;
       default:
         throw Error(`Unsupported Platform: ${this.platform}. No BrowserStackLocal binary found.`);
@@ -142,23 +150,42 @@ class BinaryControl {
     };
   }
 
+  async _removeAnyStaleBinary() {
+    const binaryZip = path.resolve(this.binaryFolder, LOCAL_BINARY_ZIP);
+    const previousLocalBinary = path.resolve(
+      this.binaryFolder,
+      `${LOCAL_BINARY_NAME}${this.platform === PLATFORMS.WIN32 ? '.exe' : ''}`,
+    );
+    await Promise.all([io.rmRF(binaryZip), io.rmRF(previousLocalBinary)]);
+  }
+
   /**
    * Downloads the Local Binary, extracts it and adds it in the PATH variable
    */
   async downloadBinary() {
-    if (Utils.checkToolInCache(LOCAL_BINARY_NAME)) {
+    const cachedBinaryPath = Utils.checkToolInCache(LOCAL_BINARY_NAME, '1.0.0');
+    if (cachedBinaryPath) {
       core.info('BrowserStackLocal binary already exists in cache. Using that instead of downloading again...');
+      // A cached tool is persisted across runs. But the PATH is reset back to its original
+      // state between each run. Thus, adding the cached tool path back to PATH again.
+      core.addPath(cachedBinaryPath);
       return;
     }
+
     try {
       await this._makeDirectory();
+      core.debug('BrowserStackLocal binary not found in cache. Deleting any stale/existing binary before downloading...');
+      await this._removeAnyStaleBinary();
+
       core.info('Downloading BrowserStackLocal binary...');
-      const downloadPath = await tc.downloadTool(this.binaryLink, path.resolve(this.binaryFolder, 'binaryZip'));
+      const downloadPath = await tc.downloadTool(
+        this.binaryLink,
+        path.resolve(this.binaryFolder, LOCAL_BINARY_ZIP),
+      );
       const extractedPath = await tc.extractZip(downloadPath, this.binaryFolder);
       core.info(`BrowserStackLocal binary downloaded & extracted successfuly at: ${extractedPath}`);
       const cachedPath = await tc.cacheDir(extractedPath, LOCAL_BINARY_NAME, '1.0.0');
       core.addPath(cachedPath);
-      this.binaryPath = extractedPath;
     } catch (e) {
       throw Error(`BrowserStackLocal binary could not be downloaded due to ${e.message}`);
     }
@@ -168,26 +195,38 @@ class BinaryControl {
    * Starts Local Binary using the args generated for this action
    */
   async startBinary() {
-    try {
-      this._generateArgsForBinary();
-      let { localIdentifier } = this.stateForBinary;
-      localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
-      core.info(`Starting local tunnel ${localIdentifier} in daemon mode...`);
+    this._generateArgsForBinary();
+    let { localIdentifier } = this.stateForBinary;
+    localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
+    core.info(`Starting local tunnel ${localIdentifier} in daemon mode...`);
 
-      const { output, error } = await this._triggerBinary(LOCAL_TESTING.START);
+    let triesAvailable = BINARY_MAX_TRIES;
 
-      if (!error) {
-        const outputParsed = JSON.parse(output);
-        if (outputParsed.state === LOCAL_BINARY_TRIGGER.START.CONNECTED) {
-          core.info(`Local tunnel status: ${outputParsed.message}`);
-        } else {
+    while (triesAvailable--) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const { output, error } = await this._triggerBinary(LOCAL_TESTING.START);
+
+        if (!error) {
+          const outputParsed = JSON.parse(output);
+          if (outputParsed.state === LOCAL_BINARY_TRIGGER.START.CONNECTED) {
+            core.info(`Local tunnel status: ${outputParsed.message}`);
+            return;
+          }
+
           throw Error(JSON.stringify(outputParsed.message));
+        } else {
+          throw Error(JSON.stringify(error));
         }
-      } else {
-        throw Error(JSON.stringify(error));
+      } catch (e) {
+        if (triesAvailable) {
+          core.info(`Error in starting local tunnel: ${e.message}. Trying again in 5 seconds...`);
+          // eslint-disable-next-line no-await-in-loop
+          await Utils.sleepFor(RETRY_DELAY_BINARY);
+        } else {
+          throw Error(`Local tunnel could not be started. Error message from binary: ${e.message}`);
+        }
       }
-    } catch (e) {
-      throw Error(`Local tunnel could not be started. Error message from binary: ${e.message}`);
     }
   }
 
@@ -195,8 +234,8 @@ class BinaryControl {
    * Stops Local Binary using the args generated for this action
    */
   async stopBinary() {
+    this._generateArgsForBinary();
     try {
-      this._generateArgsForBinary();
       let { localIdentifier } = this.stateForBinary;
       localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
       core.info(`Stopping local tunnel ${localIdentifier} in daemon mode...`);
