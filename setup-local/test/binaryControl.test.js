@@ -385,9 +385,9 @@ describe('Binary Control Operations', () => {
         binaryControl._removeAnyStaleBinary.restore();
       });
 
-      it('Delete any stale local binary (non windows)', () => {
+      it('Delete any stale local binary (non windows)', async () => {
         binaryControl.platform = PLATFORMS.DARWIN;
-        binaryControl._removeAnyStaleBinary();
+        await binaryControl._removeAnyStaleBinary();
         const binaryZipPath = path.resolve(binaryControl.binaryFolder, LOCAL_BINARY_ZIP);
         const staleBinaryPath = path.resolve(
           binaryControl.binaryFolder,
@@ -397,9 +397,9 @@ describe('Binary Control Operations', () => {
         sinon.assert.calledWith(io.rmRF, staleBinaryPath);
       });
 
-      it('Delete any stale local binary (windows)', () => {
+      it('Delete any stale local binary (windows)', async () => {
         binaryControl.platform = PLATFORMS.WIN32;
-        binaryControl._removeAnyStaleBinary();
+        await binaryControl._removeAnyStaleBinary();
         const binaryZipPath = path.resolve(binaryControl.binaryFolder, LOCAL_BINARY_ZIP);
         const staleBinaryPath = path.resolve(
           binaryControl.binaryFolder,

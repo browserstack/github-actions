@@ -13489,7 +13489,7 @@ module.exports = {
     },
   },
 
-  BINARY_MAX_TRIES: 2,
+  BINARY_MAX_TRIES: 3,
 
   RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file', 'ci-plugin'],
 
