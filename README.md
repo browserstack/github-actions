@@ -1,5 +1,14 @@
 # BrowserStack GitHub Actions
 
+<p align="center">
+  <a href="https://browserstack.com"><img alt="BrowserStack Logo" src="https://d98b8t1nnulk5.cloudfront.net/production/images/layout/logo-invoice.svg"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/browserstack/github-actions/actions?query=workflow%3Asetup-env"><img alt="setup-env build status" src="https://github.com/browserstack/github-actions/workflows/setup-env/badge.svg"></a>
+  <a href="https://github.com/browserstack/github-actions/actions?query=workflow%3Asetup-local"><img alt="setup-local build status" src="https://github.com/browserstack/github-actions/workflows/setup-local/badge.svg"></a>
+</p>
+
 This respository contains a library of GitHub Actions to help you integrate your test suite with the [BrowserStack](https://browserstack.com) device cloud. 
 
 You need a BrowserStack username and access-key to run your tests on the BrowserStack device cloud. You can [sign-up for free trial](https://www.browserstack.com/users/sign_up) if you do not have an existing account.
@@ -11,7 +20,7 @@ If you want to test your open source project on BrowserStack, then [sign-up here
   
 * [setup-local](./setup-local): This Action downloads and starts the appropriate BrowserStackLocal binary, thereby creating a secure tunnel connection from the GitHub Actions runner environment to the BrowserStack device cloud. This secure tunnel will be used by the remote browsers in BrowserStack to access your web application hosted in the GitHub Actions runner environment. **You do not need this Action if the application to be tested is accessible over the public internet.**
 
-## Pre-requisites
+## Prerequisites
 * You should set your BrowserStack Username and Access Key as GitHub Secrets, i.e. `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY` respectively.
 
 ## Usage

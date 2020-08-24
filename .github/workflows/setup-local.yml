@@ -1,4 +1,4 @@
-name: 'unit tests: setting local binary for BrowserStack'
+name: 'setup-local'
 on:
   pull_request:
     paths:

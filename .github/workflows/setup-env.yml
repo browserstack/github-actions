@@ -1,4 +1,4 @@
-name: 'unit tests: setting test env for BrowserStack'
+name: 'setup-env'
 on:
   pull_request:
     paths:
