@@ -18,6 +18,7 @@ const {
   LOCAL_BINARY_ZIP,
   LOCAL_LOG_FILE_PREFIX,
   LOCAL_BINARY_TRIGGER,
+  RETRY_DELAY_BINARY,
   BINARY_MAX_TRIES,
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING,
@@ -221,7 +222,7 @@ class BinaryControl {
         if (triesAvailable) {
           core.info(`Error in starting local tunnel: ${e.message}. Trying again in 5 seconds...`);
           // eslint-disable-next-line no-await-in-loop
-          await Utils.sleepFor(5000);
+          await Utils.sleepFor(RETRY_DELAY_BINARY);
         } else {
           throw Error(`Local tunnel could not be started. Error message from binary: ${e.message}`);
         }

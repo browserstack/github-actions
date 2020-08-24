@@ -50,6 +50,7 @@ module.exports = {
   },
 
   BINARY_MAX_TRIES: 3,
+  RETRY_DELAY_BINARY: 5000,
 
   RESTRICTED_LOCAL_ARGS: ['k', 'key', 'local-identifier', 'daemon', 'only-automate', 'verbose', 'log-file', 'ci-plugin'],
 

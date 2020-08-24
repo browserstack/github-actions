@@ -21,6 +21,7 @@ const {
   LOCAL_BINARY_ZIP,
   LOCAL_LOG_FILE_PREFIX,
   LOCAL_BINARY_TRIGGER,
+  RETRY_DELAY_BINARY,
   ALLOWED_INPUT_VALUES: {
     LOCAL_TESTING,
   },
@@ -509,7 +510,7 @@ describe('Binary Control Operations', () => {
           try {
             await binaryControl.startBinary();
           } catch (e) {
-            sinon.assert.calledWith(Utils.sleepFor, 5000);
+            sinon.assert.calledWith(Utils.sleepFor, RETRY_DELAY_BINARY);
             sinon.assert.calledWith(core.info, 'Error in starting local tunnel: "some message". Trying again in 5 seconds...');
             expect(e.message).to.eq('Local tunnel could not be started. Error message from binary: "some message"');
           }
@@ -529,7 +530,7 @@ describe('Binary Control Operations', () => {
           try {
             await binaryControl.startBinary();
           } catch (e) {
-            sinon.assert.calledWith(Utils.sleepFor, 5000);
+            sinon.assert.calledWith(Utils.sleepFor, RETRY_DELAY_BINARY);
             sinon.assert.calledWith(core.info, `Error in starting local tunnel: ${JSON.stringify(response.error)}. Trying again in 5 seconds...`);
             expect(e.message).to.eq(`Local tunnel could not be started. Error message from binary: ${JSON.stringify(response.error)}`);
           }
