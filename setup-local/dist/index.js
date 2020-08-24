@@ -1239,7 +1239,7 @@ class BinaryControl {
     try {
       await this._makeDirectory();
       core.debug('BrowserStackLocal binary not found in cache. Deleting any stale/existing binary before downloading...');
-      this._removeAnyStaleBinary();
+      await this._removeAnyStaleBinary();
 
       core.info('Downloading BrowserStackLocal binary...');
       const downloadPath = await tc.downloadTool(
@@ -1259,6 +1259,7 @@ class BinaryControl {
    * Starts Local Binary using the args generated for this action
    */
   async startBinary() {
+    this._generateArgsForBinary();
     let { localIdentifier } = this.stateForBinary;
     localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
     core.info(`Starting local tunnel ${localIdentifier} in daemon mode...`);
@@ -1267,8 +1268,6 @@ class BinaryControl {
 
     while (triesAvailable--) {
       try {
-        this._generateArgsForBinary();
-
         // eslint-disable-next-line no-await-in-loop
         const { output, error } = await this._triggerBinary(LOCAL_TESTING.START);
 
@@ -1299,8 +1298,8 @@ class BinaryControl {
    * Stops Local Binary using the args generated for this action
    */
   async stopBinary() {
+    this._generateArgsForBinary();
     try {
-      this._generateArgsForBinary();
       let { localIdentifier } = this.stateForBinary;
       localIdentifier = localIdentifier ? `with local-identifier=${localIdentifier}` : '';
       core.info(`Stopping local tunnel ${localIdentifier} in daemon mode...`);
