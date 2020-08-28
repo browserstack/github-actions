@@ -16,3 +16,6 @@ inputs:
 runs:
   using: 'node12'
   main: 'setup-env/dist/index.js'
+branding:
+  icon: 'check-circle'
+  color: 'green'
