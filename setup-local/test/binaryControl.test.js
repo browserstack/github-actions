@@ -473,7 +473,7 @@ describe('Binary Control Operations', () => {
           await binaryControl.startBinary();
           sinon.assert.calledWith(binaryControl._triggerBinary, LOCAL_TESTING.START);
           sinon.assert.calledWith(core.info, 'Starting local tunnel with local-identifier=someIdentifier in daemon mode...');
-          sinon.assert.calledWith(core.info, 'Local tunnel status: some message');
+          sinon.assert.calledWith(core.info, 'Local tunnel status: "some message"');
         });
 
         it("Starts the local tunnel successfully (without local identifier) and gets connected if the response state is 'connected'", async () => {
@@ -491,7 +491,7 @@ describe('Binary Control Operations', () => {
           sinon.stub(binaryControl, '_triggerBinary').returns(response);
           await binaryControl.startBinary();
           sinon.assert.calledWith(core.info, 'Starting local tunnel  in daemon mode...');
-          sinon.assert.calledWith(core.info, 'Local tunnel status: some message');
+          sinon.assert.calledWith(core.info, 'Local tunnel status: "some message"');
         });
 
         it("Fails and doesn't connect the local tunnel if the response state is 'disconnected' after each available tries", async () => {
