@@ -210,7 +210,7 @@ class BinaryControl {
         if (!error) {
           const outputParsed = JSON.parse(output);
           if (outputParsed.state === LOCAL_BINARY_TRIGGER.START.CONNECTED) {
-            core.info(`Local tunnel status: ${outputParsed.message}`);
+            core.info(`Local tunnel status: ${JSON.stringify(outputParsed.message)}`);
             return;
           }
 
