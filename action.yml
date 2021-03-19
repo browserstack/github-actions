@@ -1,4 +1,5 @@
-name: 'BrowserStack Actions'
+- name: 'BrowserStack Actions'
+  uses: 'browserstack/github-actions@v1.0.1'
 description: 'Setup BrowserStack Test Environment'
 inputs:
   username:
