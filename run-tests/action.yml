@@ -1,0 +1,9 @@
+name: 'run-test'
+description: 'Run browserstack framework tests'
+inputs:
+  config-path:
+    description: 'Path to the test configuration json'
+    required: true
+runs:
+  using: 'node12'
+  main: 'dist/index.js'

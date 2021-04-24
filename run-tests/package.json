@@ -1,0 +1,31 @@
+{
+  "name": "run-test",
+  "version": "1.0.0",
+  "description": "run framework session on browserstack ",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/browserstack/github-actions.git"
+  },
+  "keywords": [
+    "browserstack"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/browserstack/github-actions/issues"
+  },
+  "homepage": "https://github.com/browserstack/github-actions#readme",
+  "dependencies": {
+    "@actions/core": "^1.2.7",
+    "@actions/github": "^4.0.0",
+    "cli-table": "^0.3.6",
+    "request": "^2.88.2"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.28.3"
+  }
+}

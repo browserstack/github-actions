@@ -6,7 +6,7 @@ inputs:
     required: true
   framework:
     description: 'Test Frameworks for which app is to be uploaded [espresso | xcuitest ]'
-  testsuite-path:
+  test-suite-path:
     description: 'Path to testsuite'
 runs:
   using: 'node12'

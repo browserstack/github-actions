@@ -19,9 +19,7 @@ class ActionInput {
     try {
       this.username = process.env[ENV_VARS.BROWSERSTACK_USERNAME];
       this.accesskey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
-      this.app_path = core.getInput(INPUT.APP_PATH);
-      this.framework = core.getInput(INPUT.FRAMEWORK);
-      this.test_suite_path = core.getInput(INPUT.TEST_SUITE);
+      this.config_path = core.getInput(INPUT.CONFIG_PATH);
     }
     catch(e) {
       throw Error(`Action input failed for reason: ${e.message}`);
@@ -29,15 +27,10 @@ class ActionInput {
   }
 
   _validateInput() {
-    if(this.test_suite_path && !this.framework) {
-      throw Error(`for using ${INPUTS.TEST_SUITE} you must define the ${INPUTS.FRAMEWORK}`);
-    }
   }
 
   setEnvVariables() {
-    if(this.app_path) core.exportVariable(ENV_VARS.APP_PATH, this.app_path);
-    if(this.framework) core.exportVariable(ENV_VARS.FRAMEWORK, this.framework);
-    if(this.test_suite_path) core.exportVariable(ENV_VARS.TEST_SUITE, this.test_suite_path);
+    if(this.config_path) core.exportVariable(ENV_VARS.CONFIG_PATH, this.app_path);
   }
 }
 

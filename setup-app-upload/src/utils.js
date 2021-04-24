@@ -3,7 +3,6 @@ const core = require('@actions/core');
 const fs = require('fs');
 const path = require('path');
 const constants = require('./constants');
-const { error } = require('console');
 const {
   URLS,
   ENV_VARS
@@ -33,6 +32,7 @@ class Uploader {
       } else {
         var content = JSON.parse(response.body);
         var id = content.app_url ? content.app_url : content.test_suite_url
+        core.info(`uploaded comeplete ${env_var}:${id}`);
         core.exportVariable(env_var, id)
       }
     });
