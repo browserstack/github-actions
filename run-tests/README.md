@@ -5,8 +5,8 @@ This action fulfils the following objectives in your runner environment:
 * Display the result in the console and mark the build as failed or passed as per the build status on browserstack
 
 ## Prerequisites
-The **actions/checkout@v2** action should be invoked prior to invoking this action as we will be referencing confing files commited to the repo 
-The **browserstack/github-actions/setup-env@master** action should have been invoked prior to invoking this action as a part of the same job.
+* The **actions/checkout@v2** action should be invoked prior to invoking this action as we will be referencing confing files commited to the repo 
+* The **browserstack/github-actions/setup-env@master** action should have been invoked prior to invoking this action as a part of the same job.
 
 ## Inputs
 * `config-path`: (**Mandatory**)
