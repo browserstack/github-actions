@@ -34036,11 +34036,11 @@ class TestRunner {
           } else {
             const content = JSON.parse(response.body);
             if ([TEST_STATUS.RUNNING, TEST_STATUS.QUEUED].includes(content.status)) {
-              this._parseApiResult(content);
+              TestRunner._parseApiResult(content);
               core.info("waiting for the tests to run ...");
             } else {
               clearInterval(poller);
-              this._parseApiResult(content);
+              TestRunner._parseApiResult(content);
               this.build_status = content.status;
               resolve();
             }
