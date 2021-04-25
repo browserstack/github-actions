@@ -34439,7 +34439,7 @@ const TestRunner = __nccwpck_require__(1608);
  */
 const run = async () => {
   try {
-    ActionInput();
+    new ActionInput(); // eslint-disable-line no-new
     const testRunner = new TestRunner();
     await testRunner.run();
   } catch (e) {
