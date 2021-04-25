@@ -1,12 +1,10 @@
 const core = require('@actions/core');
-const github = require('@actions/github');
-const constants = require('./../constants');
-
+const fs = require('fs');
+const constants = require("../../config/constants");
 
 const {
-  URLS,
   ENV_VARS,
-  INPUT
+  INPUT,
 } = constants;
 
 class ActionInput {
@@ -20,17 +18,21 @@ class ActionInput {
       this.username = process.env[ENV_VARS.BROWSERSTACK_USERNAME];
       this.accesskey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
       this.config_path = core.getInput(INPUT.CONFIG_PATH);
-    }
-    catch(e) {
+      this.framework = core.getInput(INPUT.FRAMEWORK);
+    } catch (e) {
       throw Error(`Action input failed for reason: ${e.message}`);
     }
   }
 
   _validateInput() {
-  }
-
-  setEnvVariables() {
-    if(this.config_path) core.exportVariable(ENV_VARS.CONFIG_PATH, this.app_path);
+    if (!fs.existsSync(this.config_path)) {
+      throw Error(`Action input failed for reason: ${this.config_path} doesn't exists make sure that path provided does exists`);
+    }
+    if (!process.env[ENV_VARS.FRAMEWORK]) {
+      if (!this.framework) {
+        throw Error(`Action input failed for reason: framework input isn't provided, you must specify the framework key in action input`);
+      }
+    }
   }
 }
 

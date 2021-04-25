@@ -9,7 +9,7 @@ const TestRunner = require('./utils');
  */
 const run = async () => {
   try {
-    const inputParser = new ActionInput();
+    ActionInput();
     const testRunner = new TestRunner();
     await testRunner.run();
   } catch (e) {

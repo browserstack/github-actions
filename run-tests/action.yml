@@ -4,6 +4,8 @@ inputs:
   config-path:
     description: 'Path to the test configuration json'
     required: true
+  framework:
+    description: 'Test framework used for the test espresso/xcuitest'
 runs:
   using: 'node12'
   main: 'dist/index.js'
