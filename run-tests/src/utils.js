@@ -15,7 +15,6 @@ const {
 class TestRunner {
   constructor() {
     this._setConfig();
-    this._validateInput();
   }
 
   _getValues() {
