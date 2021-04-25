@@ -88,7 +88,7 @@ class TestRunner {
         row.push(session.status);
         if (session.testcases) {
           row.push(session.testcases.count);
-          row.push(...Object.keys(session.testcases.status));
+          row.push(...Object.values(session.testcases.status));
           table.push(row);
         }
       });
