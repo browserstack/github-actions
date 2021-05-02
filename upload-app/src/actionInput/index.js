@@ -5,6 +5,7 @@ const constants = require('../../config/constants');
 const {
   ENV_VARS,
   INPUT,
+  URLS,
 } = constants;
 
 class ActionInput {
@@ -30,13 +31,16 @@ class ActionInput {
     if (!this.accessKey) throw Error(`${ENV_VARS.BROWSERSTACK_ACCESS_KEY} not found. Use 'browserstack/github-actions/setup-env@master' Action to set up the environment variables before invoking this Action`);
 
     if (this.test_suite_path && !this.framework) {
-      throw Error(`for using ${INPUT.TEST_SUITE} you must define the ${INPUT.FRAMEWORK}`);
+      throw Error(`For using ${INPUT.TEST_SUITE} you must define the ${INPUT.FRAMEWORK}`);
     }
     if (!fs.existsSync(this.app_path)) {
       throw Error(`App specified in ${INPUT.APP_PATH} doesn't exist`);
     }
     if (!fs.existsSync(this.test_suite_path)) {
       throw Error(`TestSuite specified in ${INPUT.TEST_SUITE} doesn't exist`);
+    }
+    if (this.framework && !Object.keys(URLS.FRAMEWORKS).includes(this.framework)) {
+      throw Error(`Action doesn't support the specified framework ${this.framework}`);
     }
   }
 
