@@ -2,12 +2,12 @@ name: 'run-tests'
 on:
   pull_request:
     paths:
-    - 'setup-local/**'
-    - '.github/workflows/setup-local*'
+    - 'run-tests/**'
+    - '.github/workflows/run-tests*'
   push:
     paths:
-    - 'setup-local/**'
-    - '.github/workflows/setup-local*'
+    - 'run-tests/**'
+    - '.github/workflows/run-tests*'
     
 
 jobs:
