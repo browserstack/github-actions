@@ -32983,7 +32983,7 @@ class Uploader {
       const appPath = core.getInput(INPUT.APP_PATH);
       if (appPath) this._upload(appPath, URLS.APP_UPLOAD_ENDPOINT, ENV_VARS.APP_HASHED_ID);
       const framework = process.env[ENV_VARS.FRAMEWORK];
-      const testSuite = core.getInput(INPUT.FRAMEWORK);
+      const testSuite = core.getInput(INPUT.TEST_SUITE);
       if (testSuite) this._upload(testSuite, URLS.FRAMEWORKS[framework], ENV_VARS.TEST_SUITE_ID);
     } catch (error) {
       core.setFailed(error.message);
