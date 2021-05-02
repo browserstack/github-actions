@@ -35,15 +35,15 @@ class TestRunner {
     this._getValues();
     this.config.app = this.config.app || this.app_hashed_id;
     this.config.testSuite = this.config.testsuite || this.test_suite_hashed_id;
-    this.config.framework = this.config.framework || this.framework;
+    this.framework = this.config.framework || this.framework;
     delete this.config.framework; // framework is not a cap to be passed
-    this.config.project = this.config.project || process.env[ENV_VARS.BROWSERSTACK_PROJECT_NAME];
+    const project = this.config.project || process.env[ENV_VARS.BROWSERSTACK_PROJECT_NAME];
+    if (project) this.config.project = project;
   }
 
   _startBuild() {
     return new Promise((resolve, reject) => {
       const options = {
-        method: 'POST',
         url: `https://${this.username}:${this.accesskey}@${URLS.BASE_URL}/${URLS.FRAMEWORKS[this.framework]}`,
         headers: {
           'Content-Type': 'application/json',
@@ -53,7 +53,7 @@ class TestRunner {
 
       core.info(`starting a new ${this.framework} build with following configuration \n ${JSON.stringify(this.config)}`);
 
-      request(options, (error, response) => {
+      request.post(options, (error, response) => {
         if (error) reject(error.message);
         if (response.statusCode !== 200) {
           reject(JSON.parse(response.body));
@@ -100,10 +100,9 @@ class TestRunner {
     return new Promise((resolve, reject) => {
       const poller = setInterval(() => {
         const options = {
-          method: 'GET',
           url: `https://${this.username}:${this.accesskey}@${URLS.BASE_URL}/${URLS.WATCH_FRAMEWORKS[this.framework]}/${this.build_id}`,
         };
-        request(options, (error, response) => {
+        request.get(options, (error, response) => {
           if (error) {
             clearInterval(poller);
             reject(error.message);
