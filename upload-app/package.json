@@ -1,10 +1,11 @@
 {
-  "name": "setup-app-upload",
+  "name": "app-upload",
   "version": "1.0.0",
-  "description": "\"Upload App To Browserstack\"",
-  "main": "index.js",
+  "description": "\"Upload App/TestSuite To Browserstack\"",
+  "main": "dist/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "lint": "eslint . --ext .js",
+    "build": "ncc build src/index.js"
   },
   "repository": {
     "type": "git",
@@ -14,7 +15,7 @@
     "browserstack"
   ],
   "author": "nurdtechie98",
-  "license": "ISC",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/browserstack/github-actions/issues"
   },
@@ -23,5 +24,11 @@
     "@actions/core": "^1.2.7",
     "@actions/github": "^4.0.0",
     "request": "^2.88.2"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.28.4",
+    "eslint": "^7.25.0",
+    "eslint-config-airbnb": "^18.2.1",
+    "eslint-plugin-import": "^2.22.1"
   }
 }

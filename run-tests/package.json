@@ -17,8 +17,8 @@
     "run-tests",
     "frameworks"
   ],
-  "author": "MIT",
-  "license": "ISC",
+  "author": "",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/browserstack/github-actions/issues"
   },
