@@ -9,9 +9,9 @@ module.exports = {
     BROWSERSTACK_USERNAME: 'BROWSERSTACK_USERNAME',
     BROWSERSTACK_ACCESS_KEY: 'BROWSERSTACK_ACCESS_KEY',
     BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME',
-    FRAMEWORK: 'framework',
-    APP_HASHED_ID: 'app_hashed_id',
-    TEST_SUITE_ID: 'test_suite_id',
+    FRAMEWORK: 'FRAMEWORK',
+    APP_HASHED_ID: 'APP_HASHED_ID',
+    TEST_SUITE_ID: 'TEST_SUITE_ID',
   },
   URLS: {
     BASE_URL: 'api-cloud.browserstack.com/app-automate',
