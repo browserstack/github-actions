@@ -61,7 +61,7 @@ describe('Uploader', () => {
           app_url: "bs://app_hashed_id",
         }),
       });
-      Uploader._upload('some/random/app/path.apk', 'upload', 'APP_HASHED_ID');
+      Uploader._upload('some/random/app/path.apk', 'upload', ENV_VARS.APP_HASHED_ID);
       sinon.assert.calledWith(core.exportVariable, ENV_VARS.APP_HASHED_ID, "bs://app_hashed_id");
     });
 
@@ -70,7 +70,7 @@ describe('Uploader', () => {
         statusCode: 502,
       });
       sinon.stub(core, 'setFailed');
-      Uploader._upload('some/random/app/path.apk', 'upload', 'APP_HASHED_ID');
+      Uploader._upload('some/random/app/path.apk', 'upload', ENV_VARS.APP_HASHED_ID);
       sinon.assert.calledOnce(core.setFailed);
     });
   });
