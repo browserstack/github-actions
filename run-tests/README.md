@@ -109,11 +109,12 @@ The `test_config.json` file can be something like:
   ```json
   {
     "devices":["iPhone XS-13", "iPhone SE 2020-13", "iPhone XR-12"],
-    "app":"bs://17bef856c324efff366a3a7516d758e19fc19e9c", // specify app to run test on
-    "testSuite":"bs://9bbace1db07ff116e36a2726591e963799f2288f", // testsuite url of the tests
+    "app":"bs://17bef856c324efff366a3a7516d758e19fc19e9c",
+    "testSuite":"bs://9bbace1db07ff116e36a2726591e963799f2288f",
     "networkLogs":true,
-    "local": true, // set the cap local as true
+    "local": true,
     "locale":"fr_CA",
+    "setEnvVariables": {"linkTextToVerify":"Log In","URL":"https://facebook.com"},
     "project": "browserstack-github-actions"
   }
   ```
@@ -155,6 +156,7 @@ The `test_config.json` file can be something like:
           uses: 'browserstack/github-actions/run-tests@master'
           with:
             config-path: ./.github/test_config.json
+            framework: xcuitest
 
         # stop local binary
         - name: 'BrowserStackLocal Stop' 
