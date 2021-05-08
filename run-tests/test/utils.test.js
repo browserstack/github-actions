@@ -23,7 +23,6 @@ const sampleEspressoConfig = JSON.stringify({
   testSuite: "bs://some_test_suite_id",
   app: "bs://some_app_id",
   project: "test",
-  framework: "espresso",
 });
 
 const sampleXcuitestConfig = JSON.stringify({
@@ -32,7 +31,6 @@ const sampleXcuitestConfig = JSON.stringify({
   testSuite: "bs://some_test_suite_id",
   app: "bs://some_app_id",
   project: "test",
-  framework: "xcuitest",
 });
 
 const cloneBackupValues = () => {
@@ -99,6 +97,7 @@ describe('TestRunner', () => {
       process.env[ENV_VARS.APP_HASHED_ID] = "bs://some_app_id";
       process.env[ENV_VARS.TEST_SUITE_ID] = "bs://some_test_suite_id";
       process.env[ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER] = "some_random_identifier";
+      stubbedInput.withArgs(INPUT.FRAMEWORK).returns("espresso");
       stubbedReadStream.withArgs("some/random/config.json").returns(sampleEspressoConfig);
       const testRunner = new TestRunner();
       expect(testRunner.username).to.equal("some_user_name");
@@ -132,6 +131,7 @@ describe('TestRunner', () => {
 
     context('for espresso', () => {
       it('should start a build', (done) => {
+        stubbedInput.withArgs(INPUT.FRAMEWORK).returns("espresso");
         stubbedReadStream.withArgs("some/random/config.json").returns(sampleEspressoConfig);
 
         stubRequests.withArgs(sinon.match.has('url', `https://some_user_name:some_access_key@${URLS.BASE_URL}/${URLS.FRAMEWORKS.espresso}`)).yields(null, {
@@ -151,6 +151,7 @@ describe('TestRunner', () => {
 
     context('for xcuitest', () => {
       it('should start a build', (done) => {
+        stubbedInput.withArgs(INPUT.FRAMEWORK).returns("xcuitest");
         stubbedReadStream.withArgs("some/random/config.json").returns(sampleXcuitestConfig);
 
         stubRequests.withArgs(sinon.match.has('url', `https://some_user_name:some_access_key@${URLS.BASE_URL}/${URLS.FRAMEWORKS.xcuitest}`)).yields(null, {
