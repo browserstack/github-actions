@@ -23,7 +23,7 @@ This action fulfils the following objectives in your runner environment:
 ## Usage
 Use the code snippet below in your workflow to run a espresso framework test:
 ```yaml
-- name: 'Run Espresso Test on Browserstack'
+- name: 'Run Test on Browserstack'
   uses: 'browserstack/github-actions/run-tests@master'
   with:
     config-path: ./config/test_config.json
@@ -39,3 +39,126 @@ The `test_config.json` file can be something like:
   "project": "browserstack-github-actions"
 }
 ```
+
+
+## Sample Usecases
+### Build android app with gradle, upload it to browserstack and run espresso test
+  * config (test_config.json)
+  ```json
+  {
+    "devices":["Google Pixel 3-9.0", "Google Pixel 4-11.0"],
+    "deviceLogs":true,
+    "networkLogs":true, 
+    "locale":"fr_CA",
+    "project": "browserstack-github-actions"
+  }
+  ```
+  > note in the above sample app and test urls are specified they will be picked directly from upload step from the workflow
+  * github workflow
+  ```yml
+  name: Java Browserstack CI
+  on: [push]
+
+  jobs:
+    build:
+      runs-on: macos-latest
+
+      steps:
+        # this is needed so that github action can access the files in the repo like config, app etc 
+        - uses: actions/checkout@v2
+
+        # following are the steps to build app and test suite
+        - name: Set up JDK 14
+          uses: actions/setup-java@v2
+          with:
+            java-version: '14'
+            distribution: 'adopt'
+        - name: Build App gradle
+          run: ./gradlew assemble
+        - name: Build Test App gradle
+          run: ./gradlew assembleAndroidTest
+        
+        # setup browserstack credentials
+        # picks up `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY` from secrets 
+        - name: 'BrowserStack Env Setup'
+          uses: 'browserstack/github-actions/setup-env@master'
+          with:
+            username:  ${{ secrets.BROWSERSTACK_USERNAME }}
+            access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+            build-name: "test_build"
+            project-name: "test_project"
+        
+        # uploads app and testsuite from paths where the gradle build created the output apks 
+        - name: 'BrowserStack App Upload'
+          uses: 'browserstack/github-actions/upload-app@master'
+          with:
+            app-path: ./app/build/outputs/apk/production/debug/app-production-debug.apk
+            framework: espresso
+            test-suite-path: ./app/build/outputs/apk/androidTest/production/debug/app-production-debug-androidTest.apk
+        
+        # runs espresso test on browserstack
+        # config path is relative to the root of the repository
+        - name: 'Run tests on browserstack'
+          uses: 'browserstack/github-actions/run-tests@master'
+          with:
+            config-path: ./.github/test_config.json
+  ```
+
+### Use existing uploaded xcuitest app and test suite, run it with local testing feature
+  * config (test_config.json)
+  ```json
+  {
+    "devices":["iPhone XS-13", "iPhone SE 2020-13", "iPhone XR-12"],
+    "app":"bs://17bef856c324efff366a3a7516d758e19fc19e9c", // specify app to run test on
+    "testSuite":"bs://9bbace1db07ff116e36a2726591e963799f2288f", // testsuite url of the tests
+    "networkLogs":true,
+    "local": true, // set the cap local as true
+    "locale":"fr_CA",
+    "project": "browserstack-github-actions"
+  }
+  ```
+  > note: in the above sample app and test urls are specified they will be picked directly from upload step from the workflow
+  * github workflow
+  ```yml
+  name: Run Local Test On Browserstack CI
+  on: [push]
+
+  jobs:
+    build:
+      runs-on: macos-latest
+
+      steps:
+        # this is needed so that github action can access the files in the repo like config, app etc 
+        - uses: actions/checkout@v2
+        
+        # setup browserstack credentials
+        # picks up `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY` from secrets 
+        - name: 'BrowserStack Env Setup'
+          uses: 'browserstack/github-actions/setup-env@master'
+          with:
+            username:  ${{ secrets.BROWSERSTACK_USERNAME }}
+            access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+            build-name: "test_build"
+            project-name: "test_project"
+        
+        # start local binary
+        - name: 'Start BrowserStackLocal Tunnel'
+          uses: 'browserstack/github-actions/setup-local@master'
+          with:
+            local-testing: start
+            local-logging-level: all-logs
+            local-identifier: random
+        
+        # runs xcuitest test on browserstack
+        # config path is relative to the root of the repository
+        - name: 'Run tests on browserstack'
+          uses: 'browserstack/github-actions/run-tests@master'
+          with:
+            config-path: ./.github/test_config.json
+
+        # stop local binary
+        - name: 'BrowserStackLocal Stop' 
+          uses: browserstack/github-actions/setup-local@master
+          with:
+            local-testing: stop
+  ```
