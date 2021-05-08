@@ -10,7 +10,7 @@ This action fulfils the following objectives in your runner environment:
 
 ## Inputs
 * `config-path`: (**Mandatory**)
-  * relative path from the root of the repository to a json file. This json file will have all the configurations need to run the test's. like device to run the test on, app, testSuite and other capabilites. you can find the extensive list of capabilties, that can be added to config here: https://www.browserstack.com/docs/app-automate/api-reference/espresso/builds#execute-a-build
+  * relative path from the root of the repository to a json file. This json file will have all the configurations need to run the test's. like device to run the test on, app, testSuite and other capabilites. you can find the extensive list of capabilties, that can be added to config here: [espresso](https://www.browserstack.com/docs/app-automate/api-reference/espresso/builds#execute-a-build) [xcuitest](https://www.browserstack.com/docs/app-automate/api-reference/xcuitest/builds#execute-a-build)
 * `framework`:
   * Valid Inputs:
     * espresso
@@ -48,7 +48,6 @@ The `test_config.json` file can be something like:
   {
     "devices":["Google Pixel 3-9.0", "Google Pixel 4-11.0"],
     "deviceLogs":true,
-    "networkLogs":true, 
     "locale":"fr_CA",
     "project": "browserstack-github-actions"
   }
@@ -111,7 +110,6 @@ The `test_config.json` file can be something like:
     "devices":["iPhone XS-13", "iPhone SE 2020-13", "iPhone XR-12"],
     "app":"bs://17bef856c324efff366a3a7516d758e19fc19e9c",
     "testSuite":"bs://9bbace1db07ff116e36a2726591e963799f2288f",
-    "networkLogs":true,
     "local": true,
     "locale":"fr_CA",
     "setEnvVariables": {"linkTextToVerify":"Log In","URL":"https://facebook.com"},
