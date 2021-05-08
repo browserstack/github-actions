@@ -67,9 +67,9 @@ jobs:
           local-identifier: random
 ```
 
-## Sample Workflow for running an App Automate Espresso Build on Browserstack
+## Sample Workflow for running an App Automate Build on Browserstack
 ```yaml
-name: Browserstack espresso session
+name: Browserstack session
 
 on: [push]
 

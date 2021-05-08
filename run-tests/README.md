@@ -118,7 +118,7 @@ The `test_config.json` file can be something like:
     "project": "browserstack-github-actions"
   }
   ```
-  > note: in the above sample app and test urls are specified they will be picked directly from upload step from the workflow
+  > note in the above config local identifier will be picked directly from the previous steps, so need not specify it explicitly
   * github workflow
   ```yml
   name: Run Local Test On Browserstack CI
