@@ -37,8 +37,11 @@ class TestRunner {
     this.config.testSuite = this.config.testsuite || this.test_suite_hashed_id;
     this.framework = this.config.framework || this.framework;
     delete this.config.framework; // framework is not a cap to be passed
+    const localIdentifier = process.env[ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER];
+    // set localIdentifier from setup-local action
+    if (localIdentifier !== "undefined") this.config.localIdentifier = localIdentifier;
     const project = this.config.project || process.env[ENV_VARS.BROWSERSTACK_PROJECT_NAME];
-    if (project) this.config.project = project;
+    if (project !== "undefined") this.config.project = project;
     this.config['browserstack.source'] = "GitHubAction"; // adding custom internal cap for tracking the number of build from plugin
   }
 

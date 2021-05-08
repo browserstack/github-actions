@@ -98,6 +98,7 @@ describe('TestRunner', () => {
     it('should initialize the properties required', () => {
       process.env[ENV_VARS.APP_HASHED_ID] = "bs://some_app_id";
       process.env[ENV_VARS.TEST_SUITE_ID] = "bs://some_test_suite_id";
+      process.env[ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER] = "some_random_identifier";
       stubbedReadStream.withArgs("some/random/config.json").returns(sampleEspressoConfig);
       const testRunner = new TestRunner();
       expect(testRunner.username).to.equal("some_user_name");
@@ -110,6 +111,7 @@ describe('TestRunner', () => {
           "Google Pixel 3-9.0",
           "Google Pixel 4-11.0",
         ],
+        localIdentifier: "some_random_identifier",
         project: "test",
         testSuite: "bs://some_test_suite_id",
       });
