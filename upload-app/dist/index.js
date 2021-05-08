@@ -17,7 +17,11 @@ module.exports = {
   URLS: {
     BASE_URL: 'api-cloud.browserstack.com/app-automate',
     APP_UPLOAD_ENDPOINT: 'upload',
-    FRAMEWORKS: {
+    APP_FRAMEWORKS: {
+      espresso: 'espresso/v2/app',
+      xcuitest: 'xcuitest/v2/app',
+    },
+    TESTSUITE_FRAMEWORKS: {
       espresso: 'espresso/v2/test-suite',
       xcuitest: 'xcuitest/v2/test-suite',
     },
@@ -32897,6 +32901,7 @@ const constants = __nccwpck_require__(1468);
 const {
   ENV_VARS,
   INPUT,
+  URLS,
 } = constants;
 
 class ActionInput {
@@ -32922,13 +32927,16 @@ class ActionInput {
     if (!this.accessKey) throw Error(`${ENV_VARS.BROWSERSTACK_ACCESS_KEY} not found. Use 'browserstack/github-actions/setup-env@master' Action to set up the environment variables before invoking this Action`);
 
     if (this.test_suite_path && !this.framework) {
-      throw Error(`for using ${INPUT.TEST_SUITE} you must define the ${INPUT.FRAMEWORK}`);
+      throw Error(`For using ${INPUT.TEST_SUITE} you must define the ${INPUT.FRAMEWORK}`);
     }
     if (!fs.existsSync(this.app_path)) {
       throw Error(`App specified in ${INPUT.APP_PATH} doesn't exist`);
     }
     if (!fs.existsSync(this.test_suite_path)) {
       throw Error(`TestSuite specified in ${INPUT.TEST_SUITE} doesn't exist`);
+    }
+    if (this.framework && !Object.keys(URLS.APP_FRAMEWORKS).includes(this.framework)) {
+      throw Error(`Action doesn't support the specified framework ${this.framework}`);
     }
   }
 
@@ -32959,9 +32967,11 @@ const {
 
 class Uploader {
   static _upload(filePath, endpoint, envVar) {
+    const username = process.env[ENV_VARS.BROWSERSTACK_USERNAME];
+    const accessKey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
+
     const options = {
-      method: 'POST',
-      url: `https://${this.username}:${this.accesskey}@${URLS.BASE_URL}/${endpoint}`,
+      url: `https://${username}:${accessKey}@${URLS.BASE_URL}/${endpoint}`,
       formData: {
         file: {
           value: fs.createReadStream(filePath),
@@ -32970,17 +32980,17 @@ class Uploader {
             contentType: null,
           },
         },
-        skip_dedup: "true",
       },
     };
-    request(options, (error, response) => {
+
+    request.post(options, (error, response) => {
       if (error) core.setFailed(error.message);
       if (response.statusCode !== 200) {
         core.setFailed(response.body);
       } else {
         const content = JSON.parse(response.body);
         const id = content.app_url ? content.app_url : content.test_suite_url;
-        core.info(`uploaded comeplete ${envVar}:${id}`);
+        core.info(`uploaded complete ${envVar}:${id}`);
         core.exportVariable(envVar, id);
       }
     });
@@ -32988,13 +32998,13 @@ class Uploader {
 
   static run() {
     try {
-      this.username = process.env[ENV_VARS.BROWSERSTACK_USERNAME];
-      this.accesskey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
       const appPath = core.getInput(INPUT.APP_PATH);
-      if (appPath) this._upload(appPath, URLS.APP_UPLOAD_ENDPOINT, ENV_VARS.APP_HASHED_ID);
-      const framework = process.env[ENV_VARS.FRAMEWORK];
+      const framework = core.getInput(INPUT.FRAMEWORK);
+      const appUrl = framework ? URLS.APP_FRAMEWORKS[framework] : URLS.APP_UPLOAD_ENDPOINT;
+      if (appPath) this._upload(appPath, appUrl, ENV_VARS.APP_HASHED_ID);
       const testSuite = core.getInput(INPUT.TEST_SUITE);
-      if (testSuite) this._upload(testSuite, URLS.FRAMEWORKS[framework], ENV_VARS.TEST_SUITE_ID);
+      const testSuiteUrl = URLS.TESTSUITE_FRAMEWORKS[framework];
+      if (testSuite) this._upload(testSuite, testSuiteUrl, ENV_VARS.TEST_SUITE_ID);
     } catch (error) {
       core.setFailed(error.message);
     }

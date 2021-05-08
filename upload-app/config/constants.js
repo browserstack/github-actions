@@ -11,7 +11,11 @@ module.exports = {
   URLS: {
     BASE_URL: 'api-cloud.browserstack.com/app-automate',
     APP_UPLOAD_ENDPOINT: 'upload',
-    FRAMEWORKS: {
+    APP_FRAMEWORKS: {
+      espresso: 'espresso/v2/app',
+      xcuitest: 'xcuitest/v2/app',
+    },
+    TESTSUITE_FRAMEWORKS: {
       espresso: 'espresso/v2/test-suite',
       xcuitest: 'xcuitest/v2/test-suite',
     },

@@ -39,7 +39,7 @@ class ActionInput {
     if (!fs.existsSync(this.test_suite_path)) {
       throw Error(`TestSuite specified in ${INPUT.TEST_SUITE} doesn't exist`);
     }
-    if (this.framework && !Object.keys(URLS.FRAMEWORKS).includes(this.framework)) {
+    if (this.framework && !Object.keys(URLS.APP_FRAMEWORKS).includes(this.framework)) {
       throw Error(`Action doesn't support the specified framework ${this.framework}`);
     }
   }

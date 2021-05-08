@@ -44,10 +44,12 @@ class Uploader {
   static run() {
     try {
       const appPath = core.getInput(INPUT.APP_PATH);
-      if (appPath) this._upload(appPath, URLS.APP_UPLOAD_ENDPOINT, ENV_VARS.APP_HASHED_ID);
       const framework = core.getInput(INPUT.FRAMEWORK);
+      const appUrl = framework ? URLS.APP_FRAMEWORKS[framework] : URLS.APP_UPLOAD_ENDPOINT;
+      if (appPath) this._upload(appPath, appUrl, ENV_VARS.APP_HASHED_ID);
       const testSuite = core.getInput(INPUT.TEST_SUITE);
-      if (testSuite) this._upload(testSuite, URLS.FRAMEWORKS[framework], ENV_VARS.TEST_SUITE_ID);
+      const testSuiteUrl = URLS.TESTSUITE_FRAMEWORKS[framework];
+      if (testSuite) this._upload(testSuite, testSuiteUrl, ENV_VARS.TEST_SUITE_ID);
     } catch (error) {
       core.setFailed(error.message);
     }

@@ -76,13 +76,28 @@ describe('Uploader', () => {
   });
 
   describe('_run', () => {
-    it('should call upload function with appropriate arguments', () => {
-      const stubUpload = sinon.stub(Uploader, '_upload');
-      const appUploadStub = stubUpload.withArgs("some/random/app/path.apk", URLS.APP_UPLOAD_ENDPOINT, ENV_VARS.APP_HASHED_ID);
-      const testSuiteUploadStub = stubUpload.withArgs("some/random/test/path.apk", URLS.FRAMEWORKS.espresso, ENV_VARS.TEST_SUITE_ID);
-      Uploader.run();
-      sinon.assert.calledOnce(appUploadStub);
-      sinon.assert.calledOnce(testSuiteUploadStub);
+    context('When framework and testsuite is defined', () => {
+      it('should call upload function for app and testsuite with appropriate arguments', () => {
+        const stubUpload = sinon.stub(Uploader, '_upload');
+        const appUploadStub = stubUpload.withArgs("some/random/app/path.apk", URLS.APP_FRAMEWORKS.espresso, ENV_VARS.APP_HASHED_ID);
+        const testSuiteUploadStub = stubUpload.withArgs("some/random/test/path.apk", URLS.TESTSUITE_FRAMEWORKS.espresso, ENV_VARS.TEST_SUITE_ID);
+        Uploader.run();
+        sinon.assert.calledOnce(appUploadStub);
+        sinon.assert.calledOnce(testSuiteUploadStub);
+        Uploader._upload.restore();
+      });
+    });
+
+    context('When only app is defined', () => {
+      it('should call upload function with appropriate arguments', () => {
+        stubbedInput.withArgs(INPUT.FRAMEWORK).returns(undefined);
+        stubbedInput.withArgs(INPUT.TEST_SUITE).returns(undefined);
+        const stubUpload = sinon.stub(Uploader, '_upload');
+        const appUploadStub = stubUpload.withArgs("some/random/app/path.apk", URLS.APP_UPLOAD_ENDPOINT, ENV_VARS.APP_HASHED_ID);
+        Uploader.run();
+        sinon.assert.calledOnce(appUploadStub);
+        Uploader._upload.restore();
+      });
     });
   });
 });
