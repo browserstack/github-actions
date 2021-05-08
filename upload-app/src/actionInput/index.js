@@ -36,7 +36,7 @@ class ActionInput {
     if (!fs.existsSync(this.app_path)) {
       throw Error(`App specified in ${INPUT.APP_PATH} doesn't exist`);
     }
-    if (!fs.existsSync(this.test_suite_path)) {
+    if (this.test_suite_path && !fs.existsSync(this.test_suite_path)) {
       throw Error(`TestSuite specified in ${INPUT.TEST_SUITE} doesn't exist`);
     }
     if (this.framework && !Object.keys(URLS.APP_FRAMEWORKS).includes(this.framework)) {
