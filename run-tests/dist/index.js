@@ -33964,6 +33964,7 @@ class TestRunner {
     delete this.config.framework; // framework is not a cap to be passed
     const project = this.config.project || process.env[ENV_VARS.BROWSERSTACK_PROJECT_NAME];
     if (project) this.config.project = project;
+    this.config['browserstack.source'] = "GitHubAction";
   }
 
   _startBuild() {

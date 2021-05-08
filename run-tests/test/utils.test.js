@@ -82,6 +82,7 @@ describe('TestRunner', () => {
       expect(testRunner.config).to.deep.equal({
         app: "bs://some_app_id",
         deviceLogs: true,
+        "browserstack.source": "GitHubAction",
         devices: [
           "Google Pixel 3-9.0",
           "Google Pixel 4-11.0",
@@ -104,6 +105,7 @@ describe('TestRunner', () => {
       expect(testRunner.config).to.deep.equal({
         app: "bs://some_app_id",
         deviceLogs: true,
+        "browserstack.source": "GitHubAction",
         devices: [
           "Google Pixel 3-9.0",
           "Google Pixel 4-11.0",
