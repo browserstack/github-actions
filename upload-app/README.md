@@ -1,10 +1,10 @@
-# run-tests
+# upload-app
 This action fulfils the following objectives in your runner environment:
 * Uploading the app/testsuite paths provided to browserstack
 * Adding the returned app ids, to necessary environment variable for further usage
 
 ## Prerequisites
-* The **actions/checkout@v2** action should be invoked prior to invoking this action as we will be referencing confing files commited to the repo 
+* The **actions/checkout@v2** action should be invoked prior to invoking this action as we will be using config files committed to the repo 
 * The **browserstack/github-actions/setup-env@master** action should have been invoked prior to invoking this action as a part of the same job. The following are the environment variables that you can use in the test scripts.
 ```
 APP_HASHED_ID
