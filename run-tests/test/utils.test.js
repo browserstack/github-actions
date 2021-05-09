@@ -69,6 +69,7 @@ describe('TestRunner', () => {
     it('should initialize the properties required', () => {
       process.env[ENV_VARS.APP_HASHED_ID] = "bs://some_app_id";
       process.env[ENV_VARS.TEST_SUITE_ID] = "bs://some_test_suite_id";
+      process.env[ENV_VARS.BROWSERSTACK_LOCAL_IDENTIFIER] = "some_random_identifier";
       process.env[ENV_VARS.FRAMEWORK] = "xcuitest";
       stubbedReadStream.withArgs("some/random/config.json").returns(JSON.stringify({
         devices: ["Google Pixel 3-9.0", "Google Pixel 4-11.0"],
@@ -85,6 +86,7 @@ describe('TestRunner', () => {
           "Google Pixel 3-9.0",
           "Google Pixel 4-11.0",
         ],
+        localIdentifier: "some_random_identifier",
         project: "sample",
         testSuite: "bs://some_test_suite_id",
       });
