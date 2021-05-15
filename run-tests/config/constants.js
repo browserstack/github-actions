@@ -24,6 +24,7 @@ module.exports = {
   INPUT: {
     CONFIG_PATH: 'config-path',
     FRAMEWORK: 'framework',
+    ASYNC: 'async',
   },
   WATCH_INTERVAL: 60000,
   TEST_STATUS: {

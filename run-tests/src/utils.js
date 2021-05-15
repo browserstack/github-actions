@@ -26,6 +26,7 @@ class TestRunner {
       this.app_hashed_id = process.env[ENV_VARS.APP_HASHED_ID];
       this.test_suite_hashed_id = process.env[ENV_VARS.TEST_SUITE_ID];
       this.framework = core.getInput(INPUT.FRAMEWORK) || process.env[ENV_VARS.FRAMEWORK];
+      this.async = core.getInput(INPUT.ASYNC);
     } catch (e) {
       throw Error(`Action input failed for reason: ${e.message}`);
     }
@@ -174,6 +175,7 @@ class TestRunner {
       await this._startBuild();
       const dashboardUrl = `https://${URLS.DASHBOARD_BASE}/${this.build_id}`;
       core.info(`Build Dashboard link: ${dashboardUrl}`);
+      if (this.async) return;
       await this._pollBuild();
       if (this.build_status !== TEST_STATUS.PASSED) {
         core.setFailed(`Browserstack Build with build id: ${this.build_id} ${this.build_status}`);

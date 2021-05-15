@@ -16,6 +16,11 @@ This action fulfils the following objectives in your runner environment:
     * espresso
     * xcuitest
   * specify which testing framework is the test based on
+* `async`:
+  * Valid Inputs:
+    * true
+    * false
+  * specify if the test need to run in background and not poll for results, useful in case of long running test cases. The action will be marked as passed as soon as build is started independent of result.
 
 > Note: In case you are using this action along with **browserstack/github-actions/upload-app@master** you need not specify app and test_suite in the config and framework in the inputs. It will the automatically picked from the previous steps outputs.  
    

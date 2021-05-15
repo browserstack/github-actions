@@ -6,6 +6,8 @@ inputs:
     required: true
   framework:
     description: 'Test framework used for the test espresso/xcuitest'
+  async:
+    description: 'Start the test and not wait for the result, marks the build intermediately as passed' 
 runs:
   using: 'node12'
   main: 'dist/index.js'
