@@ -3,14 +3,16 @@ This action fulfils the following objectives in your runner environment:
 * Uploading the app/testsuite paths provided to browserstack
 * Adding the returned app ids, to necessary environment variable for further usage
 
+The following are the environment variables intialised by action, that you can use in the test scripts.
+```
+BROWSERSTACK_APP_HASHED_ID
+BROWSERSTACK_TEST_SUITE_ID
+BROWSERSTACK_FRAMEWORK
+```
+
 ## Prerequisites
 * The **actions/checkout@v2** action should be invoked prior to invoking this action as we will be using config files committed to the repo 
-* The **browserstack/github-actions/setup-env@master** action should have been invoked prior to invoking this action as a part of the same job. The following are the environment variables that you can use in the test scripts.
-```
-APP_HASHED_ID
-TEST_SUITE_ID
-FRAMEWORK
-```
+* The **browserstack/github-actions/setup-env@master** action should have been invoked prior to invoking this action as a part of the same job. 
 
 > Note in case you plan on running an App Automate espresso or xcuitest, you can make use **browserstack/github-actions/run-tests@master** action. 
 
