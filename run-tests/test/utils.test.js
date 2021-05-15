@@ -229,3 +229,46 @@ describe('TestRunner', () => {
     });
   });
 });
+
+describe('_parseApiResult', () => {
+  it('should parse rest api results and populate array', () => {
+    const responseJson = JSON.parse(fs.readFileSync('./test/fixtures/build_response.json'));
+    const returnedResult = TestRunner._parseApiResult(responseJson);
+    const expectedResult = [
+      [
+        'Samsung Galaxy S20',
+        '10.0',
+        '4fc55a08d7e33651d962ad676c7d6a0a08902702',
+        'failed',
+        9,
+        3,
+        6,
+      ],
+      [
+        'OnePlus 7',
+        '9.0',
+        '1f5c3cb7d1f7560635f6c83eafe418a2fabbef0d',
+        'failed',
+        9,
+        3,
+        6,
+      ],
+      [
+        'Google Pixel 3',
+        '9.0',
+        'a8760f7f5fd21f73673060d4047899e6a94d9e6',
+        'failed',
+        9,
+        3,
+        6,
+      ],
+    ];
+    expect(returnedResult).to.deep.equal(expectedResult);
+  });
+
+  it('should parse rest api results and return empty in case of no session created', () => {
+    const responseJson = JSON.parse(fs.readFileSync('./test/fixtures/empty_response.json'));
+    // eslint-disable-next-line no-unused-expressions
+    expect(TestRunner._parseApiResult(responseJson)).to.be.undefined;
+  });
+});

@@ -73,12 +73,32 @@ class TestRunner {
     });
   }
 
+  static _updateStatus(finalStatus, currentStatus) {
+    if (!Object.keys(finalStatus).length) return currentStatus;
+    const resultStatus = {};
+    Object.keys(finalStatus).forEach((key) => {
+      resultStatus[key] = finalStatus[key] + currentStatus[key];
+    });
+    return resultStatus;
+  }
+
+  static _pickKeys(keys, hash) {
+    const result = [];
+    keys.forEach((key) => {
+      result.push(hash[key]);
+    });
+    return result;
+  }
+
   static _parseApiResult(content) {
     core.info(`Build current status: ${content.status}`);
     const devicesArray = content.devices;
-    const table = new Table({
-      head: ['Device', 'OS', 'ID', 'Status', 'Total', 'Passed', 'Failed', 'Skipped', 'Timedout', 'Error', 'Running', 'Queued'],
-    });
+    let statuses = {}; // will be storing total count of various tests
+    const tempTable = []; // will be storing intermediate info for each session
+    const tempStatus = []; // will be storing test status hashes for each session
+
+    // for every session created extract properties to tempTable
+    // extract the status hash specific to test in tempStatus
     devicesArray.forEach((deviceInfo) => {
       const deviceMeta = [];
       deviceMeta.push(deviceInfo.device);
@@ -90,12 +110,32 @@ class TestRunner {
         row.push(session.status);
         if (session.testcases) {
           row.push(session.testcases.count);
-          row.push(...Object.values(session.testcases.status));
-          table.push(row);
+          tempTable.push(row);
+          tempStatus.push(session.testcases.status);
+          statuses = TestRunner._updateStatus(statuses, session.testcases.status);
         }
       });
     });
+
+    if (!tempTable.length) return; // return in case of no session data
+
+    // filter out statuses having no tests
+    const nonZeroStatus = Object.keys(statuses).filter((key) => statuses[key] > 0);
+
+    const headers = ['Device', 'OS', 'ID', 'Status', 'Total'];
+    headers.push(...nonZeroStatus);
+    const table = new Table({
+      head: headers,
+    });
+    // tempTable already has rows for each session with device, os, id, status, total
+    // need to add split of tests as per specific status
+    tempTable.forEach((row, index) => {
+      tempTable[index].push(...TestRunner._pickKeys(nonZeroStatus, tempStatus[index]));
+    });
+
+    table.push(...tempTable);
     core.info(table.toString());
+    return tempTable;
   }
 
   _pollBuild() {
@@ -132,6 +172,8 @@ class TestRunner {
   async run() {
     try {
       await this._startBuild();
+      const dashboardUrl = `https://${URLS.DASHBOARD_BASE}/${this.build_id}`;
+      core.info(`Build Dashboard link: ${dashboardUrl}`);
       await this._pollBuild();
       if (this.build_status !== TEST_STATUS.PASSED) {
         core.setFailed(`Browserstack Build with build id: ${this.build_id} ${this.build_status}`);

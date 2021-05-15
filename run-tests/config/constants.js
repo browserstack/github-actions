@@ -19,6 +19,7 @@ module.exports = {
       espresso: 'espresso/v2/builds',
       xcuitest: 'xcuitest/v2/builds',
     },
+    DASHBOARD_BASE: 'app-automate.browserstack.com/dashboard/v2/builds',
   },
   INPUT: {
     CONFIG_PATH: 'config-path',
