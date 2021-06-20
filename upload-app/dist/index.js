@@ -32994,7 +32994,7 @@ class Uploader {
       };
     }
 
-    if (fileUrl) formData.url = { value: fileUrl };
+    if (fileUrl) formData.url = fileUrl;
 
     const options = {
       url: `https://${username}:${accessKey}@${URLS.BASE_URL}/${endpoint}`,
