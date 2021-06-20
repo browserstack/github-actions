@@ -63,6 +63,28 @@ describe('Action Input operations for fetching all inputs, triggering validation
       stubbedInput.withArgs(INPUT.FRAMEWORK).returns("random_framework");
       expect(() => new ActionInput()).to.throw("Action doesn't support the specified framework random_framework");
     });
+
+    it('should give error message in case neither app nor test suite passed is not supported', () => {
+      stubbedInput.withArgs(INPUT.APP_PATH).returns(undefined);
+      stubbedInput.withArgs(INPUT.TEST_SUITE).returns(undefined);
+      expect(() => new ActionInput()).to.throw("Action needs at least one of app or test suite passed as file or url");
+    });
+
+    it('should not give error message in app-url is passed and not app-path', () => {
+      stubbedInput.withArgs(INPUT.APP_PATH).returns(undefined);
+      stubbedInput.withArgs(INPUT.TEST_SUITE).returns(undefined);
+      stubbedInput.withArgs(INPUT.APP_URL).returns("http://something.com");
+      const actionInput = new ActionInput();
+      expect(actionInput.app_url).to.equal("http://something.com");
+    });
+
+    it('should not give error message in test-suite-url is passed and not test-suite-path', () => {
+      stubbedInput.withArgs(INPUT.APP_PATH).returns(undefined);
+      stubbedInput.withArgs(INPUT.TEST_SUITE).returns(undefined);
+      stubbedInput.withArgs(INPUT.TEST_SUITE_URL).returns("http://something.com");
+      const actionInput = new ActionInput();
+      expect(actionInput.test_suite_url).to.equal("http://something.com");
+    });
   });
 
   describe('setEnvVariables', () => {

@@ -24,5 +24,7 @@ module.exports = {
     APP_PATH: 'app-path',
     FRAMEWORK: 'framework',
     TEST_SUITE: 'test-suite-path',
+    APP_URL: 'app-url',
+    TEST_SUITE_URL: 'test-suite-url',
   },
 };

@@ -20,6 +20,8 @@ class ActionInput {
       this.accessKey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
       this.app_path = core.getInput(INPUT.APP_PATH);
       this.framework = core.getInput(INPUT.FRAMEWORK);
+      this.app_url = core.getInput(INPUT.APP_URL);
+      this.test_suite_url = core.getInput(INPUT.TEST_SUITE_URL);
       this.test_suite_path = core.getInput(INPUT.TEST_SUITE);
     } catch (e) {
       throw Error(`Action input failed for reason: ${e.message}`);
@@ -30,10 +32,18 @@ class ActionInput {
     if (!this.username) throw Error(`${ENV_VARS.BROWSERSTACK_USERNAME} not found. Use 'browserstack/github-actions/setup-env@master' Action to set up the environment variables before invoking this Action`);
     if (!this.accessKey) throw Error(`${ENV_VARS.BROWSERSTACK_ACCESS_KEY} not found. Use 'browserstack/github-actions/setup-env@master' Action to set up the environment variables before invoking this Action`);
 
-    if (this.test_suite_path && !this.framework) {
+    const isTestSuitePasses = this.test_suite_path || this.test_suite_url;
+    const isAppPassed = this.app_path || this.app_url;
+
+    if (!isTestSuitePasses && !isAppPassed) {
+      throw Error(`Action needs at least one of app or test suite passed as file or url`);
+    }
+
+    if (isTestSuitePasses && !this.framework) {
       throw Error(`For using ${INPUT.TEST_SUITE} you must define the ${INPUT.FRAMEWORK}`);
     }
-    if (!fs.existsSync(this.app_path)) {
+
+    if (this.app_path && !fs.existsSync(this.app_path)) {
       throw Error(`App specified in ${INPUT.APP_PATH} doesn't exist`);
     }
     if (this.test_suite_path && !fs.existsSync(this.test_suite_path)) {

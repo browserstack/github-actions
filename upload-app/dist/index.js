@@ -30,6 +30,8 @@ module.exports = {
     APP_PATH: 'app-path',
     FRAMEWORK: 'framework',
     TEST_SUITE: 'test-suite-path',
+    APP_URL: 'app-url',
+    TEST_SUITE_URL: 'test-suite-url',
   },
 };
 
@@ -32916,6 +32918,8 @@ class ActionInput {
       this.accessKey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
       this.app_path = core.getInput(INPUT.APP_PATH);
       this.framework = core.getInput(INPUT.FRAMEWORK);
+      this.app_url = core.getInput(INPUT.APP_URL);
+      this.test_suite_url = core.getInput(INPUT.TEST_SUITE_URL);
       this.test_suite_path = core.getInput(INPUT.TEST_SUITE);
     } catch (e) {
       throw Error(`Action input failed for reason: ${e.message}`);
@@ -32926,10 +32930,18 @@ class ActionInput {
     if (!this.username) throw Error(`${ENV_VARS.BROWSERSTACK_USERNAME} not found. Use 'browserstack/github-actions/setup-env@master' Action to set up the environment variables before invoking this Action`);
     if (!this.accessKey) throw Error(`${ENV_VARS.BROWSERSTACK_ACCESS_KEY} not found. Use 'browserstack/github-actions/setup-env@master' Action to set up the environment variables before invoking this Action`);
 
-    if (this.test_suite_path && !this.framework) {
+    const isTestSuitePasses = this.test_suite_path || this.test_suite_url;
+    const isAppPassed = this.app_path || this.app_url;
+
+    if (!isTestSuitePasses && !isAppPassed) {
+      throw Error(`Action needs at least one of app or test suite passed as file or url`);
+    }
+
+    if (isTestSuitePasses && !this.framework) {
       throw Error(`For using ${INPUT.TEST_SUITE} you must define the ${INPUT.FRAMEWORK}`);
     }
-    if (!fs.existsSync(this.app_path)) {
+
+    if (this.app_path && !fs.existsSync(this.app_path)) {
       throw Error(`App specified in ${INPUT.APP_PATH} doesn't exist`);
     }
     if (this.test_suite_path && !fs.existsSync(this.test_suite_path)) {
@@ -32966,21 +32978,27 @@ const {
 } = constants;
 
 class Uploader {
-  static _upload(filePath, endpoint, envVar) {
+  static _upload(filePath, fileUrl, endpoint, envVar) {
     const username = process.env[ENV_VARS.BROWSERSTACK_USERNAME];
     const accessKey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
 
+    const formData = {};
+
+    if (filePath) {
+      formData.file = {
+        value: fs.createReadStream(filePath),
+        options: {
+          filename: path.parse(filePath).base,
+          contentType: null,
+        },
+      };
+    }
+
+    if (fileUrl) formData.url = { value: fileUrl };
+
     const options = {
       url: `https://${username}:${accessKey}@${URLS.BASE_URL}/${endpoint}`,
-      formData: {
-        file: {
-          value: fs.createReadStream(filePath),
-          options: {
-            filename: path.parse(filePath).base,
-            contentType: null,
-          },
-        },
-      },
+      formData,
     };
 
     request.post(options, (error, response) => {
@@ -33000,11 +33018,15 @@ class Uploader {
     try {
       const appPath = core.getInput(INPUT.APP_PATH);
       const framework = core.getInput(INPUT.FRAMEWORK);
-      const appUrl = framework ? URLS.APP_FRAMEWORKS[framework] : URLS.APP_UPLOAD_ENDPOINT;
-      if (appPath) this._upload(appPath, appUrl, ENV_VARS.APP_HASHED_ID);
+      const appUrl = core.getInput(INPUT.APP_URL);
+      const appUploadUrl = framework ? URLS.APP_FRAMEWORKS[framework] : URLS.APP_UPLOAD_ENDPOINT;
+      if (appPath || appUrl) this._upload(appPath, appUrl, appUploadUrl, ENV_VARS.APP_HASHED_ID);
       const testSuite = core.getInput(INPUT.TEST_SUITE);
-      const testSuiteUrl = URLS.TESTSUITE_FRAMEWORKS[framework];
-      if (testSuite) this._upload(testSuite, testSuiteUrl, ENV_VARS.TEST_SUITE_ID);
+      const testSuiteUrl = core.getInput(INPUT.TEST_SUITE_URL);
+      const testSuiteUploadUrl = URLS.TESTSUITE_FRAMEWORKS[framework];
+      if (testSuite || testSuiteUrl) {
+        this._upload(testSuite, testSuiteUrl, testSuiteUploadUrl, ENV_VARS.TEST_SUITE_ID);
+      }
     } catch (error) {
       core.setFailed(error.message);
     }

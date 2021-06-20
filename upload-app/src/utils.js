@@ -11,21 +11,27 @@ const {
 } = constants;
 
 class Uploader {
-  static _upload(filePath, endpoint, envVar) {
+  static _upload(filePath, fileUrl, endpoint, envVar) {
     const username = process.env[ENV_VARS.BROWSERSTACK_USERNAME];
     const accessKey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
 
+    const formData = {};
+
+    if (filePath) {
+      formData.file = {
+        value: fs.createReadStream(filePath),
+        options: {
+          filename: path.parse(filePath).base,
+          contentType: null,
+        },
+      };
+    }
+
+    if (fileUrl) formData.url = { value: fileUrl };
+
     const options = {
       url: `https://${username}:${accessKey}@${URLS.BASE_URL}/${endpoint}`,
-      formData: {
-        file: {
-          value: fs.createReadStream(filePath),
-          options: {
-            filename: path.parse(filePath).base,
-            contentType: null,
-          },
-        },
-      },
+      formData,
     };
 
     request.post(options, (error, response) => {
@@ -45,11 +51,15 @@ class Uploader {
     try {
       const appPath = core.getInput(INPUT.APP_PATH);
       const framework = core.getInput(INPUT.FRAMEWORK);
-      const appUrl = framework ? URLS.APP_FRAMEWORKS[framework] : URLS.APP_UPLOAD_ENDPOINT;
-      if (appPath) this._upload(appPath, appUrl, ENV_VARS.APP_HASHED_ID);
+      const appUrl = core.getInput(INPUT.APP_URL);
+      const appUploadUrl = framework ? URLS.APP_FRAMEWORKS[framework] : URLS.APP_UPLOAD_ENDPOINT;
+      if (appPath || appUrl) this._upload(appPath, appUrl, appUploadUrl, ENV_VARS.APP_HASHED_ID);
       const testSuite = core.getInput(INPUT.TEST_SUITE);
-      const testSuiteUrl = URLS.TESTSUITE_FRAMEWORKS[framework];
-      if (testSuite) this._upload(testSuite, testSuiteUrl, ENV_VARS.TEST_SUITE_ID);
+      const testSuiteUrl = core.getInput(INPUT.TEST_SUITE_URL);
+      const testSuiteUploadUrl = URLS.TESTSUITE_FRAMEWORKS[framework];
+      if (testSuite || testSuiteUrl) {
+        this._upload(testSuite, testSuiteUrl, testSuiteUploadUrl, ENV_VARS.TEST_SUITE_ID);
+      }
     } catch (error) {
       core.setFailed(error.message);
     }

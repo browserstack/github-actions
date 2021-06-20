@@ -3,11 +3,14 @@ description: 'Upload app/testSuite to browserstack'
 inputs:
   app-path:
     description: 'Path to the app'
-    required: true
+  app-url:
+    description: 'public URL for the app to be uploaded'
   framework:
     description: 'Test Frameworks for which testSuite is to be uploaded [espresso | xcuitest ]'
   test-suite-path:
     description: 'Path to testsuite'
+  test-suite-url:
+    description: 'public URL for the testSuite to be uploaded'
 runs:
   using: 'node12'
   main: 'dist/index.js'
