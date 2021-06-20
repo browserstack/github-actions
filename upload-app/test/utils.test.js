@@ -61,7 +61,7 @@ describe('Uploader', () => {
           app_url: "bs://app_hashed_id",
         }),
       });
-      Uploader._upload('some/random/app/path.apk', undefined, 'upload', ENV_VARS.APP_HASHED_ID);
+      Uploader._upload('some/random/app/path.apk', undefined, undefined, 'upload', ENV_VARS.APP_HASHED_ID);
       sinon.assert.calledWith(core.exportVariable, ENV_VARS.APP_HASHED_ID, "bs://app_hashed_id");
     });
 
@@ -70,7 +70,7 @@ describe('Uploader', () => {
         statusCode: 502,
       });
       sinon.stub(core, 'setFailed');
-      Uploader._upload('some/random/app/path.apk', undefined, 'upload', ENV_VARS.APP_HASHED_ID);
+      Uploader._upload('some/random/app/path.apk', undefined, undefined, 'upload', ENV_VARS.APP_HASHED_ID);
       sinon.assert.calledOnce(core.setFailed);
     });
   });
@@ -79,8 +79,8 @@ describe('Uploader', () => {
     context('When framework and testsuite is defined', () => {
       it('should call upload function for app-path and testsuite with appropriate arguments', () => {
         const stubUpload = sinon.stub(Uploader, '_upload');
-        const appUploadStub = stubUpload.withArgs("some/random/app/path.apk", undefined, URLS.APP_FRAMEWORKS.espresso, ENV_VARS.APP_HASHED_ID);
-        const testSuiteUploadStub = stubUpload.withArgs("some/random/test/path.apk", undefined, URLS.TESTSUITE_FRAMEWORKS.espresso, ENV_VARS.TEST_SUITE_ID);
+        const appUploadStub = stubUpload.withArgs("some/random/app/path.apk", undefined, undefined, URLS.APP_FRAMEWORKS.espresso, ENV_VARS.APP_HASHED_ID);
+        const testSuiteUploadStub = stubUpload.withArgs("some/random/test/path.apk", undefined, undefined, URLS.TESTSUITE_FRAMEWORKS.espresso, ENV_VARS.TEST_SUITE_ID);
         Uploader.run();
         sinon.assert.calledOnce(appUploadStub);
         sinon.assert.calledOnce(testSuiteUploadStub);
@@ -93,12 +93,26 @@ describe('Uploader', () => {
         stubbedInput.withArgs(INPUT.APP_URL).returns("http://something.com");
         stubbedInput.withArgs(INPUT.TEST_SUITE_URL).returns("http://something-else.com");
         const stubUpload = sinon.stub(Uploader, '_upload');
-        const appUploadStub = stubUpload.withArgs(undefined, "http://something.com", URLS.APP_FRAMEWORKS.espresso, ENV_VARS.APP_HASHED_ID);
-        const testSuiteUploadStub = stubUpload.withArgs(undefined, "http://something-else.com", URLS.TESTSUITE_FRAMEWORKS.espresso, ENV_VARS.TEST_SUITE_ID);
+        const appUploadStub = stubUpload.withArgs(undefined, "http://something.com", undefined, URLS.APP_FRAMEWORKS.espresso, ENV_VARS.APP_HASHED_ID);
+        const testSuiteUploadStub = stubUpload.withArgs(undefined, "http://something-else.com", undefined, URLS.TESTSUITE_FRAMEWORKS.espresso, ENV_VARS.TEST_SUITE_ID);
         Uploader.run();
         sinon.assert.calledOnce(appUploadStub);
         sinon.assert.calledOnce(testSuiteUploadStub);
         Uploader._upload.restore();
+      });
+
+      context('When custom id is passed', () => {
+        it('should call upload function for app-path and testsuite with appropriate arguments', () => {
+          stubbedInput.withArgs(INPUT.APP_CUSTOM_ID).returns("app_custom_id");
+          stubbedInput.withArgs(INPUT.TEST_SUITE_CUSTOM_ID).returns("test_suite_custom_id");
+          const stubUpload = sinon.stub(Uploader, '_upload');
+          const appUploadStub = stubUpload.withArgs("some/random/app/path.apk", undefined, "app_custom_id", URLS.APP_FRAMEWORKS.espresso, ENV_VARS.APP_HASHED_ID);
+          const testSuiteUploadStub = stubUpload.withArgs("some/random/test/path.apk", undefined, "test_suite_custom_id", URLS.TESTSUITE_FRAMEWORKS.espresso, ENV_VARS.TEST_SUITE_ID);
+          Uploader.run();
+          sinon.assert.calledOnce(appUploadStub);
+          sinon.assert.calledOnce(testSuiteUploadStub);
+          Uploader._upload.restore();
+        });
       });
     });
 
@@ -107,7 +121,7 @@ describe('Uploader', () => {
         stubbedInput.withArgs(INPUT.FRAMEWORK).returns(undefined);
         stubbedInput.withArgs(INPUT.TEST_SUITE).returns(undefined);
         const stubUpload = sinon.stub(Uploader, '_upload');
-        const appUploadStub = stubUpload.withArgs("some/random/app/path.apk", undefined, URLS.APP_UPLOAD_ENDPOINT, ENV_VARS.APP_HASHED_ID);
+        const appUploadStub = stubUpload.withArgs("some/random/app/path.apk", undefined, undefined, URLS.APP_UPLOAD_ENDPOINT, ENV_VARS.APP_HASHED_ID);
         Uploader.run();
         sinon.assert.calledOnce(appUploadStub);
         Uploader._upload.restore();

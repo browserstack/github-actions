@@ -11,7 +11,7 @@ const {
 } = constants;
 
 class Uploader {
-  static _upload(filePath, fileUrl, endpoint, envVar) {
+  static _upload(filePath, fileUrl, customID, endpoint, envVar) {
     const username = process.env[ENV_VARS.BROWSERSTACK_USERNAME];
     const accessKey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
 
@@ -28,6 +28,7 @@ class Uploader {
     }
 
     if (fileUrl) formData.url = fileUrl;
+    if (customID) formData.custom_id = customID;
 
     const options = {
       url: `https://${username}:${accessKey}@${URLS.BASE_URL}/${endpoint}`,
@@ -53,12 +54,16 @@ class Uploader {
       const framework = core.getInput(INPUT.FRAMEWORK);
       const appUrl = core.getInput(INPUT.APP_URL);
       const appUploadUrl = framework ? URLS.APP_FRAMEWORKS[framework] : URLS.APP_UPLOAD_ENDPOINT;
-      if (appPath || appUrl) this._upload(appPath, appUrl, appUploadUrl, ENV_VARS.APP_HASHED_ID);
+      const appCustomId = core.getInput(INPUT.APP_CUSTOM_ID);
+      /* eslint-disable-next-line max-len */
+      if (appPath || appUrl) this._upload(appPath, appUrl, appCustomId, appUploadUrl, ENV_VARS.APP_HASHED_ID);
       const testSuite = core.getInput(INPUT.TEST_SUITE);
       const testSuiteUrl = core.getInput(INPUT.TEST_SUITE_URL);
       const testSuiteUploadUrl = URLS.TESTSUITE_FRAMEWORKS[framework];
+      const testSuiteCustomId = core.getInput(INPUT.TEST_SUITE_CUSTOM_ID);
       if (testSuite || testSuiteUrl) {
-        this._upload(testSuite, testSuiteUrl, testSuiteUploadUrl, ENV_VARS.TEST_SUITE_ID);
+        /* eslint-disable-next-line max-len */
+        this._upload(testSuite, testSuiteUrl, testSuiteCustomId, testSuiteUploadUrl, ENV_VARS.TEST_SUITE_ID);
       }
     } catch (error) {
       core.setFailed(error.message);

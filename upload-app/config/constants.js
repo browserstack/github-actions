@@ -26,5 +26,7 @@ module.exports = {
     TEST_SUITE: 'test-suite-path',
     APP_URL: 'app-url',
     TEST_SUITE_URL: 'test-suite-url',
+    APP_CUSTOM_ID: 'app-custom-id',
+    TEST_SUITE_CUSTOM_ID: 'test-suite-custom-id',
   },
 };

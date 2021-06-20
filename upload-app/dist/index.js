@@ -32,6 +32,8 @@ module.exports = {
     TEST_SUITE: 'test-suite-path',
     APP_URL: 'app-url',
     TEST_SUITE_URL: 'test-suite-url',
+    APP_CUSTOM_ID: 'app-custom-id',
+    TEST_SUITE_CUSTOM_ID: 'test-suite-custom-id',
   },
 };
 
@@ -32921,6 +32923,8 @@ class ActionInput {
       this.app_url = core.getInput(INPUT.APP_URL);
       this.test_suite_url = core.getInput(INPUT.TEST_SUITE_URL);
       this.test_suite_path = core.getInput(INPUT.TEST_SUITE);
+      this.app_custom_id = core.getInput(INPUT.APP_CUSTOM_ID);
+      this.test_suite_custom_id = core.getInput(INPUT.TEST_SUITE_CUSTOM_ID);
     } catch (e) {
       throw Error(`Action input failed for reason: ${e.message}`);
     }
@@ -32930,25 +32934,35 @@ class ActionInput {
     if (!this.username) throw Error(`${ENV_VARS.BROWSERSTACK_USERNAME} not found. Use 'browserstack/github-actions/setup-env@master' Action to set up the environment variables before invoking this Action`);
     if (!this.accessKey) throw Error(`${ENV_VARS.BROWSERSTACK_ACCESS_KEY} not found. Use 'browserstack/github-actions/setup-env@master' Action to set up the environment variables before invoking this Action`);
 
-    const isTestSuitePasses = this.test_suite_path || this.test_suite_url;
+    const isTestSuitePassed = this.test_suite_path || this.test_suite_url;
     const isAppPassed = this.app_path || this.app_url;
 
-    if (!isTestSuitePasses && !isAppPassed) {
+    if (!isTestSuitePassed && !isAppPassed) {
       throw Error(`Action needs at least one of app or test suite passed as file or url`);
     }
 
-    if (isTestSuitePasses && !this.framework) {
+    if (isTestSuitePassed && !this.framework) {
       throw Error(`For using ${INPUT.TEST_SUITE} you must define the ${INPUT.FRAMEWORK}`);
     }
 
     if (this.app_path && !fs.existsSync(this.app_path)) {
       throw Error(`App specified in ${INPUT.APP_PATH} doesn't exist`);
     }
+
     if (this.test_suite_path && !fs.existsSync(this.test_suite_path)) {
       throw Error(`TestSuite specified in ${INPUT.TEST_SUITE} doesn't exist`);
     }
+
     if (this.framework && !Object.keys(URLS.APP_FRAMEWORKS).includes(this.framework)) {
       throw Error(`Action doesn't support the specified framework ${this.framework}`);
+    }
+
+    if (this.app_custom_id && !isAppPassed) {
+      throw Error(`${INPUT.APP_CUSTOM_ID} works only if either of ${INPUT.APP_URL}/${INPUT.APP_PATH} is defined`);
+    }
+
+    if (this.test_suite_custom_id && !isTestSuitePassed) {
+      throw Error(`${INPUT.TEST_SUITE_CUSTOM_ID} works only if either of ${INPUT.TEST_SUITE_URL}/${INPUT.test_suite_path} is defined`);
     }
   }
 
@@ -32978,7 +32992,7 @@ const {
 } = constants;
 
 class Uploader {
-  static _upload(filePath, fileUrl, endpoint, envVar) {
+  static _upload(filePath, fileUrl, customID, endpoint, envVar) {
     const username = process.env[ENV_VARS.BROWSERSTACK_USERNAME];
     const accessKey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
 
@@ -32995,6 +33009,7 @@ class Uploader {
     }
 
     if (fileUrl) formData.url = fileUrl;
+    if (customID) formData.custom_id = customID;
 
     const options = {
       url: `https://${username}:${accessKey}@${URLS.BASE_URL}/${endpoint}`,
@@ -33020,12 +33035,16 @@ class Uploader {
       const framework = core.getInput(INPUT.FRAMEWORK);
       const appUrl = core.getInput(INPUT.APP_URL);
       const appUploadUrl = framework ? URLS.APP_FRAMEWORKS[framework] : URLS.APP_UPLOAD_ENDPOINT;
-      if (appPath || appUrl) this._upload(appPath, appUrl, appUploadUrl, ENV_VARS.APP_HASHED_ID);
+      const appCustomId = core.getInput(INPUT.APP_CUSTOM_ID);
+      /* eslint-disable-next-line max-len */
+      if (appPath || appUrl) this._upload(appPath, appUrl, appCustomId, appUploadUrl, ENV_VARS.APP_HASHED_ID);
       const testSuite = core.getInput(INPUT.TEST_SUITE);
       const testSuiteUrl = core.getInput(INPUT.TEST_SUITE_URL);
       const testSuiteUploadUrl = URLS.TESTSUITE_FRAMEWORKS[framework];
+      const testSuiteCustomId = core.getInput(INPUT.TEST_SUITE_CUSTOM_ID);
       if (testSuite || testSuiteUrl) {
-        this._upload(testSuite, testSuiteUrl, testSuiteUploadUrl, ENV_VARS.TEST_SUITE_ID);
+        /* eslint-disable-next-line max-len */
+        this._upload(testSuite, testSuiteUrl, testSuiteCustomId, testSuiteUploadUrl, ENV_VARS.TEST_SUITE_ID);
       }
     } catch (error) {
       core.setFailed(error.message);

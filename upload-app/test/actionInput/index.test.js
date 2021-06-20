@@ -85,6 +85,12 @@ describe('Action Input operations for fetching all inputs, triggering validation
       const actionInput = new ActionInput();
       expect(actionInput.test_suite_url).to.equal("http://something.com");
     });
+
+    it('should give error message in case neither app-url nor app-path passed and app-custom-id is given', () => {
+      stubbedInput.withArgs(INPUT.APP_PATH).returns(undefined);
+      stubbedInput.withArgs(INPUT.APP_CUSTOM_ID).returns("something");
+      expect(() => new ActionInput()).to.throw(`${INPUT.APP_CUSTOM_ID} works only if either of ${INPUT.APP_URL}/${INPUT.APP_PATH} is defined`);
+    });
   });
 
   describe('setEnvVariables', () => {
