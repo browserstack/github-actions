@@ -17,8 +17,12 @@ BROWSERSTACK_FRAMEWORK
 > Note in case you plan on running an App Automate espresso or xcuitest, you can make use **browserstack/github-actions/run-tests@master** action. 
 
 ## Inputs
-* `app-path`: (**Mandatory**)
+* `app-path`:
   * relative path from the root of the repository to a app file. This app will be uploaded to the browserstack cloud.
+* `app-url`:
+  * remote URL to your app. Ensure that its a publicly accessible URL as BrowserStack will attempt to download the app from this location. Either file or url parameter is required.
+* `app-custom-id`:
+  * custom ID for the app. Refer to our [custom ID](https://www.browserstack.com/docs/app-automate/appium/upload-app-define-custom-id) documentation to know more. 
 * `framework`:
   * Valid Inputs:
     * espresso
@@ -26,6 +30,10 @@ BROWSERSTACK_FRAMEWORK
   * specify which testing framework is the testSuite to uploaded is based on
 * `test-suite-path`:
   * relative path from the root of the repository to a testSuite file. This testSuite will be uploaded to the browserstack cloud. 
+* `test-suite-url`:
+  * remote URL to your test suite. Ensure that its a publicly accessible URL as BrowserStack will attempt to download the app from this location.
+* `test-suite-custom-id`:
+  * custom ID for the test-suite. Refer to our [custom ID](https://www.browserstack.com/docs/app-automate/appium/upload-app-define-custom-id) documentation to know more. 
    
 
 ## Usage
@@ -37,4 +45,13 @@ Use the code snippet below in your workflow to run a espresso framework test:
     app-path: ./app/build/outputs/apk/production/debug/app-production-debug.apk
     framework: espresso
     test-suite-path: ./app/build/outputs/apk/androidTest/production/debug/app-production-debug-androidTest.apk
+```
+
+Use the code snippet below in your workflow to upload app using public url with custom id:
+```yaml
+- name: 'BrowserStack App Upload'
+  uses: 'browserstack/github-actions/upload-app@master'
+  with:
+    app-url: http://testci.something.com/download/staging_debug.ipa
+    app-custom-id: staging_debug_app 
 ```
