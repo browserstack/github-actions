@@ -24,14 +24,14 @@ This action fulfils the following objectives in your runner environment:
     * false, in case this param isn't passed by default the build will wait for the test to get completed
   * specify if the test need to run in background and not poll for results, useful in case of long running test cases. The action will be marked as passed as soon as build is started independent of result.
 
-> Note: In case you are using this action along with **browserstack/github-actions/upload-app@master** you need not specify app and test_suite in the config and framework in the inputs. It will the automatically picked from the previous steps outputs.  
+> Note: In case you are using this action along with **browserstack/github-actions/upload-app@beta** you need not specify app and test_suite in the config and framework in the inputs. It will the automatically picked from the previous steps outputs.  
    
 
 ## Usage
 Use the code snippet below in your workflow to run a espresso framework test:
 ```yaml
 - name: 'Run Test on Browserstack'
-  uses: 'browserstack/github-actions/run-tests@master'
+  uses: 'browserstack/github-actions/run-tests@beta'
   with:
     config-path: ./config/test_config.json
     framework: espresso
@@ -96,7 +96,7 @@ The `test_config.json` file can be something like:
         
         # uploads app and testsuite from paths where the gradle build created the output apks 
         - name: 'BrowserStack App Upload'
-          uses: 'browserstack/github-actions/upload-app@master'
+          uses: 'browserstack/github-actions/upload-app@beta'
           with:
             app-path: ./app/build/outputs/apk/production/debug/app-production-debug.apk
             framework: espresso
@@ -105,7 +105,7 @@ The `test_config.json` file can be something like:
         # runs espresso test on browserstack
         # config path is relative to the root of the repository
         - name: 'Run tests on browserstack'
-          uses: 'browserstack/github-actions/run-tests@master'
+          uses: 'browserstack/github-actions/run-tests@beta'
           with:
             config-path: ./.github/test_config.json
   ```
@@ -158,7 +158,7 @@ The `test_config.json` file can be something like:
         # runs xcuitest test on browserstack
         # config path is relative to the root of the repository
         - name: 'Run tests on browserstack'
-          uses: 'browserstack/github-actions/run-tests@master'
+          uses: 'browserstack/github-actions/run-tests@beta'
           with:
             config-path: ./.github/test_config.json
             framework: xcuitest

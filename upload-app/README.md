@@ -14,7 +14,7 @@ BROWSERSTACK_FRAMEWORK
 * The **actions/checkout@v2** action should be invoked prior to invoking this action as we will be using config files committed to the repo 
 * The **browserstack/github-actions/setup-env@master** action should have been invoked prior to invoking this action as a part of the same job. 
 
-> Note in case you plan on running an App Automate espresso or xcuitest, you can make use **browserstack/github-actions/run-tests@master** action. 
+> Note in case you plan on running an App Automate espresso or xcuitest, you can make use **browserstack/github-actions/run-tests@beta** action. 
 
 ## Inputs
 * `app-path`:
@@ -40,7 +40,7 @@ BROWSERSTACK_FRAMEWORK
 Use the code snippet below in your workflow to run a espresso framework test:
 ```yaml
 - name: 'BrowserStack App Upload'
-  uses: 'browserstack/github-actions/upload-app@master'
+  uses: 'browserstack/github-actions/upload-app@beta'
   with:
     app-path: ./app/build/outputs/apk/production/debug/app-production-debug.apk
     framework: espresso
@@ -50,7 +50,7 @@ Use the code snippet below in your workflow to run a espresso framework test:
 Use the code snippet below in your workflow to upload app using public url with custom id:
 ```yaml
 - name: 'BrowserStack App Upload'
-  uses: 'browserstack/github-actions/upload-app@master'
+  uses: 'browserstack/github-actions/upload-app@beta'
   with:
     app-url: http://testci.something.com/download/staging_debug.ipa
     app-custom-id: staging_debug_app 

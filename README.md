@@ -86,13 +86,13 @@ jobs:
           build-name: "test_build"
           project-name: "test_project"
       - name: 'BrowserStack App Upload'
-        uses: 'browserstack/github-actions/upload-app@master'
+        uses: 'browserstack/github-actions/upload-app@beta'
         with:
           app-path: ./app/build/outputs/apk/production/debug/app-production-debug.apk
           framework: espresso
           test-suite-path: ./app/build/outputs/apk/androidTest/production/debug/app-production-debug-androidTest.apk
       - name: 'Run tests on browserstack'
-        uses: 'browserstack/github-actions/run-tests@master'
+        uses: 'browserstack/github-actions/run-tests@beta'
         with:
           config-path: ./.github/test_config.json
 ```
