@@ -1,0 +1,30 @@
+{
+  "id": "5c5ab4338cec13aeb78f7a6977344556ac00bccd6",
+  "framework": "espresso",
+  "duration": 83,
+  "status": "failed",
+  "input_capabilities": {
+      "devices": [
+          "Samsung Galaxy S20-10.0",
+          "OnePlus 7-9.0",
+          "Google Pixel 3-9.0"
+      ],
+      "project": "Espresso_Test",
+      "app": "bs://9c6dcb5649a8280ca800075bfd8f151115bba6b3",
+      "testSuite": "bs://89c874f21852ba57957a3fdc33f47514288c4ba1"
+  },
+  "start_time": "2020-06-04 07:43:49 UTC",
+  "app_details": {
+      "url": "bs://9c6dcb5649a8280ca800075bfd8f151115bba6b3",
+      "bundle_id": "com.sample.browserstack.samplecalculator",
+      "version": "1.0",
+      "name": "app-debug.apk"
+  },
+  "test_suite_details": {
+      "url": "bs://89c874f21852ba57957a3fdc33f47514288c4ba1",
+      "bundle_id": "com.sample.browserstack.samplecalculator.test",
+      "version": "",
+      "name": "app-debugTest.apk"
+  },
+  "devices": []
+}

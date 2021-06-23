@@ -1,0 +1,13 @@
+name: 'run-test'
+description: 'Run browserstack framework tests'
+inputs:
+  config-path:
+    description: 'Path to the test configuration json'
+    required: true
+  framework:
+    description: 'Test framework used for the test espresso/xcuitest'
+  async:
+    description: 'Start the test and not wait for the result, marks the build intermediately as passed' 
+runs:
+  using: 'node12'
+  main: 'dist/index.js'

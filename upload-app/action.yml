@@ -1,0 +1,20 @@
+name: 'upload-app'
+description: 'Upload app/testSuite to browserstack'
+inputs:
+  app-path:
+    description: 'Path to the app'
+  app-url:
+    description: 'Public URL for the app to be uploaded'
+  app-custom-id:
+    description: 'Custom id for the app to be uploaded'
+  framework:
+    description: 'Test Frameworks for which testSuite is to be uploaded [espresso | xcuitest ]'
+  test-suite-path:
+    description: 'Path to test suite'
+  test-suite-url:
+    description: 'Public URL for the test suite to be uploaded'
+  test-suite-custom-id:
+    description: 'Custom id for the test suite to be uploaded'
+runs:
+  using: 'node12'
+  main: 'dist/index.js'

@@ -1,0 +1,50 @@
+{
+  "name": "run-test",
+  "version": "1.0.0",
+  "description": "run framework session on browserstack ",
+  "main": "src/index.js",
+  "scripts": {
+    "lint": "eslint . --ext .js",
+    "build": "ncc build src/index.js",
+    "test": "npm run lint && nyc --reporter=html mocha 'test/**/*test.js'"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "npm run test && npm run build && git add dist/"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/browserstack/github-actions.git"
+  },
+  "keywords": [
+    "actions",
+    "browserstack",
+    "run-tests",
+    "frameworks"
+  ],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/browserstack/github-actions/issues"
+  },
+  "homepage": "https://github.com/browserstack/github-actions#readme",
+  "dependencies": {
+    "@actions/core": "^1.2.7",
+    "@actions/github": "^4.0.0",
+    "cli-table": "^0.3.6",
+    "request": "^2.88.2"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.28.3",
+    "chai": "^4.3.4",
+    "eslint": "^7.25.0",
+    "eslint-config-airbnb": "^18.2.1",
+    "eslint-plugin-import": "^2.22.1",
+    "husky": "^6.0.0",
+    "mocha": "^8.3.2",
+    "nyc": "^15.1.0",
+    "rewire": "^5.0.0",
+    "sinon": "^10.0.0"
+  }
+}
