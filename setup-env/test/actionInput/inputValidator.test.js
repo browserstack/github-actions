@@ -89,6 +89,27 @@ describe('InputValidator class to validate individual fields of the action input
         });
       });
 
+      context('Push event with long commit message', () => {
+        beforeEach(() => {
+          sinon.stub(github, 'context').value({
+            payload: {
+              head_commit: {
+                message: 'messageOfHeadCommit Lorem ipsum dolor sit amet, nonummy ligula volutpat hac integer nonummy. Suspendisse ultricies, congue etiam tellus, erat libero, nulla eleifend, mauris pellentesque. Suspendisse integer praesent vel, integer gravida mauris, fringilla vehicula lacinia non',
+              },
+            },
+            sha: 'someSHA',
+            runNumber: 123,
+            ref: 'refs/head/branchOrTagName',
+            eventName: 'push',
+          });
+        });
+
+        it('Generate build info with commit information', () => {
+          const expectedValue = '[branchOrTagName] Commit someSHA: messageOfHeadCommit Lorem ipsum dolor sit amet, nonummy ligula volutpat hac integer nonummy. Suspendisse ultricies, congue etiam tellus, erat libero, nulla eleifend, mauris pellentesque. Suspendisse  [Workflow: 123]';
+          expect(InputValidator._getBuildInfo()).to.eq(expectedValue);
+        });
+      });
+
       context('Pull Request event', () => {
         beforeEach(() => {
           sinon.stub(github, 'context').value({
