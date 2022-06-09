@@ -31,23 +31,23 @@ const {
 } = constants;
 
 describe('Binary Control Operations', () => {
-  const earlierGitHubWorkspace = process.env.GITHUB_WORKSPACE;
+  const earlierGitHubWorkspace = process.env.RUNNER_TEMP;
 
   beforeEach(() => {
-    process.env.GITHUB_WORKSPACE = 'some_workspace';
+    process.env.RUNNER_TEMP = 'some_workspace';
   });
 
   afterEach(() => {
-    process.env.GITHUB_WORKSPACE = earlierGitHubWorkspace;
+    process.env.RUNNER_TEMP = earlierGitHubWorkspace;
   });
 
   context('Private Methods Behaviour', () => {
     before(() => {
-      process.env.GITHUB_WORKSPACE = '/some/work/space';
+      process.env.RUNNER_TEMP = '/some/work/space';
     });
 
     after(() => {
-      process.env.GITHUB_WORKSPACE = '';
+      process.env.RUNNER_TEMP = '';
     });
 
     const platformAndBinary = [
@@ -104,7 +104,7 @@ describe('Binary Control Operations', () => {
       const binaryControl = new BinaryControl();
       await binaryControl._makeDirectory();
       sinon.assert.calledWith(io.mkdirP, path.resolve(
-        process.env.GITHUB_WORKSPACE,
+        process.env.RUNNER_TEMP,
         '..', '..', '..',
         '_work',
         'binary',
@@ -132,7 +132,7 @@ describe('Binary Control Operations', () => {
         const expectedLogFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_now.log`;
         const expectedLogFilePath = path.resolve(
           path.resolve(
-            process.env.GITHUB_WORKSPACE,
+            process.env.RUNNER_TEMP,
             '..', '..', '..',
             '_work',
             'binary',
@@ -158,7 +158,7 @@ describe('Binary Control Operations', () => {
         const expectedLogFileName = `${LOCAL_LOG_FILE_PREFIX}_${github.context.job}_now.log`;
         const expectedLogFilePath = path.resolve(
           path.resolve(
-            process.env.GITHUB_WORKSPACE,
+            process.env.RUNNER_TEMP,
             '..', '..', '..',
             '_work',
             'binary',
@@ -186,13 +186,13 @@ describe('Binary Control Operations', () => {
         });
         sinon.stub(Date, 'now').returns('now');
         sinon.stub(core, 'exportVariable');
-        process.env.GITHUB_WORKSPACE = '/some/work/space';
+        process.env.RUNNER_TEMP = '/some/work/space';
       });
 
       afterEach(() => {
         Date.now.restore();
         core.exportVariable.restore();
-        process.env.GITHUB_WORKSPACE = '';
+        process.env.RUNNER_TEMP = '';
       });
 
       context('Start Operation', () => {
@@ -206,7 +206,7 @@ describe('Binary Control Operations', () => {
           };
 
           const expectedLogFilePath = path.resolve(
-            process.env.GITHUB_WORKSPACE,
+            process.env.RUNNER_TEMP,
             '..', '..', '..',
             '_work',
             'binary',

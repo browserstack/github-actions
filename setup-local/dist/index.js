@@ -1111,7 +1111,7 @@ class BinaryControl {
    */
   _decidePlatformAndBinary() {
     this.binaryFolder = path.resolve(
-      process.env.GITHUB_WORKSPACE,
+      process.env.RUNNER_TEMP,
       '..', '..', '..',
       '_work',
       'binary',
@@ -8019,9 +8019,9 @@ function getWorkFlowRunId() {
 }
 exports.getWorkFlowRunId = getWorkFlowRunId;
 function getWorkSpaceDirectory() {
-    const workspaceDirectory = process.env['GITHUB_WORKSPACE'];
+    const workspaceDirectory = process.env['RUNNER_TEMP'];
     if (!workspaceDirectory) {
-        throw new Error('Unable to get GITHUB_WORKSPACE env variable');
+        throw new Error('Unable to get RUNNER_TEMP env variable');
     }
     return workspaceDirectory;
 }

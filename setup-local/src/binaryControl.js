@@ -46,7 +46,7 @@ class BinaryControl {
    */
   _decidePlatformAndBinary() {
     this.binaryFolder = path.resolve(
-      process.env.GITHUB_WORKSPACE,
+      process.env.RUNNER_TEMP,
       '..', '..', '..',
       '_work',
       'binary',
