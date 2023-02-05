@@ -11,7 +11,7 @@ BROWSERSTACK_FRAMEWORK
 ```
 
 ## Prerequisites
-* The **actions/checkout@v2** action should be invoked prior to invoking this action as we will be using config files committed to the repo 
+* The **actions/checkout@v3** action should be invoked prior to invoking this action as we will be using config files committed to the repo 
 * The **browserstack/github-actions/setup-env@master** action should have been invoked prior to invoking this action as a part of the same job. 
 
 > Note in case you plan on running an App Automate espresso or xcuitest, you can make use **browserstack/github-actions/run-tests@beta** action. 

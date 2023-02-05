@@ -8,7 +8,7 @@ on:
     paths:
     - 'run-tests/**'
     - '.github/workflows/run-tests*'
-    
+
 
 jobs:
   unit-tests:
@@ -17,12 +17,14 @@ jobs:
       matrix:
         operating-system: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
-    - name: Set Node.js 12.x
+    - name: Set Node.js 16.x
       uses: actions/setup-node@master
       with:
-        node-version: 12.x
+        node-version: 16.x
+        cache: 'npm'
+        cache-dependency-path: 'run-tests/package-lock.json'
 
     - name: npm install
       working-directory: ./run-tests
