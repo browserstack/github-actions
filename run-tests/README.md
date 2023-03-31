@@ -5,7 +5,7 @@ This action fulfils the following objectives in your runner environment:
 * Display the result in the console and mark the build as failed or passed as per the build status on browserstack
 
 ## Prerequisites
-* The **actions/checkout@v2** action should be invoked prior to invoking this action as we will be referencing confing files commited to the repo 
+* The **actions/checkout@v3** action should be invoked prior to invoking this action as we will be referencing confing files commited to the repo 
 * The **browserstack/github-actions/setup-env@master** action should have been invoked prior to invoking this action as a part of the same job.
 
 ## Inputs
@@ -71,11 +71,11 @@ The `test_config.json` file can be something like:
 
       steps:
         # this is needed so that github action can access the files in the repo like config, app etc 
-        - uses: actions/checkout@v2
+        - uses: actions/checkout@v3
 
         # following are the steps to build app and test suite
         - name: Set up JDK 14
-          uses: actions/setup-java@v2
+          uses: actions/setup-java@v3
           with:
             java-version: '14'
             distribution: 'adopt'
@@ -135,7 +135,7 @@ The `test_config.json` file can be something like:
 
       steps:
         # this is needed so that github action can access the files in the repo like config, app etc 
-        - uses: actions/checkout@v2
+        - uses: actions/checkout@v3
         
         # setup browserstack credentials
         # picks up `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY` from secrets 
