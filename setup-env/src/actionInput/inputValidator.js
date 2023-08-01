@@ -33,7 +33,8 @@ class InputValidator {
 
         const probableBranchOrTag = ref.split('/').pop();
         const slicedSHA = commitSHA.slice(0, 7);
-        return `[${probableBranchOrTag}] Commit ${slicedSHA}: ${commitMessage} [Workflow: ${workflowNumber}]`;
+        const slicedCommitMessage = commitMessage.slice(0,200);
+        return `[${probableBranchOrTag}] Commit ${slicedSHA}: ${slicedCommitMessage} [Workflow: ${workflowNumber}]`;
       }
       case 'pull_request': {
         const {
