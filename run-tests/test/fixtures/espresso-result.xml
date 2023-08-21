@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<testsuites>
+    <testsuite name="com.sample.browserstack.samplecalculator.EnsureInputTests" tests="2" failures="2" skipped="0" timedout="0" errors="0" time="4.419" timestamp="2020-06-04 07:44:14 +0000">
+        <properties>
+            <property session_id="c9215a31aace1d2b885f1c7a9f5d73bce55b4543"/>
+            <property devicename="Google Pixel 3"/>
+            <property os="Android"/>
+            <property version="9"/>
+        </properties>
+        <testcase name="ensureMultipleInputIsHandled" classname="com.sample.browserstack.samplecalculator.EnsureInputTests" result="failed" test_id="be2460f7f5fd21f73673060d4046199e6a94d9e624e815c7" time="0.422" video_url="https://www.browserstack.com/s3-upload/bs-video-logs-aps/s3-ap-south-1/be2460f7f5fd21f73673060d4046199e6a94d9e6/video-be2460f7f5fd21f73673060d4046199e6a94d9e6.mp4#t=0,3">
+            <failure>java.lang.RuntimeException: Unable to capture screenshot.
+          ... 32 more
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="com.sample.browserstack.samplecalculator.EnsureOperationTests" tests="4" failures="4" skipped="0" timedout="0" errors="0" time="22.643" timestamp="2020-06-04 07:44:22 +0000">
+        <properties>
+            <property session_id="c9215a31aace1d2b885f1c7a9f5d73bce55b4543"/>
+            <property devicename="Google Pixel 3"/>
+            <property os="Android"/>
+            <property version="9"/>
+        </properties>
+        <testcase name="ensureMultiplicationWorks" classname="com.sample.browserstack.samplecalculator.EnsureOperationTests" result="failed" test_id="be2460f7f5fd21f73673060d4046199e6a94d9e6406d4de4" time="2.366" video_url="https://www.browserstack.com/s3-upload/bs-video-logs-aps/s3-ap-south-1/be2460f7f5fd21f73673060d4046199e6a94d9e6/video-be2460f7f5fd21f73673060d4046199e6a94d9e6.mp4#t=8,13">
+            <failure>java.lang.RuntimeException: Unable to capture screenshot.
+          ... 32 more
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="com.sample.browserstack.samplecalculator.ExampleInstrumentedTest" tests="1" failures="0" skipped="0" timedout="0" errors="0" time="0.009" timestamp="2020-06-04 07:45:01 +0000">
+        <properties>
+            <property session_id="c9215a31aace1d2b885f1c7a9f5d73bce55b4543"/>
+            <property devicename="Google Pixel 3"/>
+            <property os="Android"/>
+            <property version="9"/>
+        </properties>
+        <testcase name="useAppContext" classname="com.sample.browserstack.samplecalculator.ExampleInstrumentedTest" result="passed" test_id="be2460f7f5fd21f73673060d4046199e6a94d9e65e747bcf" time="0.009" video_url="https://www.browserstack.com/s3-upload/bs-video-logs-aps/s3-ap-south-1/be2460f7f5fd21f73673060d4046199e6a94d9e6/video-be2460f7f5fd21f73673060d4046199e6a94d9e6.mp4#t=47,50"/>
+    </testsuite>
+</testsuites>

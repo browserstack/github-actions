@@ -229,7 +229,52 @@ describe('TestRunner', () => {
     });
   });
 });
+describe('_uploadResults', () => {
+  let stubRequests;
+  beforeEach(() => {
+    process.env[ENV_VARS.BROWSERSTACK_USERNAME] = "some_user_name";
+    process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY] = "some_access_key";
+    process.env[ENV_VARS.BROWSERSTACK_PROJECT_NAME] = "sample";
+    stubRequests = sinon.stub(request, 'get');
+  });
 
+  afterEach(() => {
+    request.get.restore();
+    if (fs.existsSync('./reports')) {
+      fs.rmSync('./reports', { recursive: true, force: true });
+    }
+  });
+
+  context('for espresso', () => {
+    it('should download reports', (done) => {
+      const responseJson = JSON.parse(fs.readFileSync('./test/fixtures/build_response.json'));
+      stubRequests.yields(null, {
+        statusCode: 200,
+        body: fs.readFileSync('./test/fixtures/espresso-result.xml'),
+      });
+      TestRunner._uploadResults(responseJson).then(() => {
+        const files = fs.readdirSync('./reports');
+        expect(files.length).to.be.equal(3);
+        done();
+      }).catch(done);
+    });
+  });
+
+  context('for xcuitest', () => {
+    it('should download reports', (done) => {
+      const responseJson = JSON.parse(fs.readFileSync('./test/fixtures/build_response_xcuitest.json'));
+      stubRequests.yields(null, {
+        statusCode: 200,
+        body: fs.readFileSync('./test/fixtures/xcuitest-result.zip'),
+      });
+      TestRunner._uploadResults(responseJson).then(() => {
+        const files = fs.readdirSync('./reports');
+        expect(files.length).to.be.equal(2);
+        done();
+      }).catch(done);
+    });
+  });
+});
 describe('_parseApiResult', () => {
   it('should parse rest api results and populate array', () => {
     const responseJson = JSON.parse(fs.readFileSync('./test/fixtures/build_response.json'));

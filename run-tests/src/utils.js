@@ -2,6 +2,7 @@ const core = require('@actions/core');
 const request = require('request');
 const Table = require('cli-table');
 const fs = require('fs');
+const artifacts = require('@actions/artifact');
 const constants = require("../config/constants");
 
 const {
@@ -10,6 +11,7 @@ const {
   INPUT,
   WATCH_INTERVAL,
   TEST_STATUS,
+  FRAMEWORKS,
 } = constants;
 
 class TestRunner {
@@ -27,6 +29,7 @@ class TestRunner {
       this.test_suite_hashed_id = process.env[ENV_VARS.TEST_SUITE_ID];
       this.framework = core.getInput(INPUT.FRAMEWORK) || process.env[ENV_VARS.FRAMEWORK];
       this.async = core.getInput(INPUT.ASYNC);
+      this.upload = core.getInput(INPUT.UPLOAD);
     } catch (e) {
       throw Error(`Action input failed for reason: ${e.message}`);
     }
@@ -162,12 +165,59 @@ class TestRunner {
               clearInterval(poller);
               TestRunner._parseApiResult(content);
               this.build_status = content.status;
-              resolve();
+              resolve(content);
             }
           }
         });
       }, WATCH_INTERVAL);
     });
+  }
+
+  static async _uploadResults(content) {
+    const promises = [];
+    core.info(`Uploading test report artifacts for build id: ${content.id}`);
+    const { devices, id: buildId, framework } = content;
+    for (const device of devices) {
+      const { sessions } = device;
+      for (const session of sessions) {
+        const { id } = session;
+        const options = {
+          url: `https://${this.username}:${this.accesskey}@${URLS.BASE_URL}/${URLS.WATCH_FRAMEWORKS[framework]}/${buildId}/sessions/${id}/${URLS.REPORT[framework]}`,
+        };
+        /* eslint-disable no-eval */
+        promises.push(new Promise((resolve, reject) => {
+          request.get(options, (error, response) => {
+            if (error) {
+              reject(error);
+            }
+            if (response.statusCode !== 200) {
+              reject(response.body);
+            }
+            resolve(response.body);
+          });
+        }).then(async (report) => {
+          if (!fs.existsSync('./reports')) {
+            fs.mkdirSync('./reports');
+          }
+          if (framework === FRAMEWORKS.espresso) {
+            fs.writeFileSync(`./reports/${id}.xml`, report);
+          } else if (framework === FRAMEWORKS.xcuitest) {
+            fs.writeFileSync(`./reports/${id}.zip`, report);
+          }
+        }).catch((err) => {
+          core.error(err);
+        }));
+      }
+    }
+    await Promise.all(promises);
+    if (process.env.ACTIONS_RUNTIME_TOKEN) {
+      try {
+        const files = fs.readdirSync('./reports');
+        await artifacts.create().uploadArtifact('reports', files, './reports');
+      } catch (err) {
+        core.error(err);
+      }
+    }
   }
 
   async run() {
@@ -176,7 +226,8 @@ class TestRunner {
       const dashboardUrl = `https://${URLS.DASHBOARD_BASE}/${this.build_id}`;
       core.info(`Build Dashboard link: ${dashboardUrl}`);
       if (this.async) return;
-      await this._pollBuild();
+      const content = await this._pollBuild();
+      if (this.upload) await TestRunner._uploadResults(content);
       if (this.build_status !== TEST_STATUS.PASSED) {
         core.setFailed(`Browserstack Build with build id: ${this.build_id} ${this.build_status}`);
       }
