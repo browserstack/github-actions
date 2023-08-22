@@ -175,7 +175,7 @@ class TestRunner {
 
   static async _uploadResults(content) {
     const promises = [];
-    core.info(`Uploading test report artifacts for build id: ${content.id}`);
+    core.info(`Uploading test report to artifacts for build id: ${content.id}`);
     const { devices, id: buildId, framework } = content;
     for (const device of devices) {
       const { sessions } = device;
@@ -210,13 +210,12 @@ class TestRunner {
       }
     }
     await Promise.all(promises);
-    if (process.env.ACTIONS_RUNTIME_TOKEN) {
-      try {
-        const files = fs.readdirSync('./reports');
-        await artifacts.create().uploadArtifact('reports', files, './reports');
-      } catch (err) {
-        core.error(err);
-      }
+    try {
+      const files = fs.readdirSync('./reports');
+      const res = await artifacts.create().uploadArtifact('reports', files, './reports');
+      core.info(`Reports successfully uploaded to artifacts with artifact name ${res.artifactName}`);
+    } catch (err) {
+      core.error(err);
     }
   }
 

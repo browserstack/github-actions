@@ -1,5 +1,6 @@
 const sinon = require('sinon');
 const core = require('@actions/core');
+const artifact = require('@actions/artifact');
 const fs = require('fs');
 const request = require('request');
 const { expect } = require('chai');
@@ -231,11 +232,13 @@ describe('TestRunner', () => {
 });
 describe('_uploadResults', () => {
   let stubRequests;
+  let stubArtifact;
   beforeEach(() => {
     process.env[ENV_VARS.BROWSERSTACK_USERNAME] = "some_user_name";
     process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY] = "some_access_key";
     process.env[ENV_VARS.BROWSERSTACK_PROJECT_NAME] = "sample";
     stubRequests = sinon.stub(request, 'get');
+    stubArtifact = sinon.stub(artifact, 'create');
   });
 
   afterEach(() => {
@@ -243,11 +246,19 @@ describe('_uploadResults', () => {
     if (fs.existsSync('./reports')) {
       fs.rmSync('./reports', { recursive: true, force: true });
     }
+    artifact.create.restore();
   });
 
   context('for espresso', () => {
     it('should download reports', (done) => {
       const responseJson = JSON.parse(fs.readFileSync('./test/fixtures/build_response.json'));
+      stubArtifact.returns({
+        async uploadArtifact(name) {
+          return {
+            artifactName: name,
+          };
+        },
+      });
       stubRequests.yields(null, {
         statusCode: 200,
         body: fs.readFileSync('./test/fixtures/espresso-result.xml'),
@@ -263,6 +274,13 @@ describe('_uploadResults', () => {
   context('for xcuitest', () => {
     it('should download reports', (done) => {
       const responseJson = JSON.parse(fs.readFileSync('./test/fixtures/build_response_xcuitest.json'));
+      stubArtifact.returns({
+        async uploadArtifact(name) {
+          return {
+            artifactName: name,
+          };
+        },
+      });
       stubRequests.yields(null, {
         statusCode: 200,
         body: fs.readFileSync('./test/fixtures/xcuitest-result.zip'),
