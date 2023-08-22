@@ -209,11 +209,14 @@ class TestRunner {
         }));
       }
     }
-    await Promise.all(promises);
+    await Promise.allSettled(promises);
     try {
-      const files = fs.readdirSync('./reports');
-      const res = await artifacts.create().uploadArtifact('reports', files, './reports');
-      core.info(`Reports successfully uploaded to artifacts with artifact name ${res.artifactName}`);
+      const rootDir = './reports';
+      const files = fs.readdirSync(rootDir).map((path) => `${rootDir}/${path}`);
+      const { artifactName } = await artifacts.create().uploadArtifact('reports', files, rootDir, {
+        continueOnError: true,
+      });
+      core.info(`Reports successfully uploaded to artifacts with artifact name ${artifactName}`);
     } catch (err) {
       core.error(err);
     }
