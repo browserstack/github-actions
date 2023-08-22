@@ -177,6 +177,7 @@ class TestRunner {
     const promises = [];
     core.info(`Uploading test report to artifacts for build id: ${content.id}`);
     const { devices, id: buildId, framework } = content;
+    const rootDir = './reports'
     for (const device of devices) {
       const { sessions } = device;
       for (const session of sessions) {
@@ -196,13 +197,13 @@ class TestRunner {
             resolve(response.body);
           });
         }).then(async (report) => {
-          if (!fs.existsSync('./reports')) {
-            fs.mkdirSync('./reports');
+          if (!fs.existsSync(rootDir)) {
+            fs.mkdirSync(rootDir);
           }
           if (framework === FRAMEWORKS.espresso) {
-            fs.writeFileSync(`./reports/${id}.xml`, report);
+            fs.writeFileSync(`${rootDir}/${id}.xml`, report);
           } else if (framework === FRAMEWORKS.xcuitest) {
-            fs.writeFileSync(`./reports/${id}.zip`, report);
+            fs.writeFileSync(`${rootDir}/${id}.zip`, report);
           }
         }).catch((err) => {
           core.error(err);
@@ -211,7 +212,6 @@ class TestRunner {
     }
     await Promise.allSettled(promises);
     try {
-      const rootDir = './reports';
       const files = fs.readdirSync(rootDir).map((path) => `${rootDir}/${path}`);
       const { artifactName } = await artifacts.create().uploadArtifact('reports', files, rootDir, {
         continueOnError: true,
