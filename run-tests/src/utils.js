@@ -177,7 +177,7 @@ class TestRunner {
     const promises = [];
     core.info(`Uploading test report to artifacts for build id: ${content.id}`);
     const { devices, id: buildId, framework } = content;
-    const rootDir = './reports'
+    const rootDir = './reports';
     for (const device of devices) {
       const { sessions } = device;
       for (const session of sessions) {
@@ -213,10 +213,12 @@ class TestRunner {
     await Promise.allSettled(promises);
     try {
       const files = fs.readdirSync(rootDir).map((path) => `${rootDir}/${path}`);
-      const { artifactName } = await artifacts.create().uploadArtifact('reports', files, rootDir, {
+      const { artifactName, failedItems, artifactItems } = await artifacts.create().uploadArtifact('reports', files, rootDir, {
         continueOnError: true,
       });
       core.info(`Reports successfully uploaded to artifacts with artifact name ${artifactName}`);
+      core.debug(`failedItems:${JSON.stringify(failedItems)}`);
+      core.debug(`artifactItems:${JSON.stringify(artifactItems)}`);
     } catch (err) {
       core.error(err);
     }
