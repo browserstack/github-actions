@@ -24,8 +24,9 @@ module.exports = {
       xcuitest: 'xcuitest/v2/builds',
     },
     REPORT: {
-      espresso: 'report',
-      xcuitest: 'resultbundle',
+      espresso_junit: 'report',
+      espresso_cucumber: 'assets',
+      xcuitest_resultbundle: 'resultbundle',
     },
     DASHBOARD_BASE: 'app-automate.browserstack.com/dashboard/v2/builds',
   },

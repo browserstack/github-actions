@@ -180,12 +180,26 @@ class TestRunner {
     const rootDir = './reports';
     const username = process.env[ENV_VARS.BROWSERSTACK_USERNAME].replace("-GitHubAction", "");
     const accesskey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
+    const inputCapabilities = content.input_capabilities;
+    let reportEndpoint;
+    if (framework === FRAMEWORKS.espresso) {
+      if (inputCapabilities.cucumberOptions && inputCapabilities.cucumberOptions.plugins) {
+        reportEndpoint = URLS.REPORT.espresso_cucumber;
+      } else {
+        reportEndpoint = URLS.REPORT.espresso_junit;
+      }
+    } else if (framework === FRAMEWORKS.xcuitest) {
+      reportEndpoint = URLS.REPORT.xcuitest_resultbundle;
+    } else {
+      core.error(new Error("Invalid Framework."));
+      return;
+    }
     for (const device of devices) {
       const { sessions } = device;
       for (const session of sessions) {
         const { id } = session;
         const options = {
-          url: `https://${username}:${accesskey}@${URLS.BASE_URL}/${URLS.WATCH_FRAMEWORKS[framework]}/${buildId}/sessions/${id}/${URLS.REPORT[framework]}`,
+          url: `https://${username}:${accesskey}@${URLS.BASE_URL}/${URLS.WATCH_FRAMEWORKS[framework]}/${buildId}/sessions/${id}/${reportEndpoint}`,
         };
         /* eslint-disable no-eval */
         promises.push(new Promise((resolve, reject) => {
