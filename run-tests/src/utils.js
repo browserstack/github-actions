@@ -178,6 +178,9 @@ class TestRunner {
     core.info(`Uploading test report to artifacts for build id: ${content.id}`);
     const { devices, id: buildId, framework } = content;
     const rootDir = './reports';
+    if (!fs.existsSync(rootDir)) {
+      fs.mkdirSync(rootDir);
+    }
     const username = process.env[ENV_VARS.BROWSERSTACK_USERNAME].replace("-GitHubAction", "");
     const accesskey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
     const inputCapabilities = content.input_capabilities;
@@ -189,7 +192,12 @@ class TestRunner {
         reportEndpoint = URLS.REPORT.espresso_junit;
       }
     } else if (framework === FRAMEWORKS.xcuitest) {
-      reportEndpoint = URLS.REPORT.xcuitest_resultbundle;
+      if (inputCapabilities.enableResultBundle) {
+        reportEndpoint = URLS.REPORT.xcuitest_resultbundle;
+      } else {
+        core.info("'enableResultBundle' is missing in capabilities. Skipping reports.");
+        return;
+      }
     } else {
       core.error(new Error("Invalid Framework."));
       return;
@@ -213,9 +221,6 @@ class TestRunner {
             resolve(response.body);
           });
         }).then(async (report) => {
-          if (!fs.existsSync(rootDir)) {
-            fs.mkdirSync(rootDir);
-          }
           if (framework === FRAMEWORKS.espresso) {
             fs.writeFileSync(`${rootDir}/${id}.xml`, report);
           } else if (framework === FRAMEWORKS.xcuitest) {

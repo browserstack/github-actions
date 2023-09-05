@@ -10,7 +10,8 @@
         ],
         "project": "SampleBuild",
         "app": "bs://9c6dcb5649a8280ca800075bfd8f151115bba6b3",
-        "testSuite": "bs://89c874f21852ba57957a3fdc33f47514288c4ba1"
+        "testSuite": "bs://89c874f21852ba57957a3fdc33f47514288c4ba1",
+        "enableResultBundle": true
     },
     "start_time": "2020-06-04 07:43:49 UTC",
     "app_details": {
