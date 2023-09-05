@@ -1,0 +1,81 @@
+{
+    "id": "5c5ab4338cec13aeb78f7a6977344556ac00bccd6",
+    "framework": "xcuitest",
+    "duration": 83,
+    "status": "failed",
+    "input_capabilities": {
+        "devices": [
+            "iPhone X-11.0",
+            "iPhone 8-11.0"
+        ],
+        "project": "SampleBuild",
+        "app": "bs://9c6dcb5649a8280ca800075bfd8f151115bba6b3",
+        "testSuite": "bs://89c874f21852ba57957a3fdc33f47514288c4ba1",
+        "enableResultBundle": true
+    },
+    "start_time": "2020-06-04 07:43:49 UTC",
+    "app_details": {
+        "url": "bs://9c6dcb5649a8280ca800075bfd8f151115bba6b3",
+        "bundle_id": "com.sample.browserstack.samplecalculator",
+        "version": "1.0",
+        "name": "app-debug.ipa"
+    },
+    "test_suite_details": {
+        "url": "bs://89c874f21852ba57957a3fdc33f47514288c4ba1",
+        "bundle_id": "com.sample.browserstack.samplecalculator.test",
+        "version": "",
+        "name": "app-debugTest.ipa"
+    },
+    "devices": [
+        {
+            "device": "iPhone X",
+            "os": "ios",
+            "os_version": "11.0",
+            "sharding": false,
+            "sessions": [
+            {
+                "id": "4fc55a08d7e33651d962ad676c7d6a0a08902702",
+                "status": "failed",
+                "start_time": "2020-06-04 07:44:07 +0000",
+                "duration": 62,
+                "testcases": {
+                    "count": 9,
+                    "status": {
+                        "passed": 3,
+                        "failed": 6,
+                        "skipped": 0,
+                        "timedout": 0,
+                        "error": 0,
+                        "running": 0,
+                        "queued": 0
+                    }
+                }
+            }]
+        },
+        {
+            "device": "iPhone 8",
+            "os": "ios",
+            "os_version": "11.0",
+            "sharding": false,
+            "sessions": [
+            {
+                "id": "1f5c3cb7d1f7560635f6c83eafe418a2fabbef0d",
+                "status": "failed",
+                "start_time": "2020-06-04 07:44:10 +0000",
+                "duration": 59,
+                "testcases": {
+                    "count": 9,
+                    "status": {
+                        "passed": 3,
+                        "failed": 6,
+                        "skipped": 0,
+                        "timedout": 0,
+                        "error": 0,
+                        "running": 0,
+                        "queued": 0
+                    }
+                }
+            }]
+        }
+    ]
+}

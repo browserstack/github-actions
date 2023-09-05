@@ -2,6 +2,7 @@ const core = require('@actions/core');
 const request = require('request');
 const Table = require('cli-table');
 const fs = require('fs');
+const artifacts = require('@actions/artifact');
 const constants = require("../config/constants");
 
 const {
@@ -10,6 +11,7 @@ const {
   INPUT,
   WATCH_INTERVAL,
   TEST_STATUS,
+  FRAMEWORKS,
 } = constants;
 
 class TestRunner {
@@ -27,6 +29,7 @@ class TestRunner {
       this.test_suite_hashed_id = process.env[ENV_VARS.TEST_SUITE_ID];
       this.framework = core.getInput(INPUT.FRAMEWORK) || process.env[ENV_VARS.FRAMEWORK];
       this.async = core.getInput(INPUT.ASYNC);
+      this.upload = core.getInput(INPUT.UPLOAD);
     } catch (e) {
       throw Error(`Action input failed for reason: ${e.message}`);
     }
@@ -162,12 +165,84 @@ class TestRunner {
               clearInterval(poller);
               TestRunner._parseApiResult(content);
               this.build_status = content.status;
-              resolve();
+              resolve(content);
             }
           }
         });
       }, WATCH_INTERVAL);
     });
+  }
+
+  static async _uploadResults(content) {
+    const promises = [];
+    core.info(`Uploading test report to artifacts for build id: ${content.id}`);
+    const { devices, id: buildId, framework } = content;
+    const rootDir = './reports';
+    if (!fs.existsSync(rootDir)) {
+      fs.mkdirSync(rootDir);
+    }
+    const username = process.env[ENV_VARS.BROWSERSTACK_USERNAME].replace("-GitHubAction", "");
+    const accesskey = process.env[ENV_VARS.BROWSERSTACK_ACCESS_KEY];
+    const inputCapabilities = content.input_capabilities;
+    let reportEndpoint;
+    if (framework === FRAMEWORKS.espresso) {
+      if (inputCapabilities.cucumberOptions && inputCapabilities.cucumberOptions.plugins) {
+        reportEndpoint = URLS.REPORT.espresso_cucumber;
+      } else {
+        reportEndpoint = URLS.REPORT.espresso_junit;
+      }
+    } else if (framework === FRAMEWORKS.xcuitest) {
+      if (inputCapabilities.enableResultBundle) {
+        reportEndpoint = URLS.REPORT.xcuitest_resultbundle;
+      } else {
+        core.info("'enableResultBundle' is missing in capabilities. Skipping reports.");
+        return;
+      }
+    } else {
+      core.error(new Error("Invalid Framework."));
+      return;
+    }
+    for (const device of devices) {
+      const { sessions } = device;
+      for (const session of sessions) {
+        const { id } = session;
+        const options = {
+          url: `https://${username}:${accesskey}@${URLS.BASE_URL}/${URLS.WATCH_FRAMEWORKS[framework]}/${buildId}/sessions/${id}/${reportEndpoint}`,
+        };
+        /* eslint-disable no-eval */
+        promises.push(new Promise((resolve, reject) => {
+          request.get(options, (error, response) => {
+            if (error) {
+              reject(error);
+            }
+            if (response.statusCode !== 200) {
+              reject(response.body);
+            }
+            resolve(response.body);
+          });
+        }).then(async (report) => {
+          if (framework === FRAMEWORKS.espresso) {
+            fs.writeFileSync(`${rootDir}/${id}.xml`, report);
+          } else if (framework === FRAMEWORKS.xcuitest) {
+            fs.writeFileSync(`${rootDir}/${id}.zip`, report);
+          }
+        }).catch((err) => {
+          core.error(err);
+        }));
+      }
+    }
+    await Promise.allSettled(promises);
+    try {
+      const files = fs.readdirSync(rootDir).map((path) => `${rootDir}/${path}`);
+      const { artifactName, failedItems, artifactItems } = await artifacts.create().uploadArtifact('reports', files, rootDir, {
+        continueOnError: true,
+      });
+      core.info(`Reports successfully uploaded to artifacts with artifact name ${artifactName}`);
+      core.debug(`failedItems:${JSON.stringify(failedItems)}`);
+      core.debug(`artifactItems:${JSON.stringify(artifactItems)}`);
+    } catch (err) {
+      core.error(err);
+    }
   }
 
   async run() {
@@ -176,7 +251,8 @@ class TestRunner {
       const dashboardUrl = `https://${URLS.DASHBOARD_BASE}/${this.build_id}`;
       core.info(`Build Dashboard link: ${dashboardUrl}`);
       if (this.async) return;
-      await this._pollBuild();
+      const content = await this._pollBuild();
+      if (this.upload) await TestRunner._uploadResults(content);
       if (this.build_status !== TEST_STATUS.PASSED) {
         core.setFailed(`Browserstack Build with build id: ${this.build_id} ${this.build_status}`);
       }

@@ -23,6 +23,14 @@ This action fulfils the following objectives in your runner environment:
   * default: 
     * false, in case this param isn't passed by default the build will wait for the test to get completed
   * specify if the test need to run in background and not poll for results, useful in case of long running test cases. The action will be marked as passed as soon as build is started independent of result.
+* `upload`:
+  * Valid Inputs:
+    * true
+    * false
+  * default: 
+    * false, in case this param isn't passed reports will not be uploaded to artifacts.
+  * specify if you want to upload test reports to artifacts.
+  * Note: For Espresso Cucumber Tests, please pass [plugins to your cucumberOptions](https://www.browserstack.com/docs/app-automate/espresso/run-cucumber-tests#:~:text=Step%201%3A%20Specify%20format%20of%20test%20report%20in%20command) in your config file for the report to be uploaded.
 
 > Note: In case you are using this action along with **browserstack/github-actions/upload-app@beta** you need not specify app and test_suite in the config and framework in the inputs. It will the automatically picked from the previous steps outputs.  
    

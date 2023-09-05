@@ -7,7 +7,9 @@ inputs:
   framework:
     description: 'Test framework used for the test espresso/xcuitest'
   async:
-    description: 'Start the test and not wait for the result, marks the build intermediately as passed' 
+    description: 'Start the test and not wait for the result, marks the build intermediately as passed'
+  upload:
+    description: 'Uploads the test reports to github artifacts. Requires async to be false.' 
 runs:
   using: 'node12'
   main: 'dist/index.js'
