@@ -1,7 +1,7 @@
 # BrowserStack GitHub Actions
 
 <p align="center">
-  <a href="https://browserstack.com"><img alt="BrowserStack Logo" src="https://d98b8t1nnulk5.cloudfront.net/production/images/layout/logo-invoice.svg"></a>
+  <a href="https://www.browserstack.com/?utm_source=github&utm_medium=partnered"><img alt="BrowserStack Logo" src="https://d98b8t1nnulk5.cloudfront.net/production/images/layout/logo-invoice.svg"></a>
 </p>
 
 <p align="center">
