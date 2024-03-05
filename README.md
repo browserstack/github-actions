@@ -65,7 +65,7 @@ jobs:
 
 ### Note
 ---
-Post these steps, you will have to build and run your application web server on the same runner environment. Further, invoke your test scripts by utilizing the environment variables that have been set by actions. For more detailed steps on how to integrate your test suite with BrowserStack on GitHub Actions, visit [BrowserStack Documentation](http://browserstack.com/docs/automate/selenium/github-actions/?utm_source=github&utm_medium=partnered) for the same.
+Post these steps, you will have to build and run your application web server on the same runner environment. Further, invoke your test scripts by utilizing the environment variables that have been set by actions. For more detailed steps on how to integrate your test suite with BrowserStack on GitHub Actions, visit [BrowserStack Documentation](https://www.browserstack.com/docs/automate/selenium/github-actions/?utm_medium=partnered&utm_source=github) for the same.
 
 After you are done running your tests, invoke the `setup-local` Action again with `local-testing: stop` as the input:
 ```yaml
