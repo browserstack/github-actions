@@ -1,7 +1,7 @@
 # BrowserStack GitHub Actions
 
 <p align="center">
-  <a href="https://browserstack.com"><img alt="BrowserStack Logo" src="https://d98b8t1nnulk5.cloudfront.net/production/images/layout/logo-invoice.svg"></a>
+  <a href="https://www.browserstack.com/?utm_source=github&utm_medium=partnered"><img alt="BrowserStack Logo" src="https://d98b8t1nnulk5.cloudfront.net/production/images/layout/logo-invoice.svg"></a>
 </p>
 
 <p align="center">
@@ -9,11 +9,11 @@
   <a href="https://github.com/browserstack/github-actions/actions?query=workflow%3Asetup-local"><img alt="setup-local build status" src="https://github.com/browserstack/github-actions/workflows/setup-local/badge.svg"></a>
 </p>
 
-This respository contains a library of GitHub Actions to help you integrate your test suite with the [BrowserStack](https://browserstack.com) device cloud. 
+This respository contains a library of GitHub Actions to help you integrate your test suite with the [BrowserStack](https://www.browserstack.com/?utm_source=github&utm_medium=partnered) device cloud. 
 
-You need a BrowserStack username and access-key to run your tests on the BrowserStack device cloud. You can [sign-up for free trial](https://www.browserstack.com/users/sign_up) if you do not have an existing account.
+You need a BrowserStack username and access-key to run your tests on the BrowserStack device cloud. You can [sign-up for free trial](https://www.browserstack.com/users/sign_up/?utm_source=github&utm_medium=partnered) if you do not have an existing account.
 
-If you want to test your open source project on BrowserStack, then [sign-up here](https://www.browserstack.com/open-source) for lifetime free access to all our products.
+If you want to test your open source project on BrowserStack, then [sign-up here](https://www.browserstack.com/open-source/?utm_source=github&utm_medium=partnered) for lifetime free access to all our products.
 
 ## Available Actions
 * [setup-env](./setup-env): This Action helps in setting up the required environment variables that are to be used in your test scripts. The environment variables set up here shall be used by other BrowserStack actions as well for their functioning.
@@ -65,7 +65,7 @@ jobs:
 
 ### Note
 ---
-Post these steps, you will have to build and run your application web server on the same runner environment. Further, invoke your test scripts by utilizing the environment variables that have been set by actions. For more detailed steps on how to integrate your test suite with BrowserStack on GitHub Actions, visit [BrowserStack Documentation](http://browserstack.com/docs/automate/selenium/github-actions) for the same.
+Post these steps, you will have to build and run your application web server on the same runner environment. Further, invoke your test scripts by utilizing the environment variables that have been set by actions. For more detailed steps on how to integrate your test suite with BrowserStack on GitHub Actions, visit [BrowserStack Documentation](https://www.browserstack.com/docs/automate/selenium/github-actions/?utm_medium=partnered&utm_source=github) for the same.
 
 After you are done running your tests, invoke the `setup-local` Action again with `local-testing: stop` as the input:
 ```yaml
