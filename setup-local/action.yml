@@ -15,5 +15,5 @@ inputs:
     description: 'Extra arguments to be passed to the Local Binary'
     required: false
 runs:
-  using: 'node16'
+  using: 'node20'
   main: 'dist/index.js'
