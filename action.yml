@@ -14,7 +14,7 @@ inputs:
     description: 'Project name for the tests'
     required: false
 runs:
-  using: 'node16'
+  using: 'node20'
   main: 'setup-env/dist/index.js'
 branding:
   icon: 'check-circle'
