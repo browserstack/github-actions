@@ -1,6 +1,11 @@
 name: 'setup-rerun-vars'
 description: 'Setup BrowserStack Rerun Variables'
 
+inputs:
+  run_attempt:
+    description: 'Run attempt number'
+    required: true
+
 jobs:
   check-rerun:
     runs-on: ubuntu-latest
