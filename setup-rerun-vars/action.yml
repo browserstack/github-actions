@@ -40,12 +40,12 @@ runs:
           echo "Triggering Actor: $triggering_actor"
           if [[ "$triggering_actor" == "gha-bstack-rerun[bot]" ]]; then
             echo "The run was triggered by the GitHub App."
-            echo "::set-output name=tests_to_run::rerun_tests"
+            echo "tests_to_run=rerun_tests" >> $GITHUB_ENV
           else
             echo "The run was triggered by: ${{ github.actor }}"
-            echo "::set-output name=tests_to_run::all_tests"
+            echo "tests_to_run=all_tests" >> $GITHUB_ENV
           fi
         else
           echo "This is the first run."
-          echo "::set-output name=tests_to_run::all_tests"
+          echo "tests_to_run=all_tests" >> $GITHUB_ENV
         fi
