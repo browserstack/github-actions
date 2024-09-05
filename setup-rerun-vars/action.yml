@@ -12,8 +12,8 @@ jobs:
     steps:
       - name: Check if this is a re-run
         run: |
-          if [ "${{ github.run_attempt }}" -gt 1 ]; then
-            echo "This run is a re-run (attempt #${{ github.run_attempt }})."
+          if [ "${{ inputs.run_attempt }}" -gt 1 ]; then
+            echo "This run is a re-run (attempt #${{ inputs.run_attempt }})."
           else
             echo "This is the first run."
           fi
