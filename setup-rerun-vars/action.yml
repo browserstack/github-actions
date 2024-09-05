@@ -5,46 +5,36 @@ inputs:
   run_attempt:
     description: 'Run attempt number'
     required: true
-
-outputs:
-  tests_to_run:
-    description: 'Modified tests to run based on rerun logic'
+  github_context:
+    description: 'GitHub context as a JSON string'
+    required: true
+  github_token:
+    description: 'GitHub Token'
+    required: true
 
 runs:
   using: 'composite'
   steps:
-    - name: Check if this is a re-run and modify tests_to_run
+    - name: Check if this is a re-run
       shell: bash
       run: |
-        tests_to_run="all"  # Default value
+        # Parse the JSON string input
+        github_context=$(echo "${{ inputs.github_context }}" | jq -r '.')
+        run_id=$(echo "$github_context" | jq -r '.run_id')
+        repository=$(echo "$github_context" | jq -r '.repository')
 
         if [ "${{ inputs.run_attempt }}" -gt 1 ]; then
           echo "This run is a re-run (attempt #${{ inputs.run_attempt }})."
-
-          # Fetch Run Details from GitHub API
-          curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          curl -H "Authorization: token ${{ inputs.github_token }}" \
                -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" > run_details.json
-
-          # Ensure jq is installed, install if necessary
-          if ! command -v jq &> /dev/null; then
-            echo "jq not found, installing..."
-            sudo apt-get update && sudo apt-get install -y jq
-          fi
-
-          # Extract triggering actor using jq
+               "https://api.github.com/repos/$repository/actions/runs/$run_id" > run_details.json
           triggering_actor=$(jq -r '.triggering_actor.login' run_details.json)
-
           echo "Triggering Actor: $triggering_actor"
-
           if [[ "$triggering_actor" == "gha-bstack-rerun[bot]" ]]; then
             echo "The run was triggered by the GitHub App."
-            tests_to_run="rerun_tests"  # Set custom value if triggered by GitHub App
           else
-            echo "The run was triggered by: $triggering_actor"
+            echo "The run was triggered by: ${{ github.actor }}"
           fi
         else
           echo "This is the first run."
         fi
-
-        echo "tests_to_run=${tests_to_run}" >> $GITHUB_OUTPUT
