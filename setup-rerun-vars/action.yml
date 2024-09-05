@@ -6,14 +6,15 @@ inputs:
     description: 'Run attempt number'
     required: true
 
-jobs:
-  check-rerun:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check if this is a re-run
-        run: |
-          if [ "${{ inputs.run_attempt }}" -gt 1 ]; then
-            echo "This run is a re-run (attempt #${{ inputs.run_attempt }})."
-          else
-            echo "This is the first run."
-          fi
+runs:
+  using: 'composite'
+  steps:
+    - name: Check if this is a re-run
+      shell: bash
+      run: |
+        if [ "${{ inputs.run_attempt }}" -gt 1 ]; then
+          echo "This run is a re-run (attempt #${{ inputs.run_attempt }})."
+        else
+          echo "This is the first run."
+        fi
+
