@@ -15,6 +15,10 @@ inputs:
     description: 'GitHub Token'
     required: true
 
+outputs:
+  tests_to_run:
+    description: 'Modified tests to run based on rerun logic'
+
 runs:
   using: 'composite'
   steps:
@@ -36,6 +40,7 @@ runs:
           echo "Triggering Actor: $triggering_actor"
           if [[ "$triggering_actor" == "gha-bstack-rerun[bot]" ]]; then
             echo "The run was triggered by the GitHub App."
+            tests_to_run="rerun_tests"
           else
             echo "The run was triggered by: ${{ github.actor }}"
           fi
