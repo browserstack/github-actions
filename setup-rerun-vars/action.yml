@@ -21,8 +21,9 @@ runs:
     - name: Check if this is a re-run
       shell: bash
       run: |
-        run_id= ${{ inputs.run_id }}
-        repository=${{ inputs.repository }}
+        # Assign inputs to variables
+        run_id="${{ inputs.run_id }}"
+        repository="${{ inputs.repository }}"
 
         if [ "${{ inputs.run_attempt }}" -gt 1 ]; then
           echo "This run is a re-run (attempt #${{ inputs.run_attempt }})."
