@@ -24,10 +24,12 @@ runs:
         # Assign inputs to variables
         run_id="${{ inputs.run_id }}"
         repository="${{ inputs.repository }}"
+        github_token="${{ inputs.github_token }}"
+        run_attempt="${{ inputs.run_attempt }}"
 
-        if [ "${{ inputs.run_attempt }}" -gt 1 ]; then
-          echo "This run is a re-run (attempt #${{ inputs.run_attempt }})."
-          curl -H "Authorization: token ${{ inputs.github_token }}" \
+        if [ "$run_attempt" -gt 1 ]; then
+          echo "This run is a re-run (attempt #${run_attempt})."
+          curl -H "Authorization: token $github_token" \
                -H "Accept: application/vnd.github.v3+json" \
                "https://api.github.com/repos/$repository/actions/runs/$run_id" > run_details.json
           triggering_actor=$(jq -r '.triggering_actor.login' run_details.json)
