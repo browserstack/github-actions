@@ -5,8 +5,11 @@ inputs:
   run_attempt:
     description: 'Run attempt number'
     required: true
-  github_context:
-    description: 'GitHub context as a JSON string'
+  repository:
+    description: 'GitHub context - Repository'
+    required: true
+  run_id:
+    description: 'GitHub context - Run_ID'
     required: true
   github_token:
     description: 'GitHub Token'
@@ -18,10 +21,8 @@ runs:
     - name: Check if this is a re-run
       shell: bash
       run: |
-        # Parse the JSON string input
-        github_context=$(echo "${{ inputs.github_context }}" | jq -r '.')
-        run_id=$(echo "$github_context" | jq -r '.run_id')
-        repository=$(echo "$github_context" | jq -r '.repository')
+        run_id= ${{ inputs.run_id }}
+        repository=${{ inputs.repository }}
 
         if [ "${{ inputs.run_attempt }}" -gt 1 ]; then
           echo "This run is a re-run (attempt #${{ inputs.run_attempt }})."
