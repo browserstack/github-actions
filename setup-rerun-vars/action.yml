@@ -32,7 +32,7 @@ runs:
         echo "Triggering Actor: $triggering_actor"
         
         # Check if BrowserStack has triggered the re-run
-        if [[ "$triggering_actor" == "bstack-trigger[bot]" ]]; then
+        if [[ "$triggering_actor" == "gha-bstack-rerun[bot]" ]]; then
           echo "The run was triggered by the GitHub App."
 
           # TODO - Call BrowserStack API to get the values of the 2 environment values
