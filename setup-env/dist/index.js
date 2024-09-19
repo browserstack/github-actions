@@ -9409,6 +9409,10 @@ class ActionInput {
     core.info(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
     core.info(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable for your build name capability in your tests\n`);
 
+    core.info(`Values of Bstack creds are: username - ${this.username}, accessKey - ${this.accessKey}`);
+    core.info(`Values of extractable vars are: rerunAttempt - ${this.rerunAttempt}, runId - ${this.runId}, repository - ${this.repository}`);
+    core.info(`Values of mandatory parms are: github_token - ${this.githubToken}, githubApp - ${this.githubApp}`);
+
     if (await this.checkIfBStackReRun()) {
       await this.setBStackRerunEnvVars();
     }
