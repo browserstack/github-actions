@@ -133,7 +133,7 @@ class ActionInput {
         },
       });
 
-      core.info(`bsApiResponse - ${JSON.parse(bsApiResponse)}`);
+      core.info(`bsApiResponse - ${JSON.stringify(bsApiResponse.data)}`);
       const variables = bsApiResponse.data?.variables;
       core.info(`variables - ${variables}`);
       if (variables && typeof variables === 'object') {
