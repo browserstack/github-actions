@@ -13,18 +13,6 @@ inputs:
   project-name:
     description: 'Project name for the tests'
     required: false
-  rerun-attempt:
-    description: 'ReRun attempt'
-    required: false
-    default: 'none'
-  repository:
-    description: 'GitHub context - Repository'
-    required: false
-    default: 'none'
-  run-id:
-    description: 'GitHub context - Run_ID'
-    required: false
-    default: 'none'
   github-token:
     description: 'GitHub Token for authentication'
     required: false

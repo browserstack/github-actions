@@ -19,6 +19,7 @@ describe('Action Input operations for fetching all inputs, triggering validation
       sinon.stub(InputValidator, 'updateUsername').returns('validatedUsername');
       sinon.stub(InputValidator, 'validateBuildName').returns('validatedBuildName');
       sinon.stub(InputValidator, 'validateProjectName').returns('validatedProjectName');
+      process.env.GITHUB_REPOSITORY = 'browserstack/github-actions';
     });
 
     afterEach(() => {

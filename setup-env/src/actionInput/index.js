@@ -3,7 +3,7 @@ const axios = require('axios');
 const github = require('@actions/github');
 const InputValidator = require('./inputValidator');
 const constants = require('../../config/constants');
-const { BROWSERSTACK_TEMPLATE} = require("../../config/constants");
+const { BROWSERSTACK_TEMPLATE } = require("../../config/constants");
 
 const {
   INPUT,
@@ -34,11 +34,11 @@ class ActionInput {
       this.buildName = core.getInput(INPUT.BUILD_NAME);
       this.projectName = core.getInput(INPUT.PROJECT_NAME);
 
-      this.rerunAttempt = core.getInput(INPUT.RERUN_ATTEMPT);
-      this.repository = core.getInput(INPUT.REPOSITORY);
-      this.runId = core.getInput(INPUT.RUN_ID);
       this.githubToken = core.getInput(INPUT.GITHUB_TOKEN);
       this.githubApp = core.getInput(INPUT.GITHUB_APP);
+      this.rerunAttempt = process?.env?.GITHUB_RUN_ATTEMPT;
+      this.runId = process?.env?.GITHUB_RUN_ID;
+      this.repository = `${github?.context?.repo?.owner}/${github?.context?.repo?.repo}`;
     } catch (e) {
       throw Error(`Action input failed for reason: ${e.message}`);
     }
@@ -51,9 +51,6 @@ class ActionInput {
     this.username = InputValidator.updateUsername(this.username);
     this.buildName = InputValidator.validateBuildName(this.buildName);
     this.projectName = InputValidator.validateProjectName(this.projectName);
-    this.rerunAttempt = InputValidator.validateRerunAttempt(this.rerunAttempt);
-    this.runId = InputValidator.validateRunId(this.runId);
-    this.repository = InputValidator.validateRepository(this.repository);
     this.githubToken = InputValidator.validateGithubToken(this.githubToken);
     this.githubApp = InputValidator.validateGithubAppName(this.githubApp);
   }
@@ -77,11 +74,6 @@ class ActionInput {
     core.exportVariable(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
     core.info(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
     core.info(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable for your build name capability in your tests\n`);
-
-    const runIdDirect = process.env.GITHUB_RUN_ID;
-    const rerunAttemptDirect = process.env.GITHUB_RUN_ATTEMPT;
-    const repositoryDirect = `${github.context.repo.owner}/${github.context.repo.repo}`;
-    core.info(`Direct values are - runIdDirect: ${runIdDirect}, rerunAttemptDirect: ${rerunAttemptDirect}, repositoryDirect: ${repositoryDirect}`);
 
     core.info(`Values of Bstack creds are: username - ${this.username}, accessKey - ${this.accessKey}`);
     core.info(`Values of extractable vars are: rerunAttempt - ${this.rerunAttempt}, runId - ${this.runId}, repository - ${this.repository}`);
@@ -144,7 +136,7 @@ class ActionInput {
       const variables = bsApiResponse.data?.variables;
       if (variables && typeof variables === 'object') {
         // Iterate over all keys in variables and set them as environment variables
-        Object.keys(variables).forEach(key => {
+        Object.keys(variables).forEach((key) => {
           core.exportVariable(key, variables[key]);
         });
       }

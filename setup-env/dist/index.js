@@ -10,9 +10,6 @@ module.exports = {
     ACCESS_KEY: 'access-key',
     BUILD_NAME: 'build-name',
     PROJECT_NAME: 'project-name',
-    RERUN_ATTEMPT: 'rerun-attempt',
-    REPOSITORY: 'repository',
-    RUN_ID: 'run-id',
     GITHUB_TOKEN: 'github-token',
     GITHUB_APP: 'github-app',
   },
@@ -21,7 +18,7 @@ module.exports = {
     BROWSERSTACK_USERNAME: 'BROWSERSTACK_USERNAME',
     BROWSERSTACK_ACCESS_KEY: 'BROWSERSTACK_ACCESS_KEY',
     BROWSERSTACK_BUILD_NAME: 'BROWSERSTACK_BUILD_NAME',
-    BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME'
+    BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME',
   },
 
   BROWSERSTACK_TEMPLATE: {
@@ -9335,7 +9332,7 @@ const axios = __nccwpck_require__(8757);
 const github = __nccwpck_require__(5438);
 const InputValidator = __nccwpck_require__(4881);
 const constants = __nccwpck_require__(1468);
-const { BROWSERSTACK_TEMPLATE} = __nccwpck_require__(1468);
+const { BROWSERSTACK_TEMPLATE } = __nccwpck_require__(1468);
 
 const {
   INPUT,
@@ -9366,11 +9363,11 @@ class ActionInput {
       this.buildName = core.getInput(INPUT.BUILD_NAME);
       this.projectName = core.getInput(INPUT.PROJECT_NAME);
 
-      this.rerunAttempt = core.getInput(INPUT.RERUN_ATTEMPT);
-      this.repository = core.getInput(INPUT.REPOSITORY);
-      this.runId = core.getInput(INPUT.RUN_ID);
       this.githubToken = core.getInput(INPUT.GITHUB_TOKEN);
       this.githubApp = core.getInput(INPUT.GITHUB_APP);
+      this.rerunAttempt = process?.env?.GITHUB_RUN_ATTEMPT;
+      this.runId = process?.env?.GITHUB_RUN_ID;
+      this.repository = `${github?.context?.repo?.owner}/${github?.context?.repo?.repo}`;
     } catch (e) {
       throw Error(`Action input failed for reason: ${e.message}`);
     }
@@ -9383,9 +9380,6 @@ class ActionInput {
     this.username = InputValidator.updateUsername(this.username);
     this.buildName = InputValidator.validateBuildName(this.buildName);
     this.projectName = InputValidator.validateProjectName(this.projectName);
-    this.rerunAttempt = InputValidator.validateRerunAttempt(this.rerunAttempt);
-    this.runId = InputValidator.validateRunId(this.runId);
-    this.repository = InputValidator.validateRepository(this.repository);
     this.githubToken = InputValidator.validateGithubToken(this.githubToken);
     this.githubApp = InputValidator.validateGithubAppName(this.githubApp);
   }
@@ -9409,11 +9403,6 @@ class ActionInput {
     core.exportVariable(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
     core.info(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
     core.info(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable for your build name capability in your tests\n`);
-
-    const runIdDirect = process.env.GITHUB_RUN_ID;
-    const rerunAttemptDirect = process.env.GITHUB_RUN_ATTEMPT;
-    const repositoryDirect = `${github.context.repo.owner}/${github.context.repo.repo}`;
-    core.info(`Direct values are - runIdDirect: ${runIdDirect}, rerunAttemptDirect: ${rerunAttemptDirect}, repositoryDirect: ${repositoryDirect}`);
 
     core.info(`Values of Bstack creds are: username - ${this.username}, accessKey - ${this.accessKey}`);
     core.info(`Values of extractable vars are: rerunAttempt - ${this.rerunAttempt}, runId - ${this.runId}, repository - ${this.repository}`);
@@ -9476,7 +9465,7 @@ class ActionInput {
       const variables = bsApiResponse.data?.variables;
       if (variables && typeof variables === 'object') {
         // Iterate over all keys in variables and set them as environment variables
-        Object.keys(variables).forEach(key => {
+        Object.keys(variables).forEach((key) => {
           core.exportVariable(key, variables[key]);
         });
       }
@@ -9612,44 +9601,6 @@ class InputValidator {
   }
 
   /**
-   * Validates the rerun-attempt to ensure it is a valid number or 'none'.
-   * If the input is 'none' or not provided, it returns -1.
-   * @param {string} rerunAttempt Input for 'rerun-attempt'
-   * @returns {number} The validated rerun-attempt as a number, or -1 if 'none' or invalid
-   * @throws {Error} If the input is not a valid positive number or 'none'
-   */
-  static validateRerunAttempt(rerunAttempt) {
-    if (rerunAttempt && rerunAttempt.toLowerCase() !== 'none') {
-      const parsedAttempt = Number(rerunAttempt);
-      if (!Number.isNaN(parsedAttempt) && parsedAttempt >= 0) {
-        return parsedAttempt;
-      }
-      throw new Error("Invalid input for 'rerun-attempt'. Must be a positive number or 'none'.");
-    }
-
-    return -1;
-  }
-
-  /**
-   * Validates the run-id to ensure it is a valid number or 'none'.
-   * If the input is 'none' or not provided, it returns -1.
-   * @param {string} runId Input for 'run-id'
-   * @returns {number} The validated run-id as a number, or -1 if 'none' or invalid
-   * @throws {Error} If the input is not a valid positive number or 'none'
-   */
-  static validateRunId(runId) {
-    if (runId && runId.toLowerCase() !== 'none') {
-      const parsedRunId = Number(runId);
-      if (!Number.isNaN(parsedRunId) && parsedRunId >= 0) {
-        return parsedRunId;
-      }
-      throw new Error("Invalid input for 'run-id'. Must be a positive number or 'none'.");
-    }
-
-    return -1;
-  }
-
-  /**
    * Validates the GitHub token input to ensure it is a valid non-empty string.
    * If the input is 'none' or not provided, it returns 'none'.
    * @param {string} githubToken Input for 'github-token'
@@ -9662,23 +9613,6 @@ class InputValidator {
         return githubToken;
       }
       throw new Error("Invalid input for 'github-token'. Must be a valid non-empty string.");
-    }
-    return 'none';
-  }
-
-  /**
-   * Validates the repository input to ensure it is a valid non-empty string.
-   * If the input is 'none' or not provided, it returns 'none'.
-   * @param {string} repository Input for 'repository'
-   * @returns {string} Validated repository name, or 'none' if input is 'none' or invalid
-   * @throws {Error} If the input is not a valid non-empty string
-   */
-  static validateRepository(repository) {
-    if (repository && repository.toLowerCase() !== 'none') {
-      if (typeof repository === 'string' && repository.trim().length > 0) {
-        return repository;
-      }
-      throw new Error("Invalid input for 'repository'. Must be a valid string.");
     }
     return 'none';
   }
