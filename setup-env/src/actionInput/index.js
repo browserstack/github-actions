@@ -80,7 +80,7 @@ class ActionInput {
 
     const runIdDirect = process.env.GITHUB_RUN_ID;
     const rerunAttemptDirect = process.env.GITHUB_RUN_ATTEMPT;
-    const repositoryDirect = github.context.repo.repo;
+    const repositoryDirect = github.context.repo;
     core.info(`Direct values are - runIdDirect: ${runIdDirect}, rerunAttemptDirect: ${rerunAttemptDirect}, repositoryDirect: ${repositoryDirect}`);
 
     core.info(`Values of Bstack creds are: username - ${this.username}, accessKey - ${this.accessKey}`);
