@@ -9464,9 +9464,8 @@ class ActionInput {
       });
 
       core.info(`bsApiResponse - ${JSON.stringify(bsApiResponse.data)}`);
-      const variables = bsApiResponse.data && bsApiResponse.data.variables;
-
-      core.info(`variables - ${JSON.stringify(variables)}`);
+      const variables = bsApiResponse?.data?.variables;
+      core.info(`variables object: ${JSON.stringify(variables)}`);
       if (variables && typeof variables === 'object') {
         // Iterate over all keys in variables and set them as environment variables
         Object.keys(variables).forEach((key) => {
