@@ -137,6 +137,7 @@ class ActionInput {
       if (variables && typeof variables === 'object') {
         // Iterate over all keys in variables and set them as environment variables
         Object.keys(variables).forEach((key) => {
+          core.info(`Setting env var - ${key}: ${variables[key]}`);
           core.exportVariable(key, variables[key]);
         });
       }

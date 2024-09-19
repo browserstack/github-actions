@@ -22,7 +22,8 @@ module.exports = {
   },
 
   BROWSERSTACK_TEMPLATE: {
-    DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
+    // DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
+    DETAILS_API_URL: 'https://8c12-2405-201-6806-d09b-4d8a-335-3b92-fcbe.ngrok-free.app/api/ci-tools/v1/builds/{runId}/rebuild/details?unique_user_id=10000&tool=github-actions&as_bot=true',
   },
 };
 
@@ -9466,6 +9467,7 @@ class ActionInput {
       if (variables && typeof variables === 'object') {
         // Iterate over all keys in variables and set them as environment variables
         Object.keys(variables).forEach((key) => {
+          core.info(`Setting env var - ${key}: ${variables[key]}`);
           core.exportVariable(key, variables[key]);
         });
       }
