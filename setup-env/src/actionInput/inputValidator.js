@@ -114,6 +114,95 @@ class InputValidator {
 
     return inputProjectName;
   }
+
+  /**
+   * Validates the rerun-attempt to ensure it is a valid number or 'none'.
+   * If the input is 'none' or not provided, it returns -1.
+   * @param {string} rerunAttempt Input for 'rerun-attempt'
+   * @returns {number} The validated rerun-attempt as a number, or -1 if 'none' or invalid
+   * @throws {Error} If the input is not a valid positive number or 'none'
+   */
+  static validateRerunAttempt(rerunAttempt) {
+    if (rerunAttempt && rerunAttempt.toLowerCase() !== 'none') {
+      const parsedAttempt = Number(rerunAttempt);
+      if (!Number.isNaN(parsedAttempt) && parsedAttempt >= 0) {
+        return parsedAttempt;
+      }
+      throw new Error("Invalid input for 'rerun-attempt'. Must be a positive number or 'none'.");
+    }
+
+    return -1;
+  }
+
+  /**
+   * Validates the run-id to ensure it is a valid number or 'none'.
+   * If the input is 'none' or not provided, it returns -1.
+   * @param {string} runId Input for 'run-id'
+   * @returns {number} The validated run-id as a number, or -1 if 'none' or invalid
+   * @throws {Error} If the input is not a valid positive number or 'none'
+   */
+  static validateRunId(runId) {
+    if (runId && runId.toLowerCase() !== 'none') {
+      const parsedRunId = Number(runId);
+      if (!Number.isNaN(parsedRunId) && parsedRunId >= 0) {
+        return parsedRunId;
+      }
+      throw new Error("Invalid input for 'run-id'. Must be a positive number or 'none'.");
+    }
+
+    return -1;
+  }
+
+  /**
+   * Validates the GitHub token input to ensure it is a valid non-empty string.
+   * If the input is 'none' or not provided, it returns 'none'.
+   * @param {string} githubToken Input for 'github-token'
+   * @returns {string} The validated GitHub token, or 'none' if input is 'none' or invalid
+   * @throws {Error} If the input is not a valid non-empty string
+   */
+  static validateGithubToken(githubToken) {
+    if (githubToken && githubToken.toLowerCase() !== 'none') {
+      if (typeof githubToken === 'string' && githubToken.trim().length > 0) {
+        return githubToken;
+      }
+      throw new Error("Invalid input for 'github-token'. Must be a valid non-empty string.");
+    }
+    return 'none';
+  }
+
+  /**
+   * Validates the repository input to ensure it is a valid non-empty string.
+   * If the input is 'none' or not provided, it returns 'none'.
+   * @param {string} repository Input for 'repository'
+   * @returns {string} Validated repository name, or 'none' if input is 'none' or invalid
+   * @throws {Error} If the input is not a valid non-empty string
+   */
+  static validateRepository(repository) {
+    if (repository && repository.toLowerCase() !== 'none') {
+      if (typeof repository === 'string' && repository.trim().length > 0) {
+        return repository;
+      }
+      throw new Error("Invalid input for 'repository'. Must be a valid string.");
+    }
+    return 'none';
+  }
+
+  /**
+   * Validates the app name input to ensure it is a valid non-empty string.
+   * If the input is 'none' or not provided, it returns 'none'.
+   * @param {string} githubAppName Input for 'repository'
+   * @returns {string} Validated app name, or 'none' if input is 'none' or invalid
+   * @throws {Error} If the input is not a valid non-empty string
+   */
+  static validateGithubAppName(githubAppName) {
+    if (githubAppName && githubAppName.toLowerCase() !== 'bstack-gha-app[bot]') {
+      if (typeof githubAppName === 'string' && githubAppName.trim().length > 0) {
+        return githubAppName;
+      }
+      throw new Error("Invalid input for 'github-app'. Must be a valid string.");
+    }
+    return 'bstack-gha-app[bot]';
+  }
 }
 
 module.exports = InputValidator;
