@@ -9332,9 +9332,10 @@ function wrappy (fn, cb) {
 
 const core = __nccwpck_require__(2186);
 const axios = __nccwpck_require__(8757);
+const github = __nccwpck_require__(5438);
 const InputValidator = __nccwpck_require__(4881);
 const constants = __nccwpck_require__(1468);
-const {BROWSERSTACK_TEMPLATE} = __nccwpck_require__(1468);
+const { BROWSERSTACK_TEMPLATE} = __nccwpck_require__(1468);
 
 const {
   INPUT,
@@ -9408,6 +9409,11 @@ class ActionInput {
     core.exportVariable(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
     core.info(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
     core.info(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable for your build name capability in your tests\n`);
+
+    const runIdDirect = process.env.GITHUB_RUN_ID;
+    const rerunAttemptDirect = process.env.GITHUB_RUN_ATTEMPT;
+    const repositoryDirect = github.context.repo.repo;
+    core.info(`Direct values are - runIdDirect: ${runIdDirect}, rerunAttemptDirect: ${rerunAttemptDirect}, repositoryDirect: ${repositoryDirect}`);
 
     core.info(`Values of Bstack creds are: username - ${this.username}, accessKey - ${this.accessKey}`);
     core.info(`Values of extractable vars are: rerunAttempt - ${this.rerunAttempt}, runId - ${this.runId}, repository - ${this.repository}`);

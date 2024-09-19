@@ -1,8 +1,9 @@
 const core = require('@actions/core');
 const axios = require('axios');
+const github = require('@actions/github');
 const InputValidator = require('./inputValidator');
 const constants = require('../../config/constants');
-const {BROWSERSTACK_TEMPLATE} = require("../../config/constants");
+const { BROWSERSTACK_TEMPLATE} = require("../../config/constants");
 
 const {
   INPUT,
@@ -76,6 +77,11 @@ class ActionInput {
     core.exportVariable(ENV_VARS.BROWSERSTACK_BUILD_NAME, this.buildName);
     core.info(`${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable set as: ${this.buildName}`);
     core.info(`Use ${ENV_VARS.BROWSERSTACK_BUILD_NAME} environment variable for your build name capability in your tests\n`);
+
+    const runIdDirect = process.env.GITHUB_RUN_ID;
+    const rerunAttemptDirect = process.env.GITHUB_RUN_ATTEMPT;
+    const repositoryDirect = github.context.repo.repo;
+    core.info(`Direct values are - runIdDirect: ${runIdDirect}, rerunAttemptDirect: ${rerunAttemptDirect}, repositoryDirect: ${repositoryDirect}`);
 
     core.info(`Values of Bstack creds are: username - ${this.username}, accessKey - ${this.accessKey}`);
     core.info(`Values of extractable vars are: rerunAttempt - ${this.rerunAttempt}, runId - ${this.runId}, repository - ${this.repository}`);
