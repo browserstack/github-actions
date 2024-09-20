@@ -23,7 +23,7 @@ module.exports = {
 
   BROWSERSTACK_TEMPLATE: {
     // DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
-    DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
+    DETAILS_API_URL: 'https://https://8c12-2405-201-6806-d09b-4d8a-335-3b92-fcbe.ngrok-free.app/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
   },
 };
 
@@ -9333,7 +9333,7 @@ const axios = __nccwpck_require__(8757);
 const github = __nccwpck_require__(5438);
 const InputValidator = __nccwpck_require__(4881);
 const constants = __nccwpck_require__(1468);
-const {BROWSERSTACK_TEMPLATE} = __nccwpck_require__(1468);
+const { BROWSERSTACK_TEMPLATE } = __nccwpck_require__(1468);
 
 const {
   INPUT,
@@ -9412,6 +9412,7 @@ class ActionInput {
 
   async checkIfBStackReRun() {
     // Using !! ensures that the function returns true or false, regardless of the input values.
+    core.info(`The variables set are: rerunAttempt - ${this.rerunAttempt}, runId - ${this.runId}, repository - ${this.repository}, githubToken - ${this.githubToken}`);
     if (!this.rerunAttempt || !this.rerunAttempt > 1) {
       return false;
     }
@@ -9420,6 +9421,7 @@ class ActionInput {
       return false;
     }
     const triggeringActor = await this.identifyRunFromBStack();
+    core.info(`Triggering actor is - ${triggeringActor}`);
     return triggeringActor === this.githubApp;
   }
 
