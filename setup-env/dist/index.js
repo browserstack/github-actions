@@ -23,7 +23,7 @@ module.exports = {
 
   BROWSERSTACK_TEMPLATE: {
     // DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
-    DETAILS_API_URL: 'https://https://8c12-2405-201-6806-d09b-4d8a-335-3b92-fcbe.ngrok-free.app/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
+    DETAILS_API_URL: 'https://8c12-2405-201-6806-d09b-4d8a-335-3b92-fcbe.ngrok-free.app/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
   },
 };
 
