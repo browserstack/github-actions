@@ -114,6 +114,40 @@ class InputValidator {
 
     return inputProjectName;
   }
+
+  /**
+   * Validates the GitHub token input to ensure it is a valid non-empty string.
+   * If the input is 'none' or not provided, it returns 'none'.
+   * @param {string} githubToken Input for 'github-token'
+   * @returns {string} The validated GitHub token, or 'none' if input is 'none' or invalid
+   * @throws {Error} If the input is not a valid non-empty string
+   */
+  static validateGithubToken(githubToken) {
+    if (githubToken && githubToken.toLowerCase() !== 'none') {
+      if (typeof githubToken === 'string' && githubToken.trim().length > 0) {
+        return githubToken;
+      }
+      throw new Error("Invalid input for 'github-token'. Must be a valid non-empty string.");
+    }
+    return 'none';
+  }
+
+  /**
+   * Validates the app name input to ensure it is a valid non-empty string.
+   * If the input is 'none' or not provided, it returns 'none'.
+   * @param {string} githubAppName Input for 'repository'
+   * @returns {string} Validated app name, or 'none' if input is 'none' or invalid
+   * @throws {Error} If the input is not a valid non-empty string
+   */
+  static validateGithubAppName(githubAppName) {
+    if (githubAppName && githubAppName.toLowerCase() !== 'browserstack-auth[bot]') {
+      if (typeof githubAppName === 'string' && githubAppName.trim().length > 0) {
+        return githubAppName;
+      }
+      throw new Error("Invalid input for 'github-app'. Must be a valid string.");
+    }
+    return 'browserstack-auth[bot]';
+  }
 }
 
 module.exports = InputValidator;
