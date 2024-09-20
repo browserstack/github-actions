@@ -121,7 +121,7 @@ class ActionInput {
       // Call BrowserStack API to get the tests to rerun
       const bsApiResponse = await axios.get(browserStackApiUrl, {
         auth: {
-          username: this.username,
+          username: this.username.replace("-GitHubAction", ""),
           password: this.accessKey,
         },
         headers: {
