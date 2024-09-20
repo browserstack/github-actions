@@ -140,13 +140,13 @@ class InputValidator {
    * @throws {Error} If the input is not a valid non-empty string
    */
   static validateGithubAppName(githubAppName) {
-    if (githubAppName && githubAppName.toLowerCase() !== 'browserstack-auth[bot]') {
+    if (githubAppName && githubAppName.toLowerCase() !== 'browserstack[bot]') {
       if (typeof githubAppName === 'string' && githubAppName.trim().length > 0) {
         return githubAppName;
       }
       throw new Error("Invalid input for 'github-app'. Must be a valid string.");
     }
-    return 'browserstack-auth[bot]';
+    return 'browserstack[bot]';
   }
 }
 

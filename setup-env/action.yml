@@ -20,7 +20,7 @@ inputs:
   github-app:
     description: 'BrowserStack Github App'
     required: false
-    default: 'browserstack-auth[bot]'
+    default: 'browserstack[bot]'
 runs:
   using: 'node20'
   main: 'dist/index.js'

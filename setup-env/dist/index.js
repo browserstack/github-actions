@@ -22,8 +22,7 @@ module.exports = {
   },
 
   BROWSERSTACK_TEMPLATE: {
-    // DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
-    DETAILS_API_URL: 'https://8c12-2405-201-6806-d09b-4d8a-335-3b92-fcbe.ngrok-free.app/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
+    DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
   },
 };
 
@@ -9621,13 +9620,13 @@ class InputValidator {
    * @throws {Error} If the input is not a valid non-empty string
    */
   static validateGithubAppName(githubAppName) {
-    if (githubAppName && githubAppName.toLowerCase() !== 'browserstack-auth[bot]') {
+    if (githubAppName && githubAppName.toLowerCase() !== 'browserstack[bot]') {
       if (typeof githubAppName === 'string' && githubAppName.trim().length > 0) {
         return githubAppName;
       }
       throw new Error("Invalid input for 'github-app'. Must be a valid string.");
     }
-    return 'browserstack-auth[bot]';
+    return 'browserstack[bot]';
   }
 }
 
