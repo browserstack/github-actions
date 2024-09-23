@@ -32,7 +32,6 @@ class ActionInput {
       // non-compulsory fields
       this.buildName = core.getInput(INPUT.BUILD_NAME);
       this.projectName = core.getInput(INPUT.PROJECT_NAME);
-      this.githubToken = core.getInput(INPUT.GITHUB_TOKEN);
       this.githubApp = core.getInput(INPUT.GITHUB_APP);
       this.rerunAttempt = process?.env?.GITHUB_RUN_ATTEMPT;
       this.runId = process?.env?.GITHUB_RUN_ID;
@@ -49,7 +48,6 @@ class ActionInput {
     this.username = InputValidator.updateUsername(this.username);
     this.buildName = InputValidator.validateBuildName(this.buildName);
     this.projectName = InputValidator.validateProjectName(this.projectName);
-    this.githubToken = InputValidator.validateGithubToken(this.githubToken);
     this.githubApp = InputValidator.validateGithubAppName(this.githubApp);
   }
 
@@ -80,14 +78,16 @@ class ActionInput {
   }
 
   async checkIfBStackReRun() {
-    // Using !! ensures that the function returns true or false, regardless of the input values.
-    if (!this.rerunAttempt || !this.rerunAttempt > 1) {
+    // Ensure rerunAttempt is a number and greater than 1
+    if (!this.rerunAttempt || Number(this.rerunAttempt) <= 1) {
       return false;
     }
-    if (!this.runId || !this.runId > 1 || !this.repository || this.repository === 'none'
-      || !this.githubToken || this.githubToken === 'none' || !this.username || !this.accessKey) {
+
+    // Ensure runId, repository, username, and accessKey are valid
+    if (!this.runId || !this.repository || this.repository === 'none' || !this.username || !this.accessKey) {
       return false;
     }
+
     const triggeringActor = await this.identifyRunFromBStack();
     core.info(`Triggering actor is - ${triggeringActor}`);
     return triggeringActor === this.githubApp;
@@ -98,7 +98,7 @@ class ActionInput {
       const runDetailsUrl = `https://api.github.com/repos/${this.repository}/actions/runs/${this.runId}`;
       const runDetailsResponse = await axios.get(runDetailsUrl, {
         headers: {
-          Authorization: `token ${this.githubToken}`,
+          Authorization: `token ${process.env.GITHUB_TOKEN}`,
           Accept: 'application/vnd.github.v3+json',
         },
       });

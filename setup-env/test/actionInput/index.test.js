@@ -20,7 +20,6 @@ describe('Action Input operations for fetching all inputs, triggering validation
       sinon.stub(InputValidator, 'updateUsername').returns('validatedUsername');
       sinon.stub(InputValidator, 'validateBuildName').returns('validatedBuildName');
       sinon.stub(InputValidator, 'validateProjectName').returns('validatedProjectName');
-      sinon.stub(InputValidator, 'validateGithubToken').returns('validatedToken');
       sinon.stub(InputValidator, 'validateGithubAppName').returns('validatedAppName');
 
       // Provide required inputs
@@ -67,14 +66,6 @@ describe('Action Input operations for fetching all inputs, triggering validation
         expect(e.message).to.eq('Action input failed for reason: Access Key Required');
       }
     });
-
-    it('Takes input and validates GitHub token and app name successfully', () => {
-      stubbedInput.withArgs(INPUT.GITHUB_TOKEN).returns('someToken');
-      stubbedInput.withArgs(INPUT.GITHUB_APP).returns('someApp');
-      const actionInput = new ActionInput();
-      expect(actionInput.githubToken).to.eq('validatedToken');
-      expect(actionInput.githubApp).to.eq('validatedAppName');
-    });
   });
 
   context('Set Environment Variables', () => {
@@ -113,7 +104,6 @@ describe('Action Input operations for fetching all inputs, triggering validation
       sinon.stub(InputValidator, 'updateUsername').returns('validatedUsername');
       sinon.stub(InputValidator, 'validateBuildName').returns('validatedBuildName');
       sinon.stub(InputValidator, 'validateProjectName').returns('validatedProjectName');
-      sinon.stub(InputValidator, 'validateGithubToken').returns('validatedToken');
       sinon.stub(InputValidator, 'validateGithubAppName').returns('validatedAppName');
 
       // Provide required inputs
@@ -130,9 +120,8 @@ describe('Action Input operations for fetching all inputs, triggering validation
     });
 
     it('Returns false if rerun attempt is less than or equal to 1', async () => {
-      // stubbedInput.withArgs(INPUT.GITHUB_APP).returns('someApp');
       const actionInput = new ActionInput();
-      actionInput.rerunAttempt = '1';
+      actionInput.rerunAttempt = '1'; // This should be a string or number
       const result = await actionInput.checkIfBStackReRun();
       // eslint-disable-next-line no-unused-expressions
       expect(result).to.be.false;
@@ -172,7 +161,6 @@ describe('Action Input operations for fetching all inputs, triggering validation
       sinon.stub(InputValidator, 'updateUsername').returns('validatedUsername');
       sinon.stub(InputValidator, 'validateBuildName').returns('validatedBuildName');
       sinon.stub(InputValidator, 'validateProjectName').returns('validatedProjectName');
-      sinon.stub(InputValidator, 'validateGithubToken').returns('validatedToken');
       sinon.stub(InputValidator, 'validateGithubAppName').returns('validatedAppName');
 
       // Provide required inputs
@@ -223,7 +211,6 @@ describe('Action Input operations for fetching all inputs, triggering validation
       sinon.stub(InputValidator, 'updateUsername').returns('validatedUsername');
       sinon.stub(InputValidator, 'validateBuildName').returns('validatedBuildName');
       sinon.stub(InputValidator, 'validateProjectName').returns('validatedProjectName');
-      sinon.stub(InputValidator, 'validateGithubToken').returns('validatedToken');
       sinon.stub(InputValidator, 'validateGithubAppName').returns('validatedAppName');
 
       // Provide required inputs

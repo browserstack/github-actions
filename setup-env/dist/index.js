@@ -10,7 +10,6 @@ module.exports = {
     ACCESS_KEY: 'access-key',
     BUILD_NAME: 'build-name',
     PROJECT_NAME: 'project-name',
-    GITHUB_TOKEN: 'github-token',
     GITHUB_APP: 'github-app',
   },
 
@@ -9361,7 +9360,6 @@ class ActionInput {
       // non-compulsory fields
       this.buildName = core.getInput(INPUT.BUILD_NAME);
       this.projectName = core.getInput(INPUT.PROJECT_NAME);
-      this.githubToken = core.getInput(INPUT.GITHUB_TOKEN);
       this.githubApp = core.getInput(INPUT.GITHUB_APP);
       this.rerunAttempt = process?.env?.GITHUB_RUN_ATTEMPT;
       this.runId = process?.env?.GITHUB_RUN_ID;
@@ -9378,7 +9376,6 @@ class ActionInput {
     this.username = InputValidator.updateUsername(this.username);
     this.buildName = InputValidator.validateBuildName(this.buildName);
     this.projectName = InputValidator.validateProjectName(this.projectName);
-    this.githubToken = InputValidator.validateGithubToken(this.githubToken);
     this.githubApp = InputValidator.validateGithubAppName(this.githubApp);
   }
 
@@ -9409,14 +9406,16 @@ class ActionInput {
   }
 
   async checkIfBStackReRun() {
-    // Using !! ensures that the function returns true or false, regardless of the input values.
-    if (!this.rerunAttempt || !this.rerunAttempt > 1) {
+    // Ensure rerunAttempt is a number and greater than 1
+    if (!this.rerunAttempt || Number(this.rerunAttempt) <= 1) {
       return false;
     }
-    if (!this.runId || !this.runId > 1 || !this.repository || this.repository === 'none'
-      || !this.githubToken || this.githubToken === 'none' || !this.username || !this.accessKey) {
+
+    // Ensure runId, repository, username, and accessKey are valid
+    if (!this.runId || !this.repository || this.repository === 'none' || !this.username || !this.accessKey) {
       return false;
     }
+
     const triggeringActor = await this.identifyRunFromBStack();
     core.info(`Triggering actor is - ${triggeringActor}`);
     return triggeringActor === this.githubApp;
@@ -9427,7 +9426,7 @@ class ActionInput {
       const runDetailsUrl = `https://api.github.com/repos/${this.repository}/actions/runs/${this.runId}`;
       const runDetailsResponse = await axios.get(runDetailsUrl, {
         headers: {
-          Authorization: `token ${this.githubToken}`,
+          Authorization: `token ${process.env.GITHUB_TOKEN}`,
           Accept: 'application/vnd.github.v3+json',
         },
       });
@@ -9591,29 +9590,6 @@ class InputValidator {
     if (!inputProjectName || inputProjectName.toLowerCase() === 'repo_name') return github.context.repo.repo;
 
     return inputProjectName;
-  }
-
-  /**
-   * Validates the GitHub token input to ensure it is a valid non-empty string.
-   * If the input is 'none' or not provided, it returns 'none'.
-   * @param {string} githubToken Input for 'github-token'
-   * @returns {string} The validated GitHub token, or 'none' if input is 'none' or invalid
-   * @throws {Error} If the input is not a valid non-empty string
-   */
-  static validateGithubToken(githubToken) {
-    if (typeof githubToken !== 'string') {
-      throw new Error("Invalid input for 'github-token'. Must be a valid non-empty string.");
-    }
-
-    if (githubToken.toLowerCase() === 'none') {
-      return 'none';
-    }
-
-    if (githubToken.trim().length > 0) {
-      return githubToken;
-    }
-
-    throw new Error("Invalid input for 'github-token'. Must be a valid non-empty string.");
   }
 
   /**

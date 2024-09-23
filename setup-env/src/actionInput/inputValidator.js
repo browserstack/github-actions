@@ -116,29 +116,6 @@ class InputValidator {
   }
 
   /**
-   * Validates the GitHub token input to ensure it is a valid non-empty string.
-   * If the input is 'none' or not provided, it returns 'none'.
-   * @param {string} githubToken Input for 'github-token'
-   * @returns {string} The validated GitHub token, or 'none' if input is 'none' or invalid
-   * @throws {Error} If the input is not a valid non-empty string
-   */
-  static validateGithubToken(githubToken) {
-    if (typeof githubToken !== 'string') {
-      throw new Error("Invalid input for 'github-token'. Must be a valid non-empty string.");
-    }
-
-    if (githubToken.toLowerCase() === 'none') {
-      return 'none';
-    }
-
-    if (githubToken.trim().length > 0) {
-      return githubToken;
-    }
-
-    throw new Error("Invalid input for 'github-token'. Must be a valid non-empty string.");
-  }
-
-  /**
    * Validates the app name input to ensure it is a valid non-empty string.
    * If the input is 'none' or not provided, it returns 'browserstack[bot]'.
    * @param {string} githubAppName Input for 'github-app'
