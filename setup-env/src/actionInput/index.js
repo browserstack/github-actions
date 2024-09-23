@@ -82,7 +82,6 @@ class ActionInput {
 
   async checkIfBStackReRun() {
     // Using !! ensures that the function returns true or false, regardless of the input values.
-    core.info(`The variables set are: rerunAttempt - ${this.rerunAttempt}, runId - ${this.runId}, repository - ${this.repository}, githubToken - ${this.githubToken}`);
     if (!this.rerunAttempt || !this.rerunAttempt > 1) {
       return false;
     }
