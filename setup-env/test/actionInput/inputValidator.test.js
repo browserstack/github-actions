@@ -152,6 +152,52 @@ describe('InputValidator class to validate individual fields of the action input
           expect(InputValidator._getBuildInfo()).to.eq(expectedValue);
         });
       });
+
+      context('Validates GitHub Token', () => {
+        it("Returns 'none' if the token is not provided", () => {
+          expect(() => InputValidator.validateGithubToken()).to.throw("Invalid input for 'github-token'. Must be a valid non-empty string.");
+        });
+
+        it("Returns 'none' if the token is 'none' (case insensitive)", () => {
+          expect(InputValidator.validateGithubToken('None')).to.eq('none');
+        });
+
+        it('Throws an error if the token is an empty string', () => {
+          expect(() => InputValidator.validateGithubToken('')).to.throw("Invalid input for 'github-token'. Must be a valid non-empty string.");
+        });
+
+        it('Throws an error if the token is not a valid string', () => {
+          expect(() => InputValidator.validateGithubToken(123)).to.throw("Invalid input for 'github-token'. Must be a valid non-empty string.");
+        });
+
+        it('Returns the token if it is a valid non-empty string and not "none"', () => {
+          const validToken = 'someValidToken';
+          expect(InputValidator.validateGithubToken(validToken)).to.eq(validToken);
+        });
+      });
+
+      context('Validates GitHub App Name', () => {
+        it("Returns 'browserstack[bot]' if the app name is not provided", () => {
+          expect(() => InputValidator.validateGithubAppName()).to.throw("Invalid input for 'github-app'. Must be a valid string.");
+        });
+
+        it("Returns 'browserstack[bot]' if the app name is 'browserstack[bot]' (case insensitive)", () => {
+          expect(InputValidator.validateGithubAppName('BrowserStack[BOT]')).to.eq('browserstack[bot]');
+        });
+
+        it('Throws an error if the app name is an empty string', () => {
+          expect(() => InputValidator.validateGithubAppName('')).to.throw("Invalid input for 'github-app'. Must be a valid string.");
+        });
+
+        it('Throws an error if the app name is not a valid string', () => {
+          expect(() => InputValidator.validateGithubAppName(123)).to.throw("Invalid input for 'github-app'. Must be a valid string.");
+        });
+
+        it('Returns the app name if it is a valid non-empty string and not "browserstack[bot]"', () => {
+          const validAppName = 'someValidAppName';
+          expect(InputValidator.validateGithubAppName(validAppName)).to.eq(validAppName);
+        });
+      });
     });
   });
 });

@@ -21,7 +21,7 @@ module.exports = {
     BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME',
   },
 
-  BROWSERSTACK_TEMPLATE: {
+  BROWSERSTACK_INTEGRATIONS: {
     DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
   },
 };
@@ -9329,10 +9329,9 @@ function wrappy (fn, cb) {
 
 const core = __nccwpck_require__(2186);
 const axios = __nccwpck_require__(8757);
-const github = __nccwpck_require__(5438);
 const InputValidator = __nccwpck_require__(4881);
 const constants = __nccwpck_require__(1468);
-const { BROWSERSTACK_TEMPLATE } = __nccwpck_require__(1468);
+const { BROWSERSTACK_INTEGRATIONS } = __nccwpck_require__(1468);
 
 const {
   INPUT,
@@ -9366,7 +9365,7 @@ class ActionInput {
       this.githubApp = core.getInput(INPUT.GITHUB_APP);
       this.rerunAttempt = process?.env?.GITHUB_RUN_ATTEMPT;
       this.runId = process?.env?.GITHUB_RUN_ID;
-      this.repository = `${github?.context?.repo?.owner}/${github?.context?.repo?.repo}`;
+      this.repository = process?.env?.GITHUB_REPOSITORY;
     } catch (e) {
       throw Error(`Action input failed for reason: ${e.message}`);
     }
@@ -9411,7 +9410,6 @@ class ActionInput {
 
   async checkIfBStackReRun() {
     // Using !! ensures that the function returns true or false, regardless of the input values.
-    core.info(`The variables set are: rerunAttempt - ${this.rerunAttempt}, runId - ${this.runId}, repository - ${this.repository}, githubToken - ${this.githubToken}`);
     if (!this.rerunAttempt || !this.rerunAttempt > 1) {
       return false;
     }
@@ -9445,7 +9443,7 @@ class ActionInput {
       // Check if the run was triggered by the BrowserStack rerun bot
       core.info('The re-run was triggered by the GitHub App from BrowserStack.');
 
-      const browserStackApiUrl = BROWSERSTACK_TEMPLATE.DETAILS_API_URL.replace('{runId}', this.runId);
+      const browserStackApiUrl = BROWSERSTACK_INTEGRATIONS.DETAILS_API_URL.replace('{runId}', this.runId);
 
       // Call BrowserStack API to get the tests to rerun
       const bsApiResponse = await axios.get(browserStackApiUrl, {
@@ -9603,30 +9601,42 @@ class InputValidator {
    * @throws {Error} If the input is not a valid non-empty string
    */
   static validateGithubToken(githubToken) {
-    if (githubToken && githubToken.toLowerCase() !== 'none') {
-      if (typeof githubToken === 'string' && githubToken.trim().length > 0) {
-        return githubToken;
-      }
+    if (typeof githubToken !== 'string') {
       throw new Error("Invalid input for 'github-token'. Must be a valid non-empty string.");
     }
-    return 'none';
+
+    if (githubToken.toLowerCase() === 'none') {
+      return 'none';
+    }
+
+    if (githubToken.trim().length > 0) {
+      return githubToken;
+    }
+
+    throw new Error("Invalid input for 'github-token'. Must be a valid non-empty string.");
   }
 
   /**
    * Validates the app name input to ensure it is a valid non-empty string.
-   * If the input is 'none' or not provided, it returns 'none'.
-   * @param {string} githubAppName Input for 'repository'
-   * @returns {string} Validated app name, or 'none' if input is 'none' or invalid
+   * If the input is 'none' or not provided, it returns 'browserstack[bot]'.
+   * @param {string} githubAppName Input for 'github-app'
+   * @returns {string} Validated app name, or 'browserstack[bot]' if input is 'none' or invalid
    * @throws {Error} If the input is not a valid non-empty string
    */
   static validateGithubAppName(githubAppName) {
-    if (githubAppName && githubAppName.toLowerCase() !== 'browserstack[bot]') {
-      if (typeof githubAppName === 'string' && githubAppName.trim().length > 0) {
-        return githubAppName;
-      }
+    if (typeof githubAppName !== 'string') {
       throw new Error("Invalid input for 'github-app'. Must be a valid string.");
     }
-    return 'browserstack[bot]';
+
+    if (githubAppName.toLowerCase() === 'browserstack[bot]') {
+      return 'browserstack[bot]';
+    }
+
+    if (githubAppName.trim().length > 0) {
+      return githubAppName;
+    }
+
+    throw new Error("Invalid input for 'github-app'. Must be a valid string.");
   }
 }
 
@@ -14605,7 +14615,7 @@ const ActionInput = __nccwpck_require__(9426);
 const run = async () => {
   try {
     const inputParser = new ActionInput();
-    inputParser.setEnvVariables();
+    await inputParser.setEnvVariables();
   } catch (e) {
     core.setFailed(`Action Failed: ${e}`);
   }

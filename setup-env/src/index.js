@@ -9,7 +9,7 @@ const ActionInput = require('./actionInput');
 const run = async () => {
   try {
     const inputParser = new ActionInput();
-    inputParser.setEnvVariables();
+    await inputParser.setEnvVariables();
   } catch (e) {
     core.setFailed(`Action Failed: ${e}`);
   }

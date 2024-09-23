@@ -15,7 +15,7 @@ module.exports = {
     BROWSERSTACK_PROJECT_NAME: 'BROWSERSTACK_PROJECT_NAME',
   },
 
-  BROWSERSTACK_TEMPLATE: {
+  BROWSERSTACK_INTEGRATIONS: {
     DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
   },
 };

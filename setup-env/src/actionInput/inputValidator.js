@@ -123,30 +123,42 @@ class InputValidator {
    * @throws {Error} If the input is not a valid non-empty string
    */
   static validateGithubToken(githubToken) {
-    if (githubToken && githubToken.toLowerCase() !== 'none') {
-      if (typeof githubToken === 'string' && githubToken.trim().length > 0) {
-        return githubToken;
-      }
+    if (typeof githubToken !== 'string') {
       throw new Error("Invalid input for 'github-token'. Must be a valid non-empty string.");
     }
-    return 'none';
+
+    if (githubToken.toLowerCase() === 'none') {
+      return 'none';
+    }
+
+    if (githubToken.trim().length > 0) {
+      return githubToken;
+    }
+
+    throw new Error("Invalid input for 'github-token'. Must be a valid non-empty string.");
   }
 
   /**
    * Validates the app name input to ensure it is a valid non-empty string.
-   * If the input is 'none' or not provided, it returns 'none'.
-   * @param {string} githubAppName Input for 'repository'
-   * @returns {string} Validated app name, or 'none' if input is 'none' or invalid
+   * If the input is 'none' or not provided, it returns 'browserstack[bot]'.
+   * @param {string} githubAppName Input for 'github-app'
+   * @returns {string} Validated app name, or 'browserstack[bot]' if input is 'none' or invalid
    * @throws {Error} If the input is not a valid non-empty string
    */
   static validateGithubAppName(githubAppName) {
-    if (githubAppName && githubAppName.toLowerCase() !== 'browserstack[bot]') {
-      if (typeof githubAppName === 'string' && githubAppName.trim().length > 0) {
-        return githubAppName;
-      }
+    if (typeof githubAppName !== 'string') {
       throw new Error("Invalid input for 'github-app'. Must be a valid string.");
     }
-    return 'browserstack[bot]';
+
+    if (githubAppName.toLowerCase() === 'browserstack[bot]') {
+      return 'browserstack[bot]';
+    }
+
+    if (githubAppName.trim().length > 0) {
+      return githubAppName;
+    }
+
+    throw new Error("Invalid input for 'github-app'. Must be a valid string.");
   }
 }
 

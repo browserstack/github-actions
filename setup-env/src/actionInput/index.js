@@ -1,9 +1,8 @@
 const core = require('@actions/core');
 const axios = require('axios');
-const github = require('@actions/github');
 const InputValidator = require('./inputValidator');
 const constants = require('../../config/constants');
-const { BROWSERSTACK_TEMPLATE } = require("../../config/constants");
+const { BROWSERSTACK_INTEGRATIONS } = require("../../config/constants");
 
 const {
   INPUT,
@@ -37,7 +36,7 @@ class ActionInput {
       this.githubApp = core.getInput(INPUT.GITHUB_APP);
       this.rerunAttempt = process?.env?.GITHUB_RUN_ATTEMPT;
       this.runId = process?.env?.GITHUB_RUN_ID;
-      this.repository = `${github?.context?.repo?.owner}/${github?.context?.repo?.repo}`;
+      this.repository = process?.env?.GITHUB_REPOSITORY;
     } catch (e) {
       throw Error(`Action input failed for reason: ${e.message}`);
     }
@@ -115,7 +114,7 @@ class ActionInput {
       // Check if the run was triggered by the BrowserStack rerun bot
       core.info('The re-run was triggered by the GitHub App from BrowserStack.');
 
-      const browserStackApiUrl = BROWSERSTACK_TEMPLATE.DETAILS_API_URL.replace('{runId}', this.runId);
+      const browserStackApiUrl = BROWSERSTACK_INTEGRATIONS.DETAILS_API_URL.replace('{runId}', this.runId);
 
       // Call BrowserStack API to get the tests to rerun
       const bsApiResponse = await axios.get(browserStackApiUrl, {
