@@ -69,6 +69,8 @@ describe('Action Input operations for fetching all inputs, triggering validation
   });
 
   context('Set Environment Variables', () => {
+    let actionInput;
+
     beforeEach(() => {
       sinon.stub(core, 'exportVariable');
       sinon.stub(core, 'info');
@@ -76,6 +78,16 @@ describe('Action Input operations for fetching all inputs, triggering validation
       sinon.stub(core, 'endGroup');
       sinon.stub(ActionInput.prototype, '_fetchAllInput');
       sinon.stub(ActionInput.prototype, '_validateInput');
+
+      // Mock required properties
+      actionInput = new ActionInput();
+      actionInput.username = 'someUsername';
+      actionInput.accessKey = 'someAccessKey';
+      actionInput.buildName = 'someBuildName';
+      actionInput.projectName = 'someProjectName';
+
+      // Stub checkIfBStackReRun to return true
+      sinon.stub(actionInput, 'checkIfBStackReRun').returns(Promise.resolve(true));
     });
 
     afterEach(() => {
@@ -83,16 +95,19 @@ describe('Action Input operations for fetching all inputs, triggering validation
     });
 
     it('Sets the environment variables required in test scripts for BrowserStack', () => {
-      const actionInput = new ActionInput();
-      actionInput.username = 'someUsername';
-      actionInput.accessKey = 'someAccessKey';
-      actionInput.buildName = 'someBuildName';
-      actionInput.projectName = 'someProjectName';
       actionInput.setEnvVariables();
       sinon.assert.calledWith(core.exportVariable, ENV_VARS.BROWSERSTACK_USERNAME, 'someUsername');
       sinon.assert.calledWith(core.exportVariable, ENV_VARS.BROWSERSTACK_ACCESS_KEY, 'someAccessKey');
       sinon.assert.calledWith(core.exportVariable, ENV_VARS.BROWSERSTACK_PROJECT_NAME, 'someProjectName');
       sinon.assert.calledWith(core.exportVariable, ENV_VARS.BROWSERSTACK_BUILD_NAME, 'someBuildName');
+    });
+
+    it('Calls setBStackRerunEnvVars when checkIfBStackReRun returns true', async () => {
+      const setBStackRerunEnvVarsStub = sinon.stub(actionInput, 'setBStackRerunEnvVars').resolves();
+
+      await actionInput.setEnvVariables();
+
+      sinon.assert.calledOnce(setBStackRerunEnvVarsStub);
     });
   });
 
