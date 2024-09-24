@@ -124,7 +124,6 @@ class ActionInput {
         },
         headers: {
           'Content-Type': 'application/json',
-          'x-rs-auth': true,
         },
       });
       const variables = bsApiResponse?.data?.data?.variables;
