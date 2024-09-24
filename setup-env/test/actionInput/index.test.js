@@ -21,6 +21,7 @@ describe('Action Input operations for fetching all inputs, triggering validation
       sinon.stub(InputValidator, 'validateBuildName').returns('validatedBuildName');
       sinon.stub(InputValidator, 'validateProjectName').returns('validatedProjectName');
       sinon.stub(InputValidator, 'validateGithubAppName').returns('validatedAppName');
+      sinon.stub(InputValidator, 'validateGithubToken').returns('validatedToken');
 
       // Provide required inputs
       stubbedInput.withArgs(INPUT.USERNAME, { required: true }).returns('someUsername');
@@ -65,6 +66,14 @@ describe('Action Input operations for fetching all inputs, triggering validation
       } catch (e) {
         expect(e.message).to.eq('Action input failed for reason: Access Key Required');
       }
+    });
+
+    it('Takes input and validates GitHub token and app name successfully', () => {
+      stubbedInput.withArgs(INPUT.GITHUB_TOKEN).returns('someToken');
+      stubbedInput.withArgs(INPUT.GITHUB_APP).returns('someApp');
+      const actionInput = new ActionInput();
+      expect(actionInput.githubToken).to.eq('validatedToken');
+      expect(actionInput.githubApp).to.eq('validatedAppName');
     });
   });
 
@@ -120,6 +129,7 @@ describe('Action Input operations for fetching all inputs, triggering validation
       sinon.stub(InputValidator, 'validateBuildName').returns('validatedBuildName');
       sinon.stub(InputValidator, 'validateProjectName').returns('validatedProjectName');
       sinon.stub(InputValidator, 'validateGithubAppName').returns('validatedAppName');
+      sinon.stub(InputValidator, 'validateGithubToken').returns('validatedToken');
 
       // Provide required inputs
       stubbedInput.withArgs(INPUT.USERNAME, { required: true }).returns('someUsername');
@@ -177,6 +187,7 @@ describe('Action Input operations for fetching all inputs, triggering validation
       sinon.stub(InputValidator, 'validateBuildName').returns('validatedBuildName');
       sinon.stub(InputValidator, 'validateProjectName').returns('validatedProjectName');
       sinon.stub(InputValidator, 'validateGithubAppName').returns('validatedAppName');
+      sinon.stub(InputValidator, 'validateGithubToken').returns('validatedToken');
 
       // Provide required inputs
       stubbedInput.withArgs(INPUT.USERNAME, { required: true }).returns('someUsername');
@@ -227,6 +238,7 @@ describe('Action Input operations for fetching all inputs, triggering validation
       sinon.stub(InputValidator, 'validateBuildName').returns('validatedBuildName');
       sinon.stub(InputValidator, 'validateProjectName').returns('validatedProjectName');
       sinon.stub(InputValidator, 'validateGithubAppName').returns('validatedAppName');
+      sinon.stub(InputValidator, 'validateGithubToken').returns('validatedToken');
 
       // Provide required inputs
       stubbedInput.withArgs(INPUT.USERNAME, { required: true }).returns('someUsername');

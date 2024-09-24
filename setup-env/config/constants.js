@@ -4,6 +4,7 @@ module.exports = {
     ACCESS_KEY: 'access-key',
     BUILD_NAME: 'build-name',
     PROJECT_NAME: 'project-name',
+    GITHUB_TOKEN: 'github-token',
     GITHUB_APP: 'github-app',
   },
 

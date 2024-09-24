@@ -33,6 +33,7 @@ class ActionInput {
       this.buildName = core.getInput(INPUT.BUILD_NAME);
       this.projectName = core.getInput(INPUT.PROJECT_NAME);
       this.githubApp = core.getInput(INPUT.GITHUB_APP);
+      this.githubToken = core.getInput(INPUT.GITHUB_TOKEN);
       this.rerunAttempt = process?.env?.GITHUB_RUN_ATTEMPT;
       this.runId = process?.env?.GITHUB_RUN_ID;
       this.repository = process?.env?.GITHUB_REPOSITORY;
@@ -49,6 +50,7 @@ class ActionInput {
     this.buildName = InputValidator.validateBuildName(this.buildName);
     this.projectName = InputValidator.validateProjectName(this.projectName);
     this.githubApp = InputValidator.validateGithubAppName(this.githubApp);
+    this.githubToken = InputValidator.validateGithubToken(this.githubToken);
   }
 
   /**
@@ -84,7 +86,8 @@ class ActionInput {
     }
 
     // Ensure runId, repository, username, and accessKey are valid
-    if (!this.runId || !this.repository || this.repository === 'none' || !this.username || !this.accessKey) {
+    if (!this.runId || !this.repository || this.repository === 'none'
+      || !this.githubToken || this.githubToken === 'none' || !this.username || !this.accessKey) {
       return false;
     }
 
@@ -98,7 +101,7 @@ class ActionInput {
       const runDetailsUrl = `https://api.github.com/repos/${this.repository}/actions/runs/${this.runId}`;
       const runDetailsResponse = await axios.get(runDetailsUrl, {
         headers: {
-          Authorization: `token ${process.env.GITHUB_TOKEN}`,
+          Authorization: `token ${this.githubToken}`,
           Accept: 'application/vnd.github.v3+json',
         },
       });

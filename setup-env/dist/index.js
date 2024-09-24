@@ -10,6 +10,7 @@ module.exports = {
     ACCESS_KEY: 'access-key',
     BUILD_NAME: 'build-name',
     PROJECT_NAME: 'project-name',
+    GITHUB_TOKEN: 'github-token',
     GITHUB_APP: 'github-app',
   },
 
@@ -9361,6 +9362,7 @@ class ActionInput {
       this.buildName = core.getInput(INPUT.BUILD_NAME);
       this.projectName = core.getInput(INPUT.PROJECT_NAME);
       this.githubApp = core.getInput(INPUT.GITHUB_APP);
+      this.githubToken = core.getInput(INPUT.GITHUB_TOKEN);
       this.rerunAttempt = process?.env?.GITHUB_RUN_ATTEMPT;
       this.runId = process?.env?.GITHUB_RUN_ID;
       this.repository = process?.env?.GITHUB_REPOSITORY;
@@ -9377,6 +9379,7 @@ class ActionInput {
     this.buildName = InputValidator.validateBuildName(this.buildName);
     this.projectName = InputValidator.validateProjectName(this.projectName);
     this.githubApp = InputValidator.validateGithubAppName(this.githubApp);
+    this.githubToken = InputValidator.validateGithubToken(this.githubToken);
   }
 
   /**
@@ -9412,7 +9415,8 @@ class ActionInput {
     }
 
     // Ensure runId, repository, username, and accessKey are valid
-    if (!this.runId || !this.repository || this.repository === 'none' || !this.username || !this.accessKey) {
+    if (!this.runId || !this.repository || this.repository === 'none'
+      || !this.githubToken || this.githubToken === 'none' || !this.username || !this.accessKey) {
       return false;
     }
 
@@ -9426,7 +9430,7 @@ class ActionInput {
       const runDetailsUrl = `https://api.github.com/repos/${this.repository}/actions/runs/${this.runId}`;
       const runDetailsResponse = await axios.get(runDetailsUrl, {
         headers: {
-          Authorization: `token ${process.env.GITHUB_TOKEN}`,
+          Authorization: `token ${this.githubToken}`,
           Accept: 'application/vnd.github.v3+json',
         },
       });
@@ -9612,6 +9616,29 @@ class InputValidator {
     }
 
     throw new Error("Invalid input for 'github-app'. Must be a valid string.");
+  }
+
+  /**
+   * Validates the GitHub token input to ensure it is a valid non-empty string.
+   * If the input is 'none' or not provided, it returns 'none'.
+   * @param {string} githubToken Input for 'github-token'
+   * @returns {string} The validated GitHub token, or 'none' if input is 'none' or invalid
+   * @throws {Error} If the input is not a valid non-empty string
+   */
+  static validateGithubToken(githubToken) {
+    if (typeof githubToken !== 'string') {
+      throw new Error("Invalid input for 'github-token'. Must be a valid non-empty string.");
+    }
+
+    if (githubToken.toLowerCase() === 'none') {
+      return 'none';
+    }
+
+    if (githubToken.trim().length > 0) {
+      return githubToken;
+    }
+
+    throw new Error("Invalid input for 'github-token'. Must be a valid non-empty string.");
   }
 }
 

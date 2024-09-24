@@ -175,6 +175,29 @@ describe('InputValidator class to validate individual fields of the action input
           expect(InputValidator.validateGithubAppName(validAppName)).to.eq(validAppName);
         });
       });
+
+      context('Validates GitHub Token', () => {
+        it("Returns 'none' if the token is not provided", () => {
+          expect(() => InputValidator.validateGithubToken()).to.throw("Invalid input for 'github-token'. Must be a valid non-empty string.");
+        });
+
+        it("Returns 'none' if the token is 'none' (case insensitive)", () => {
+          expect(InputValidator.validateGithubToken('None')).to.eq('none');
+        });
+
+        it('Throws an error if the token is an empty string', () => {
+          expect(() => InputValidator.validateGithubToken('')).to.throw("Invalid input for 'github-token'. Must be a valid non-empty string.");
+        });
+
+        it('Throws an error if the token is not a valid string', () => {
+          expect(() => InputValidator.validateGithubToken(123)).to.throw("Invalid input for 'github-token'. Must be a valid non-empty string.");
+        });
+
+        it('Returns the token if it is a valid non-empty string and not "none"', () => {
+          const validToken = 'someValidToken';
+          expect(InputValidator.validateGithubToken(validToken)).to.eq(validToken);
+        });
+      });
     });
   });
 });
