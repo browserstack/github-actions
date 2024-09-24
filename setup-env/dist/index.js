@@ -22,7 +22,7 @@ module.exports = {
   },
 
   BROWSERSTACK_INTEGRATIONS: {
-    DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
+    DETAILS_API_URL: 'https://integrate.bsstag.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
   },
 };
 
@@ -9597,9 +9597,10 @@ class InputValidator {
 
   /**
    * Validates the app name input to ensure it is a valid non-empty string.
-   * If the input is 'none' or not provided, it returns 'browserstack[bot]'.
+   * If the input is 'none' or not provided, it returns 'bstack-integrations-staging[bot]'.
    * @param {string} githubAppName Input for 'github-app'
-   * @returns {string} Validated app name, or 'browserstack[bot]' if input is 'none' or invalid
+   * @returns {string} Validated app name, or 'bstack-integrations-staging[bot]'
+   * if input is 'none' or invalid
    * @throws {Error} If the input is not a valid non-empty string
    */
   static validateGithubAppName(githubAppName) {
@@ -9607,8 +9608,8 @@ class InputValidator {
       throw new Error("Invalid input for 'github-app'. Must be a valid string.");
     }
 
-    if (githubAppName.toLowerCase() === 'browserstack[bot]') {
-      return 'browserstack[bot]';
+    if (githubAppName.toLowerCase() === 'bstack-integrations-staging[bot]') {
+      return 'bstack-integrations-staging[bot]';
     }
 
     if (githubAppName.trim().length > 0) {

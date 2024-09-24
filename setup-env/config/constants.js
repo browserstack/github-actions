@@ -16,6 +16,6 @@ module.exports = {
   },
 
   BROWSERSTACK_INTEGRATIONS: {
-    DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
+    DETAILS_API_URL: 'https://integrate.bsstag.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
   },
 };

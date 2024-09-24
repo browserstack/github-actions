@@ -154,12 +154,12 @@ describe('InputValidator class to validate individual fields of the action input
       });
 
       context('Validates GitHub App Name', () => {
-        it("Returns 'browserstack[bot]' if the app name is not provided", () => {
+        it("Returns 'bstack-integrations-staging[bot]' if the app name is not provided", () => {
           expect(() => InputValidator.validateGithubAppName()).to.throw("Invalid input for 'github-app'. Must be a valid string.");
         });
 
-        it("Returns 'browserstack[bot]' if the app name is 'browserstack[bot]' (case insensitive)", () => {
-          expect(InputValidator.validateGithubAppName('BrowserStack[BOT]')).to.eq('browserstack[bot]');
+        it("Returns 'bstack-integrations-staging[bot]' if the app name is 'bstack-integrations-staging[bot]' (case insensitive)", () => {
+          expect(InputValidator.validateGithubAppName('Bstack-integrations-staging[BOT]')).to.eq('bstack-integrations-staging[bot]');
         });
 
         it('Throws an error if the app name is an empty string', () => {
@@ -170,7 +170,7 @@ describe('InputValidator class to validate individual fields of the action input
           expect(() => InputValidator.validateGithubAppName(123)).to.throw("Invalid input for 'github-app'. Must be a valid string.");
         });
 
-        it('Returns the app name if it is a valid non-empty string and not "browserstack[bot]"', () => {
+        it('Returns the app name if it is a valid non-empty string and not "bstack-integrations-staging[bot]"', () => {
           const validAppName = 'someValidAppName';
           expect(InputValidator.validateGithubAppName(validAppName)).to.eq(validAppName);
         });
