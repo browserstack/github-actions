@@ -22,7 +22,8 @@ module.exports = {
   },
 
   BROWSERSTACK_INTEGRATIONS: {
-    DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
+    // DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
+    DETAILS_API_URL: 'https://5151-2405-201-6806-d09b-f9b7-d11-e680-a038.ngrok-free.app/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
   },
 };
 
