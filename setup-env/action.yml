@@ -13,6 +13,10 @@ inputs:
   project-name:
     description: 'Project name for the tests'
     required: false
+  github-token:
+    description: 'GitHub Token for authentication'
+    required: false
+    default: 'none'
   github-app:
     description: 'BrowserStack Github App'
     required: false
