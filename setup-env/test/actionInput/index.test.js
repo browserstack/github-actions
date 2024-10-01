@@ -113,9 +113,7 @@ describe('Action Input operations for fetching all inputs, triggering validation
 
     it('Calls setBStackRerunEnvVars when checkIfBStackReRun returns true', async () => {
       const setBStackRerunEnvVarsStub = sinon.stub(actionInput, 'setBStackRerunEnvVars').resolves();
-
       await actionInput.setEnvVariables();
-
       sinon.assert.calledOnce(setBStackRerunEnvVarsStub);
     });
   });
