@@ -23,7 +23,7 @@ const run = async () => {
     const binaryControl = new BinaryControl(stateForBinary);
 
     if (stateForBinary.localTesting === LOCAL_TESTING.START) {
-      inputParser.setEnvVariables();
+      await inputParser.setEnvVariables();
       await binaryControl.downloadBinary();
       await binaryControl.startBinary();
     } else {
