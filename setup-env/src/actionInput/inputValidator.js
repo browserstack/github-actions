@@ -117,9 +117,10 @@ class InputValidator {
 
   /**
    * Validates the app name input to ensure it is a valid non-empty string.
-   * If the input is 'none' or not provided, it returns 'browserstack[bot]'.
+   * If the input is 'none' or not provided, it returns 'browserstack-integrations[bot]'.
    * @param {string} githubAppName Input for 'github-app'
-   * @returns {string} Validated app name, or 'browserstack[bot]' if input is 'none' or invalid
+   * @returns {string} Validated app name, or 'browserstack-integrations[bot]'
+   * if input is 'none' or invalid
    * @throws {Error} If the input is not a valid non-empty string
    */
   static validateGithubAppName(githubAppName) {
@@ -127,8 +128,8 @@ class InputValidator {
       throw new Error("Invalid input for 'github-app'. Must be a valid string.");
     }
 
-    if (githubAppName.toLowerCase() === 'browserstack[bot]') {
-      return 'browserstack[bot]';
+    if (githubAppName.toLowerCase() === 'browserstack-integrations[bot]') {
+      return 'browserstack-integrations[bot]';
     }
 
     if (githubAppName.trim().length > 0) {
