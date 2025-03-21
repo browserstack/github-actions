@@ -10,7 +10,7 @@ class ArtifactsManager {
    * @returns {Promise<artifact.UploadResponse>} Response of the upload operation
    */
   static async uploadArtifacts(artifactName, files, rootFolder) {
-    const artifactClient = artifact.create();
+    const artifactClient = artifact.createArtifactClient();
     const response = await artifactClient.uploadArtifact(
       artifactName,
       files,
