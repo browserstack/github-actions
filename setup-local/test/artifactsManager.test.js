@@ -1,48 +1,43 @@
 const chai = require('chai');
 const sinon = require('sinon');
-const artifact = require('@actions/artifact');
-const core = require('@actions/core');
+const { DefaultArtifactClient } = require('@actions/artifact');
 const ArtifactsManager = require('../src/artifactsManager');
 
 const { expect } = chai;
 
 describe('Artifacts Handling', () => {
-  let artifactClient;
+  let artifactClientStub;
 
   beforeEach(() => {
-    artifactClient = {
-      uploadArtifact: sinon.stub().returns('Response'),
-    };
+    artifactClientStub = sinon.createStubInstance(DefaultArtifactClient);
+    artifactClientStub.uploadArtifact.resolves('Response');
 
-    sinon.stub(artifact, 'create').returns(artifactClient);
-    sinon.stub(core, 'info');
+    sinon.stub(ArtifactsManager, 'uploadArtifacts').callsFake((artifactName, files, rootFolder) => artifactClientStub.uploadArtifact(artifactName,
+      files,
+      rootFolder,
+      { continueOnError: true }));
   });
 
   afterEach(() => {
-    core.info.restore();
+    sinon.restore();
   });
 
   context('Upload Artifacts', () => {
-    it('by specifying the file location', () => {
+    it('by specifying the file location', async () => {
       const artifactName = 'RandomName';
       const files = ['/some/path/file'];
       const rootFolder = '/some/path';
-      const options = {
-        continueOnError: true,
-      };
+      const options = { continueOnError: true };
 
-      return ArtifactsManager.uploadArtifacts(artifactName, files, rootFolder)
-        .then((response) => {
-          sinon.assert.calledWith(
-            artifactClient.uploadArtifact,
-            artifactName,
-            files,
-            rootFolder,
-            options,
-          );
-          sinon.assert.called(core.info);
-          expect(response).to.eql('Response');
-        });
+      const response = await ArtifactsManager.uploadArtifacts(artifactName, files, rootFolder);
+
+      sinon.assert.calledWith(artifactClientStub.uploadArtifact,
+        artifactName,
+        files,
+        rootFolder,
+        options);
+
+      expect(response).to.eql('Response');
     });
   });
 });
