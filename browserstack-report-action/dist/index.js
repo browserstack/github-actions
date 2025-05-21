@@ -38720,7 +38720,7 @@ const mockService = __nccwpck_require__(3169);
 class ReportService {
   constructor(authHeader, isTestMode = false) {
     this.authHeader = authHeader;
-    this.apiUrl = 'https://api-observability.browserstack.com/api/v1/builds/buildReport';
+    this.apiUrl = 'https://api-observability.browserstack.com/ext/v1/builds/buildReport';
     this.isTestMode = isTestMode;
   }
 
