@@ -38358,14 +38358,12 @@ class MockReportService {
         <th align="center">Duration</th>
       </tr>
     </thead>
-    <tbody>
         <tr>
     <td class="test-link"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=tests&details=13512939&utm_medium=cicd&utm_source=github-actions" target="_blank">BStack-[NodeJS] Sample Test</a></td>
     <td class="status-unmarked">unmarked</td>
     <td class="test-history"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=tests&details=13512939&utm_medium=cicd&utm_source=github-actions" target="_blank">View History</a></td>
     <td>firefox,138</td><td>OS X,Sonoma</td><td>75s</td></tr>
 
-    </tbody>
   </table>
 
 </body>
