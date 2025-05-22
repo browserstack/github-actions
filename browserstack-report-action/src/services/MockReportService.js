@@ -78,10 +78,10 @@ class MockReportService {
       <th align="center">Unknown</th>
     </tr>
     <tr>
-      <td align="center"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=tests&utm_medium=cicd&utm_source=github-actions" target="_blank">1</a></td>
-      <td align="center"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=tests&status=passed&utm_medium=cicd&utm_source=github-actions" target="_blank">0</a></td>
-      <td align="center"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=tests&status=failed&utm_medium=cicd&utm_source=github-actions" target="_blank">0</a></td>
-      <td align="center"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=tests&status=skipped&utm_medium=cicd&utm_source=github-actions" target="_blank">0</a></td>
+      <td align="center"><a href="https://observability.browserstack.com/builds/9e0f1d5d68bdeef3d04240315ce1478d1b90c731?tab=tests&utm_medium=cicd&utm_source=github-actions" target="_blank">1</a></td>
+      <td align="center"><a href="https://observability.browserstack.com/builds/9e0f1d5d68bdeef3d04240315ce1478d1b90c731?tab=tests&status=passed&utm_medium=cicd&utm_source=github-actions" target="_blank">0</a></td>
+      <td align="center"><a href="https://observability.browserstack.com/builds/9e0f1d5d68bdeef3d04240315ce1478d1b90c731?tab=tests&status=failed&utm_medium=cicd&utm_source=github-actions" target="_blank">0</a></td>
+      <td align="center"><a href="https://observability.browserstack.com/builds/9e0f1d5d68bdeef3d04240315ce1478d1b90c731?tab=tests&status=skipped&utm_medium=cicd&utm_source=github-actions" target="_blank">0</a></td>
       <td align="center">1</td>
     </tr>
   </table>
@@ -91,31 +91,31 @@ class MockReportService {
   <table border="1">
     <tr>
       <td align="center">New Failures</td>
-      <td align="center"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=insights&utm_medium=cicd&utm_source=github-actions" target="_blank">View</a></td>
+      <td align="center"><a href="https://observability.browserstack.com/builds/9e0f1d5d68bdeef3d04240315ce1478d1b90c731?tab=insights&utm_medium=cicd&utm_source=github-actions" target="_blank">View</a></td>
     </tr>
     <tr>
       <td align="center">Always Failing</td>
-      <td align="center"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=insights&utm_medium=cicd&utm_source=github-actions" target="_blank">View</a></td>
+      <td align="center"><a href="https://observability.browserstack.com/builds/9e0f1d5d68bdeef3d04240315ce1478d1b90c731?tab=insights&utm_medium=cicd&utm_source=github-actions" target="_blank">View</a></td>
     </tr>
     <tr>
       <td align="center">Flaky Test</td>
-      <td align="center"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=insights&utm_medium=cicd&utm_source=github-actions" target="_blank">View</a></td>
+      <td align="center"><a href="https://observability.browserstack.com/builds/9e0f1d5d68bdeef3d04240315ce1478d1b90c731?tab=insights&utm_medium=cicd&utm_source=github-actions" target="_blank">View</a></td>
     </tr>
     <tr>
       <td align="center">Muted Tests</td>
-      <td align="center"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=insights&utm_medium=cicd&utm_source=github-actions" target="_blank">View</a></td>
+      <td align="center"><a href="https://observability.browserstack.com/builds/9e0f1d5d68bdeef3d04240315ce1478d1b90c731?tab=insights&utm_medium=cicd&utm_source=github-actions" target="_blank">View</a></td>
     </tr>
     <tr>
       <td align="center">Unique Errors</td>
-      <td align="center"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=insights&utm_medium=cicd&utm_source=github-actions" target="_blank">View</a></td>
+      <td align="center"><a href="https://observability.browserstack.com/builds/9e0f1d5d68bdeef3d04240315ce1478d1b90c731?tab=insights&utm_medium=cicd&utm_source=github-actions" target="_blank">View</a></td>
     </tr>
     <tr>
       <td align="center">Performance Anomaly</td>
-      <td align="center"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=insights&utm_medium=cicd&utm_source=github-actions" target="_blank">View</a></td>
+      <td align="center"><a href="https://observability.browserstack.com/builds/9e0f1d5d68bdeef3d04240315ce1478d1b90c731?tab=insights&utm_medium=cicd&utm_source=github-actions" target="_blank">View</a></td>
     </tr>
   </table>
   <br>
-  Note: To check the metrics above, either click on view or increase report generation timeout setting as per <a href="https://www.browserstack.com/docs/automate/selenium/github-actions?&utm_medium=cicd&utm_source=github-actions" target="_blank">documentation</a>.
+  Note: To check the metrics above, either click on view or increase report generation timeout setting as per <a href=”https://www.browserstack.com/docs/automate/selenium/github-actions?&utm_medium=cicd&utm_source=github-actions” target=”_blank”>documentation</a>.
 
   <h2>Test List</h2>
 
@@ -132,14 +132,14 @@ class MockReportService {
     </thead>
     <tbody>
       <tr>
-        <td class="test-link"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=tests&details=13512939&utm_medium=cicd&utm_source=github-actions" target="_blank">BStack-[NodeJS] Sample Test</a></td>
+        <td class="test-link"><a href="https://observability.browserstack.com/builds/9e0f1d5d68bdeef3d04240315ce1478d1b90c731?tab=tests&details=13515011&utm_medium=cicd&utm_source=github-actions"target="_blank">BStack-[NodeJS] Sample Test</a></td>
         <td class="status-unmarked">unmarked</td>
-        <td class="test-history"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=tests&details=13512939&utm_medium=cicd&utm_source=github-actions" target="_blank">View History</a></td>
-        <td>firefox,138</td><td>OS X,Sonoma</td><td>75s</td>
+        <td class="test-history"><a href="https://observability.browserstack.com/builds/9e0f1d5d68bdeef3d04240315ce1478d1b90c731?tab=tests&details=13515011&utm_medium=cicd&utm_source=github-actions"target="_blank">View History</a></td>
+        <td>firefox,138</td><td>OS X,Sonoma</td><td>74s</td>
       </tr>
+
     </tbody>
   </table>
-
 </body>
 `,
         richHtml: `<body>
