@@ -131,7 +131,7 @@ class MockReportService {
       </tr>
     </thead>
     <tbody>
-        <tr>
+    <tr>
     <td class="test-link"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=tests&details=13512939&utm_medium=cicd&utm_source=github-actions" target="_blank">BStack-[NodeJS] Sample Test</a></td>
     <td class="status-unmarked">unmarked</td>
     <td class="test-history"><a href="https://observability.browserstack.com/builds/9e990e38d21300c76dbd8413ead232944c7a66de?tab=tests&details=13512939&utm_medium=cicd&utm_source=github-actions" target="_blank">View History</a></td>
