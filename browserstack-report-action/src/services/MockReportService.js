@@ -115,7 +115,7 @@ class MockReportService {
     </tr>
   </table>
   <br>
-  Note: To check the metrics above, either click on view or increase report generation timeout setting as per <a href=”https://www.browserstack.com/docs/automate/selenium/github-actions?&utm_medium=cicd&utm_source=github-actions” target=”_blank”>documentation</a>.
+  Note: To check the metrics above, either click on view or increase report generation timeout setting as per <a href="https://www.browserstack.com/docs/automate/selenium/github-actions?&utm_medium=cicd&utm_source=github-actions" target=”_blank”>documentation</a>.
 
   <h2>Test List</h2>
 
