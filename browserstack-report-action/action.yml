@@ -1,0 +1,26 @@
+name: 'BrowserStack Report Action'
+description: 'Fetches a BrowserStack report and displays it in the GitHub Actions summary.'
+author: 'BrowserStack'
+
+inputs:
+  username:
+    description: 'Your BrowserStack username.'
+    required: true
+  access-key:
+    description: 'Your BrowserStack access key.'
+    required: true
+  build-name:
+    description: 'The name of the build on BrowserStack. Defaults to GitHub workflow name and run ID.'
+    required: false
+  report-timeout:
+    description: 'User-defined timeout value (in seconds) to be sent to the report API.'
+    required: false
+    default: '300'
+
+runs:
+  using: 'node16'
+  main: 'dist/index.js'
+
+branding:
+  icon: 'bar-chart-2'
+  color: 'blue'
