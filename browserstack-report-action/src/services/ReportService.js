@@ -6,15 +6,11 @@ const mockService = require('./MockReportService');
 class ReportService {
   constructor(authHeader, isTestMode = false) {
     this.authHeader = authHeader;
-    this.apiUrl = 'https://api-observability.browserstack.com/ext/v1/builds/buildReport';
-    this.isTestMode = isTestMode;
+    this.apiUrl = 'https://api-observability-preprod.bsstag.com/ext/v1/builds/buildReport';
+    // this.isTestMode = isTestMode;
   }
 
   async fetchReport(params) {
-    if (this.isTestMode) {
-      return mockService.getMockResponse();
-    }
-
     try {
       const response = await axios.post(this.apiUrl, params, {
         headers: {
