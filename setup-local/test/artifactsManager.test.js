@@ -1,43 +1,48 @@
 const chai = require('chai');
 const sinon = require('sinon');
-const { DefaultArtifactClient } = require('@actions/artifact');
+const artifact = require('@actions/artifact');
+const core = require('@actions/core');
 const ArtifactsManager = require('../src/artifactsManager');
 
 const { expect } = chai;
 
 describe('Artifacts Handling', () => {
-  let artifactClientStub;
+  let artifactClient;
 
   beforeEach(() => {
-    artifactClientStub = sinon.createStubInstance(DefaultArtifactClient);
-    artifactClientStub.uploadArtifact.resolves('Response');
+    artifactClient = {
+      uploadArtifact: sinon.stub().returns('Response'),
+    };
 
-    sinon.stub(ArtifactsManager, 'uploadArtifacts').callsFake((artifactName, files, rootFolder) => artifactClientStub.uploadArtifact(artifactName,
-      files,
-      rootFolder,
-      { continueOnError: true }));
+    sinon.stub(artifact, 'create').returns(artifactClient);
+    sinon.stub(core, 'info');
   });
 
   afterEach(() => {
-    sinon.restore();
+    core.info.restore();
   });
 
   context('Upload Artifacts', () => {
-    it('by specifying the file location', async () => {
+    it('by specifying the file location', () => {
       const artifactName = 'RandomName';
       const files = ['/some/path/file'];
       const rootFolder = '/some/path';
-      const options = { continueOnError: true };
+      const options = {
+        continueOnError: true,
+      };
 
-      const response = await ArtifactsManager.uploadArtifacts(artifactName, files, rootFolder);
-
-      sinon.assert.calledWith(artifactClientStub.uploadArtifact,
-        artifactName,
-        files,
-        rootFolder,
-        options);
-
-      expect(response).to.eql('Response');
+      return ArtifactsManager.uploadArtifacts(artifactName, files, rootFolder)
+        .then((response) => {
+          sinon.assert.calledWith(
+            artifactClient.uploadArtifact,
+            artifactName,
+            files,
+            rootFolder,
+            options,
+          );
+          sinon.assert.called(core.info);
+          expect(response).to.eql('Response');
+        });
     });
   });
 });
