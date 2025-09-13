@@ -28,7 +28,7 @@
     "@actions/artifact": "^2.3.2",
     "@actions/core": "^1.2.6",
     "@actions/github": "^4.0.0",
-    "axios": "^1.7.7"
+    "axios": "^1.12.0"
   },
   "devDependencies": {
     "@vercel/ncc": "^0.38.1",
