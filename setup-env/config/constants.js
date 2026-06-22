@@ -16,7 +16,7 @@ module.exports = {
   },
 
   BROWSERSTACK_INTEGRATIONS: {
-    DETAILS_API_URL: 'https://integrate.browserstack.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
+    DETAILS_API_URL: 'https://integrations-k8s.bsstag.com/api/ci-tools/v1/builds/{runId}/rebuild/details?tool=github-actions&as_bot=true',
   },
 
   // Security (APS-19076): allowlist of env-var names accepted from the
