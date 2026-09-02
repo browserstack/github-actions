@@ -2,13 +2,13 @@
 
 This action sets up the following environment variables in the runner environment. These environment variables shall be used in the tests for BrowserStack:
 
-1. `BROWSERSTACK_BUILD_NAME`: This environment variable is set on the basis of the input to `build-name` field. By default, the value will be decided based on the event, i.e. push, pull_request etc for the workflow:
+1. `BROWSERSTACK_BUILD_NAME`: This environment variable is set **only when you pass the `build-name` input**. If you do not pass it, the variable is left unset so that the build name configured in your own test setup (e.g. `browserstack.json` / `browserstack.yml`) is used. Pass the `BUILD_INFO` keyword to get a name generated from the event, i.e. push, pull_request etc for the workflow:
    1. `push` event: `[<Branch-Name>] Commit <commit-sha>: <commit-message> [Workflow: <Workflow-number>]`
    2. `pull_request` event: `[<Branch-Name>] PR <PR-number>: <PR-title> [Workflow: <Workflow-number>]`
    3. `release` event: `[<Branch-Name>] Release <Release-tag>: <Release-name> [Workflow: <Workflow-number>]`
    4. Other events: `<Event-Name> [Workflow: <Workflow-number>]`
 
-2. `BROWSERSTACK_PROJECT_NAME`: This environment variable is set on the basis of the input to `project-name` field. By default, i.e. if any input is not provided, the value will be set as the Repository Name.
+2. `BROWSERSTACK_PROJECT_NAME`: This environment variable is set **only when you pass the `project-name` input**. If you do not pass it, the variable is left unset so that the project name configured in your own test setup is used. Pass the `REPO_NAME` keyword to use the Repository Name.
 3. `BROWSERSTACK_USERNAME`: This environment variable's value is taken from the input to `username` field. Ideal way would be to pass the GitHub Secret as the input, i.e. `username: ${{ secrets.BROWSERSTACK_USERNAME }}`.
 4. `BROWSERSTACK_ACCESS_KEY`: This environment variable's value is taken from the input to `access-key` field. Ideal way would be to pass the GitHub Secret as the input, i.e. `access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}`.
 
@@ -46,10 +46,11 @@ or
     * `build-name: BUILD_INFO - My String at the end`
     * `build-name: String at the Beginning - BUILD_INFO - String at the end`
   * The keyword `BUILD_INFO` will be replaced by the information based on the event of the workflow as described above for `BROWSERSTACK_BUILD_NAME` environment variable.
+  * If you omit this input entirely, `BROWSERSTACK_BUILD_NAME` is **not** exported and your own configured build name is left untouched.
 * `project-name`: (**Optional**)
   * You can pass any string that you want to set as the `BROWSERSTACK_PROJECT_NAME`. E.g. `project-name: My Project Name Goes Here`.
   * You can also pass the keyword `REPO_NAME` as the input. This will set the Repository Name for the `BROWSERSTACK_PROJECT_NAME` environment variable.
-  * If no input is provided, `REPO_NAME` will be considered as the default input.
+  * If you omit this input entirely, `BROWSERSTACK_PROJECT_NAME` is **not** exported and your own configured project name is left untouched.
 
 ---
 **NOTE**
