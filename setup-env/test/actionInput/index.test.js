@@ -48,6 +48,36 @@ describe('Action Input operations for fetching all inputs, triggering validation
       expect(actionInput.projectName).to.eq('validatedProjectName');
     });
 
+    it('Records that build-name and project-name were supplied', () => {
+      stubbedInput.withArgs(INPUT.BUILD_NAME).returns('someBuildName');
+      stubbedInput.withArgs(INPUT.PROJECT_NAME).returns('someProjectName');
+      const actionInput = new ActionInput();
+      // eslint-disable-next-line no-unused-expressions
+      expect(actionInput.buildNameProvided).to.be.true;
+      // eslint-disable-next-line no-unused-expressions
+      expect(actionInput.projectNameProvided).to.be.true;
+    });
+
+    it('Records that build-name and project-name were NOT supplied when absent', () => {
+      stubbedInput.withArgs(INPUT.BUILD_NAME).returns('');
+      stubbedInput.withArgs(INPUT.PROJECT_NAME).returns('');
+      const actionInput = new ActionInput();
+      // eslint-disable-next-line no-unused-expressions
+      expect(actionInput.buildNameProvided).to.be.false;
+      // eslint-disable-next-line no-unused-expressions
+      expect(actionInput.projectNameProvided).to.be.false;
+    });
+
+    it('Treats a whitespace-only name input as not supplied', () => {
+      stubbedInput.withArgs(INPUT.BUILD_NAME).returns('   ');
+      stubbedInput.withArgs(INPUT.PROJECT_NAME).returns('\t ');
+      const actionInput = new ActionInput();
+      // eslint-disable-next-line no-unused-expressions
+      expect(actionInput.buildNameProvided).to.be.false;
+      // eslint-disable-next-line no-unused-expressions
+      expect(actionInput.projectNameProvided).to.be.false;
+    });
+
     it('Takes input and throws error if username is not provided in input', () => {
       stubbedInput.withArgs(INPUT.USERNAME, { required: true }).throws(Error('Username Required'));
       try {
@@ -94,6 +124,9 @@ describe('Action Input operations for fetching all inputs, triggering validation
       actionInput.accessKey = 'someAccessKey';
       actionInput.buildName = 'someBuildName';
       actionInput.projectName = 'someProjectName';
+      // _fetchAllInput is stubbed out above, so these flags have to be set by hand.
+      actionInput.buildNameProvided = true;
+      actionInput.projectNameProvided = true;
 
       // Stub checkIfBStackReRun to return true
       sinon.stub(actionInput, 'checkIfBStackReRun').returns(Promise.resolve(true));
@@ -109,6 +142,39 @@ describe('Action Input operations for fetching all inputs, triggering validation
       sinon.assert.calledWith(core.exportVariable, ENV_VARS.BROWSERSTACK_ACCESS_KEY, 'someAccessKey');
       sinon.assert.calledWith(core.exportVariable, ENV_VARS.BROWSERSTACK_PROJECT_NAME, 'someProjectName');
       sinon.assert.calledWith(core.exportVariable, ENV_VARS.BROWSERSTACK_BUILD_NAME, 'someBuildName');
+    });
+
+    it('Does not export BROWSERSTACK_PROJECT_NAME when no project-name input was given', () => {
+      actionInput.projectNameProvided = false;
+      actionInput.setEnvVariables();
+      sinon.assert.neverCalledWith(
+        core.exportVariable, ENV_VARS.BROWSERSTACK_PROJECT_NAME, sinon.match.any,
+      );
+      // the other variables are unaffected
+      sinon.assert.calledWith(core.exportVariable, ENV_VARS.BROWSERSTACK_BUILD_NAME, 'someBuildName');
+      sinon.assert.calledWith(core.exportVariable, ENV_VARS.BROWSERSTACK_USERNAME, 'someUsername');
+    });
+
+    it('Does not export BROWSERSTACK_BUILD_NAME when no build-name input was given', () => {
+      actionInput.buildNameProvided = false;
+      actionInput.setEnvVariables();
+      sinon.assert.neverCalledWith(
+        core.exportVariable, ENV_VARS.BROWSERSTACK_BUILD_NAME, sinon.match.any,
+      );
+      sinon.assert.calledWith(core.exportVariable, ENV_VARS.BROWSERSTACK_PROJECT_NAME, 'someProjectName');
+      sinon.assert.calledWith(core.exportVariable, ENV_VARS.BROWSERSTACK_ACCESS_KEY, 'someAccessKey');
+    });
+
+    it('Exports neither name when neither input was given, leaving the user config to win', () => {
+      actionInput.buildNameProvided = false;
+      actionInput.projectNameProvided = false;
+      actionInput.setEnvVariables();
+      sinon.assert.neverCalledWith(
+        core.exportVariable, ENV_VARS.BROWSERSTACK_BUILD_NAME, sinon.match.any,
+      );
+      sinon.assert.neverCalledWith(
+        core.exportVariable, ENV_VARS.BROWSERSTACK_PROJECT_NAME, sinon.match.any,
+      );
     });
 
     it('Calls setBStackRerunEnvVars when checkIfBStackReRun returns true', async () => {
