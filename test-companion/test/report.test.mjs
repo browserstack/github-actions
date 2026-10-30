@@ -15,6 +15,7 @@ import {
 	renderProposal,
 	proposalDroppedMarkerFor,
 	proposalConsumedMarkerFor,
+	proposalAlreadyUsed,
 	proposalNeedsDropping,
 	flattenPages,
 	renderExtraChecks,
@@ -1055,5 +1056,48 @@ describe("a proposal that has been used up is not waiting any more", () => {
 	test("the marker is per commit, so another commit's plan still stands", () => {
 		const after = [proposal(), ours(`ran it\n\n${proposalConsumedMarkerFor("deadbee")}`, 2)]
 		assert.ok(findProposal(after, SHA, Date.now(), US))
+	})
+})
+
+/**
+ * Found by the live run that verified M5 (run 41067235005).
+ *
+ * The consumed marker worked — a second `go` did not rerun the job. But the
+ * REPLY was wrong: it said "that plan was for an earlier commit", because
+ * with nothing waiting the code reaches for a superseded proposal, and an
+ * older one from before the branch moved was still in the thread.
+ *
+ * The commit had not changed. The plan had been approved and run. Telling
+ * someone their branch moved on when it did not sends them looking for a
+ * problem that is not there.
+ */
+describe("a plan that was already used says so, rather than blaming the commit", () => {
+	const US = "test-companion[bot]"
+	const SHA = "97e02ad"
+	const ours = (body, id) => ({ user: { type: "Bot", login: US }, body, id, created_at: new Date().toISOString() })
+
+	test("an approved plan on THIS commit is reported as used", () => {
+		const comments = [ours(`plan\n\n${proposalMarkerFor(SHA, "dev", "generate")}`, 1), ours(`ran\n\n${proposalConsumedMarkerFor(SHA)}`, 2)]
+		assert.equal(proposalAlreadyUsed(comments, SHA, US), "approved")
+	})
+
+	test("a dropped plan is distinguished from an approved one", () => {
+		const comments = [ours(`stopped\n\n${proposalDroppedMarkerFor(SHA)}`, 2)]
+		assert.equal(proposalAlreadyUsed(comments, SHA, US), "dropped")
+	})
+
+	test("an untouched plan is not 'used', so the superseded path still runs", () => {
+		const comments = [ours(`plan\n\n${proposalMarkerFor(SHA, "dev", "generate")}`, 1)]
+		assert.equal(proposalAlreadyUsed(comments, SHA, US), undefined)
+	})
+
+	test("a marker for ANOTHER commit does not speak for this one", () => {
+		const comments = [ours(`ran\n\n${proposalConsumedMarkerFor("e55e2df")}`, 2)]
+		assert.equal(proposalAlreadyUsed(comments, SHA, US), undefined)
+	})
+
+	test("another bot cannot declare our plan used", () => {
+		const theirs = { user: { type: "Bot", login: "github-actions[bot]" }, body: proposalConsumedMarkerFor(SHA), id: 3 }
+		assert.equal(proposalAlreadyUsed([theirs], SHA, US), undefined)
 	})
 })

@@ -333,6 +333,27 @@ export function renderProposal(body, sha, requester, workflow) {
 }
 
 /**
+ * Has the plan for THIS commit already been used, and how?
+ *
+ * Found by the live run that verified the consumed marker. A second `go` was
+ * correctly not re-run, but the reply said "that plan was for an earlier
+ * commit" — because with nothing waiting the caller reaches for a superseded
+ * proposal, and an older one from before the branch moved was still in the
+ * thread. The commit had not changed; the plan had been approved and run.
+ *
+ * Returns "approved" or "dropped" so the reply can say which, or undefined
+ * when the plan on this commit has not been used at all and the superseded
+ * reading is the right one after all.
+ */
+export function proposalAlreadyUsed(comments, sha, us) {
+	const want = String(sha ?? "").trim()
+	const mine = (comments ?? []).filter((c) => isOurs(c, us))
+	if (mine.some((c) => (c.body ?? "").includes(proposalConsumedMarkerFor(want)))) return "approved"
+	if (mine.some((c) => (c.body ?? "").includes(proposalDroppedMarkerFor(want)))) return "dropped"
+	return undefined
+}
+
+/**
  * The proposal waiting on this commit, if there is one.
  *
  * Only a comment WE wrote counts, for the same reason chooseCommentAction

@@ -38,6 +38,7 @@ import {
 	renderApprovedPlan,
 	proposalDroppedMarkerFor,
 	proposalConsumedMarkerFor,
+	proposalAlreadyUsed,
 	proposalNeedsDropping,
 	flattenPages,
 	hasApproverEdits,
@@ -389,6 +390,8 @@ function finishSkipped(reason, detail) {
 		"not-a-pull-request": "That comment was on an issue, not a pull request.",
 		"not-addressed-to-us": "No @test-companion mention, so nothing was asked of Test Companion.",
 		"proposal-superseded": "The plan being approved was for an earlier commit, so it was not run.",
+		"proposal-already-run": "That plan was already approved and run on this commit.",
+		"proposal-dropped": "That plan was stopped, so there was nothing left to approve.",
 		"nothing-failed": "Nothing has failed on this commit, so there was no build to look at.",
 		"comment-edited": "Editing a comment does not start a run.",
 		fork: "A pull request from a fork does not run with credentials until a maintainer asks for it.",
@@ -639,6 +642,22 @@ function main() {
 		// "no @test-companion mention" is both wrong and unhelpful — the reason
 		// is sitting in the comment history (FR-44).
 		if (plan.approvalOnly && !waiting) {
+			// Already approved, or already stopped. Checked BEFORE the
+			// superseded reading, which otherwise reaches for any older plan
+			// still in the thread and tells the person their branch moved on
+			// when it did not — seen on run 41067235005, where the commit was
+			// the same one the plan had just been approved and run against.
+			const used = proposalAlreadyUsed(comments, plan.context.sha, botLogin)
+			if (used) {
+				replyOnPr(
+					plan.context.pr,
+					used === "approved"
+						? "That plan has already been approved and run on this commit — there is nothing left to approve. Ask me again and I will put up a fresh one."
+						: "That plan was stopped, so there is nothing left to approve. Ask me again and I will put up a fresh one.",
+				)
+				finishSkipped(used === "approved" ? "proposal-already-run" : "proposal-dropped")
+			}
+
 			const stale = findSupersededProposal(comments, plan.context.sha, botLogin)
 			if (stale) {
 				replyOnPr(
