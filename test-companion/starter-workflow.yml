@@ -75,10 +75,18 @@ jobs:
             checks: write # the "Test Companion" check
             actions: write # reading the red run, and cancelling one on "stop"
         steps:
-            - uses: actions/checkout@v4
+            # v4.4.0. Pinned to a commit because a tag can be repointed by
+            # whoever owns it, and this step runs in YOUR job with YOUR token.
+            # Safe to bump whenever you like — it is your workflow now.
+            - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
               with:
                   fetch-depth: 0 # jobs that look at what changed need history
 
+            # A floating major tag, deliberately, and the one place in this
+            # file that stays unpinned: @v1 is how you receive fixes to Test
+            # Companion without editing this file. Pinning it to a commit
+            # would freeze you on whatever shipped the day you copied this.
+            # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag
             - uses: browserstack/github-actions/test-companion@v1
               with:
                   username: ${{ secrets.BROWSERSTACK_USERNAME }}
