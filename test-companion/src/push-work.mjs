@@ -272,25 +272,30 @@ export function isSameRepo(headRepoFullName, repo) {
  * advice and deleted the `permissions:` block, as action.yml and the starter
  * both suggest, got a 403 on every approved run.
  *
- * Passed with `-c` rather than baked into the remote URL: a token in a URL
- * ends up in the reflog, in error messages and in `git remote -v`. This way
- * it lives only in this one process's arguments, and appInstallationToken has
- * already masked it in the log.
+ * Passed as configuration rather than baked into the remote URL: a token in a
+ * URL ends up in the reflog, in error messages and in `git remote -v`. This
+ * way it lives only in this one process's environment, and
+ * appInstallationToken has already masked it in the log.
  *
  * No token returns nothing, so the checkout's own credential is used — which
  * is correct whenever the App is not installed.
  */
-export function pushCredentialArgs(token, url) {
+export function pushCredentialEnv(token, url) {
 	const t = String(token ?? "").trim()
 	const u = String(url ?? "").trim()
-	if (!t || !u) return []
+	if (!t || !u) return {}
 	const basic = Buffer.from(`x-access-token:${t}`, "utf8").toString("base64")
+	// Delivered through the environment rather than `-c` on the command line.
+	// argv is world-readable on the runner — any process can read the token
+	// out of `ps` — while /proc/<pid>/environ is readable only by its owner.
+	//
 	// SCOPED to the one URL. A global `http.extraheader` attaches to whatever
-	// the push resolves to — and `url.<base>.insteadOf` in the repository's own
-	// config, which the agent can write, silently redirects `origin` to another
-	// host. Verified: one config line turns github.com into evil.test. A global
-	// header would have handed the App's installation token straight to it.
-	return ["-c", `http.${u}.extraheader=AUTHORIZATION: basic ${basic}`]
+	// the push resolves to, and the repository's own config can change that.
+	return {
+		GIT_CONFIG_COUNT: "1",
+		GIT_CONFIG_KEY_0: `http.${u}.extraheader`,
+		GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basic}`,
+	}
 }
 
 /**
@@ -332,7 +337,62 @@ export function gitEnvFrom(env = {}) {
 	// is what this process passes with -c.
 	out.GIT_CONFIG_NOSYSTEM = "1"
 	out.GIT_CONFIG_GLOBAL = "/dev/null"
+	// Never ask a human, and never run a program to ask one.
+	out.GIT_TERMINAL_PROMPT = "0"
+	out.GIT_ASKPASS = ""
+	out.SSH_ASKPASS = ""
+	out.GIT_ATTR_NOSYSTEM = "1"
 	return out
+}
+
+/**
+ * Git config keys the repository is not allowed to carry when we are about to
+ * commit on its behalf. Every one of them either runs a program or sends the
+ * push somewhere else.
+ *
+ * This is a deny list over a CLOSED set — git's own exec-capable and
+ * URL-rewriting keys — not an attempt to guess at bad values. A key here is
+ * never set by actions/checkout, so its presence means someone changed the
+ * repository's config, and the only safe answer is to refuse.
+ *
+ * `.gitattributes` is deliberately absent: it only names a filter, and the
+ * command a filter runs comes from `filter.<name>.*` in config, which is
+ * covered below.
+ */
+const UNSAFE_CONFIG = [
+	// Runs a command on the first 401, as a shell string.
+	/^credential\./,
+	// insteadOf / pushInsteadOf. These rewrite ANY url, including one given
+	// on the command line — verified against real git.
+	/^url\./,
+	// Pulls in another config file, which could set anything above or below.
+	/^include\./,
+	/^includeif[.:]/,
+	// Commands git starts on its own behalf.
+	/^core\.(sshcommand|gitproxy|hookspath|fsmonitor|pager|editor|askpass)$/,
+	/^filter\./,
+	/^diff\.external$/,
+	/^diff\..*\.(textconv|command)$/,
+	/^gpg\.(.*\.)?program$/,
+	/^uploadpack\.packobjectshook$/,
+	/^sequence\.editor$/,
+	/^pager\./,
+	// ext:: URLs execute; anything here is a change to what transports exist.
+	/^protocol\./,
+	/^remote\..*\.(uploadpack|receivepack)$/,
+	// Sends the traffic through somewhere else.
+	/\.proxy$/,
+]
+
+/**
+ * The offending keys in `git config --local --list --name-only` output, or an
+ * empty list when the repository's config is ordinary.
+ */
+export function unsafeConfigKeys(listing) {
+	return String(listing ?? "")
+		.split("\n")
+		.map((l) => l.trim())
+		.filter((l) => l && UNSAFE_CONFIG.some((re) => re.test(l.toLowerCase())))
 }
 
 /**
@@ -347,6 +407,21 @@ export const GIT_SAFE_ARGS = Object.freeze([
 	"core.hooksPath=/dev/null",
 	"-c",
 	"core.fsmonitor=false",
+	// Reset the credential helper LIST. A helper is a shell command git runs
+	// when a request comes back 401.
+	"-c",
+	"credential.helper=",
+	"-c",
+	"core.askPass=",
+	// https only, so an ext:: or a local path in a rewritten URL cannot run.
+	"-c",
+	"protocol.allow=never",
+	"-c",
+	"protocol.https.allow=always",
+	"-c",
+	"http.proxy=",
+	"-c",
+	"core.gitProxy=",
 	// Every other key that is a way for the repository to make git run a
 	// program on our behalf.
 	"-c",

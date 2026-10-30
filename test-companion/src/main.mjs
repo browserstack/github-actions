@@ -54,8 +54,9 @@ import {
 	renderPushNote,
 	needsCheckout,
 	isSameRepo,
-	pushCredentialArgs,
+	pushCredentialEnv,
 	pushUrlFor,
+	unsafeConfigKeys,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
 } from "./push-work.mjs"
@@ -265,12 +266,15 @@ function isOnTeam(login, team) {
  * Run git in the checkout. Never throws: every caller here treats a git
  * failure as "we could not save the work", which is reported, not fatal.
  */
-function git(args) {
+function git(args, extraEnv = {}) {
 	// A near-empty environment, and no hooks. These run AFTER the agent, which
 	// has had --yolo write access to the tree: a planted .git/hooks/pre-commit
 	// would otherwise be executed by our own `git commit` with the App's
 	// private key and the customer's credentials in its environment.
-	const r = spawnSync("git", [...GIT_SAFE_ARGS, ...args], { encoding: "utf8", env: gitEnvFrom(env) })
+	const r = spawnSync("git", [...GIT_SAFE_ARGS, ...args], {
+		encoding: "utf8",
+		env: { ...gitEnvFrom(env), ...extraEnv },
+	})
 	// `raw` is deliberate. `git status --porcelain` puts a SPACE in the first
 	// column for an unstaged modification, and trimming the whole output eats
 	// it on the first line — which cost run 40845669513 ten passing tests.
@@ -931,6 +935,23 @@ function main() {
  */
 function saveWork(saving, plan) {
 	if (!saving.ok) return undefined
+	const branch = plan.context.branch
+
+	// .git/config decides whether git runs a program for us and where a push
+	// ends up, and the agent has just had --yolo write access to it. An
+	// ordinary actions/checkout never sets any of the keys this looks for, so
+	// one being present means the config was changed after the checkout.
+	//
+	// This runs before `git status`, because status can run a clean filter
+	// itself — by the time we have a file list it is already too late.
+	const tampered = unsafeConfigKeys(git(["config", "--local", "--list", "--name-only"]).raw)
+	if (tampered.length) {
+		return [
+			`**Could not save this work to \`${branch}\`:** the repository's own git config sets`,
+			`${tampered.map((k) => `\`${k}\``).join(", ")}, which can send a push to another host or make git`,
+			"run a program. Nothing was committed or pushed. The run's changes are in the job's workspace only.",
+		].join(" ")
+	}
 	// `-c core.quotePath=false` stops git octal-escaping non-ASCII bytes, so a
 	// path like café.spec.ts arrives as itself. unquote() decodes the escapes
 	// anyway, but not producing them is the better half of the fix.
@@ -939,7 +960,6 @@ function saveWork(saving, plan) {
 	const { push, skip } = splitPushable(changedPaths(status.raw))
 	if (push.length === 0) return undefined
 
-	const branch = plan.context.branch
 	// Named paths, never `git add -A`: the agent ran shell commands of its own
 	// choosing and the tree may hold anything. Adding only what we listed is
 	// also what makes the comment's file list true by construction.
@@ -974,7 +994,7 @@ function saveWork(saving, plan) {
 	// scoped to this exact URL for the same reason.
 	const target = pushUrlFor(REPO, env.GITHUB_SERVER_URL)
 	if (!target) return renderPushNote({ branch, files: push, skipped: skip, error: `cannot push: bad repository name "${REPO}"` })
-	const pushed = git([...pushCredentialArgs(env.GH_TOKEN, target), "push", target, `HEAD:refs/heads/${branch}`])
+	const pushed = git(["push", target, `HEAD:refs/heads/${branch}`], pushCredentialEnv(env.GH_TOKEN, target))
 	if (!pushed.ok) {
 		// The one failure worth spelling out, because it is a settings problem
 		// rather than a bug: the workflow's token is read-only by default.

