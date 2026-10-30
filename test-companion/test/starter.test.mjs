@@ -252,3 +252,31 @@ describe("control events do not queue behind the run they act on", () => {
 		assert.match(group, /github\.event\.issue\.number/)
 	})
 })
+
+/**
+ * Review of PR #3101, M9. Every comment on every pull request booted a
+ * runner, cloned the repository, installed the CLI and signed in to
+ * BrowserStack — and then decided it had not been addressed. On a busy
+ * repository that is most of the runs, and each one also joined the
+ * concurrency group.
+ */
+describe("a comment that is not for us does not start a job", () => {
+	const starter = readFileSync(new URL("../starter-workflow.yml", import.meta.url), "utf8")
+	const job = starter.slice(starter.indexOf("jobs:"), starter.indexOf("steps:"))
+
+	test("the job is filtered before any runner starts", () => {
+		assert.match(job, /if: >-/)
+		assert.match(job, /github\.event_name != 'issue_comment'/)
+		assert.match(job, /contains\(github\.event\.comment\.body, '@test-companion'\)/)
+	})
+
+	test("a bare approval still gets through — proposals ask for exactly that", () => {
+		assert.match(job, /startsWith\(github\.event\.comment\.body, 'go'\)/)
+		assert.match(job, /startsWith\(github\.event\.comment\.body, 'approve'\)/)
+	})
+
+	test("every other event is untouched, so pushes and schedules still run", () => {
+		// The filter opens with the non-comment case for exactly this reason.
+		assert.ok(job.indexOf("!= 'issue_comment'") < job.indexOf("@test-companion"))
+	})
+})

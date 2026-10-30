@@ -457,10 +457,27 @@ describe("a bare approval reaches us — FR-43", () => {
 		assert.equal(out.approvalOnly, true)
 	})
 
-	test("go with edits is carried through too", () => {
+	/**
+	 * CHANGED by M3 (review of #3101). This used to be carried through, so
+	 * FR-43's "edit the list while approving" worked with no mention. But
+	 * "Approved, but rename the login case" is an ordinary review comment on
+	 * any pull request, and unaddressed it started a live write run with the
+	 * trailing text as approver edits that win.
+	 *
+	 * Editing while approving still works — it just has to be addressed to us
+	 * now, and the proposal comment says so.
+	 */
+	test("go WITH EDITS needs the mention, or an ordinary review comment starts a run", () => {
 		const out = planRun({ eventName: "issue_comment", payload: comment("go, but drop case two"), repo: "acme/shop" })
-		assert.equal(out.skip, undefined)
-		assert.equal(out.approvalOnly, true)
+		assert.equal(out.skip?.reason ?? out.skip, "not-addressed-to-us")
+
+		const addressed = planRun({
+			eventName: "issue_comment",
+			payload: comment("@test-companion go, but drop case two"),
+			repo: "acme/shop",
+		})
+		assert.equal(addressed.skip, undefined)
+		assert.match(addressed.context.instructions, /drop case two/)
 	})
 
 	test('"approved" works as well', () => {
@@ -600,5 +617,44 @@ describe("the flag guard sees the FINAL value, not the raw one", () => {
 		const out = run("@test-companion test this PR")
 		assert.equal(out.skip, undefined)
 		assert.equal(out.context.instructions, "test this PR")
+	})
+})
+
+/**
+ * Review of PR #3101, M3.
+ *
+ * An UNADDRESSED comment reaches us only as a possible approval. It used to
+ * be enough to open with the word, so "Approved, but rename X" — an ordinary
+ * review comment on any pull request — started a live write run, with
+ * "but rename X" carried in as approver edits that win.
+ *
+ * Unaddressed, the comment must now BE the approval and nothing else.
+ * Addressed, "@test-companion go and also cover X" still works: that is
+ * FR-43's "you can edit the list first", and they did address us.
+ */
+describe("an unaddressed comment counts as approval only when it is exactly that", () => {
+	const comment = (body) =>
+		plan("issue_comment", {
+			action: "created",
+			issue: { number: 7, pull_request: { url: "x" } },
+			comment: { body, user: { login: "dev" } },
+		})
+
+	test("a bare go approves", () => {
+		for (const body of ["go", "go.", "  go  ", "Go!"]) {
+			assert.equal(comment(body).skip, undefined, `${JSON.stringify(body)} should be an approval`)
+		}
+	})
+
+	test("an ordinary review comment that merely starts with the word does NOT", () => {
+		for (const body of ["Approved, but rename the login case", "go ahead and ship it", "approved pending CI"]) {
+			assert.equal(comment(body).skip?.reason ?? comment(body).skip, "not-addressed-to-us", `${JSON.stringify(body)} must not start a run`)
+		}
+	})
+
+	test("addressed, edits alongside the approval are still allowed", () => {
+		const plan = comment("@test-companion go, and also cover the empty-cart case")
+		assert.equal(plan.skip, undefined)
+		assert.match(plan.context.instructions, /also cover the empty-cart case/)
 	})
 })

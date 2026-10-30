@@ -14,6 +14,7 @@ import {
 	isSameRepo,
 	pushCredentialEnv,
 	unexpectedConfigKeys,
+	agentCommitted,
 	CONFIG_READ_ARGS,
 	trustedGitPath,
 	gitEnvFrom,
@@ -714,5 +715,40 @@ describe("the config check reads the repository, not our own flags", () => {
 		} finally {
 			rmSync(dir, { recursive: true, force: true })
 		}
+	})
+})
+
+/**
+ * Review of PR #3101, M6 and M7. Two ways the push carried more than the run
+ * meant to write.
+ */
+describe("the push carries the run's test files and nothing else", () => {
+	test("M6 — a new directory must arrive as its files, not as one entry", () => {
+		// `git status --porcelain` without -uall collapses a new directory to
+		// `?? tests/`. splitPushable then sees ONE path with one segment, its
+		// deny list never sees `tests/.env` or `tests/run.log`, and
+		// `git add tests/` commits the lot.
+		const collapsed = changedPaths("?? tests/\n")
+		assert.deepEqual(collapsed, ["tests/"], "this is what the old command produced")
+		const { push } = splitPushable(collapsed)
+		assert.deepEqual(push, ["tests/"], "and the deny list cannot see inside it")
+
+		// With -uall the same tree arrives file by file, so the deny list works.
+		const expanded = changedPaths("?? tests/login.spec.ts\n?? tests/.env\n?? tests/run.log\n")
+		const split = splitPushable(expanded)
+		assert.deepEqual(split.push, ["tests/login.spec.ts"])
+		assert.ok(split.skip.includes("tests/.env"), "a secret must never be committed")
+	})
+
+	test("M7 — a commit the agent made itself is not ours to push", () => {
+		// We push HEAD. If the agent committed, HEAD carries whatever it put in
+		// — source, lockfiles, .github/ — none of it filtered by splitPushable.
+		assert.equal(agentCommitted("aaa111", "bbb222"), true)
+		assert.equal(agentCommitted("aaa111", "aaa111"), false)
+	})
+
+	test("M7 — not knowing where HEAD was is not permission to push", () => {
+		assert.equal(agentCommitted(undefined, "bbb222"), true, "unknown must fail closed")
+		assert.equal(agentCommitted("", "bbb222"), true)
 	})
 })

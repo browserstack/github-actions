@@ -268,3 +268,40 @@ describe("naming a bound job — matched on whole words, never as a substring", 
 		assert.notEqual(readIntent("abc", odd).workflow, "a.c")
 	})
 })
+
+/**
+ * Review of PR #3101, M4.
+ *
+ * Job words are matched anywhere in the comment and were tested BEFORE the
+ * approval word. So a reply that approves a waiting plan and adds an edit —
+ * exactly what FR-43 invites, "you can edit the list first" — was read as a
+ * fresh request for a different job:
+ *
+ *   "go, and fix case 3's title"  ->  proposes `fix`, instead of approving
+ *
+ * When a plan is waiting, the approval reading comes first.
+ */
+describe("a reply to a waiting proposal is read as an approval first", () => {
+	const bound = { workflows: ["generate", "fix", "rca"], proposalWaiting: true }
+
+	test("an approval carrying an edit still approves", () => {
+		assert.equal(readIntent("go, and fix case 3's title", bound).kind, INTENT.GO)
+		assert.equal(readIntent("approved, but rename the login case", bound).kind, INTENT.GO)
+	})
+
+	test("with no plan waiting, the same words ask for the job", () => {
+		const idle = { workflows: ["generate", "fix", "rca"], proposalWaiting: false }
+		assert.equal(readIntent("fix case 3's title", idle).kind, INTENT.WORKFLOW)
+		assert.equal(readIntent("fix case 3's title", idle).workflow, "fix")
+	})
+
+	test("stop still wins over an approval, even with one waiting", () => {
+		// FR-35 gives stop its own deadline; approving and cancelling in one
+		// breath must cancel.
+		assert.equal(readIntent("stop", bound).kind, INTENT.STOP)
+	})
+
+	test("a comment that names no job and no approval is still unknown", () => {
+		assert.equal(readIntent("looks good to me", bound).kind, INTENT.UNKNOWN)
+	})
+})

@@ -14,6 +14,22 @@ import { CAPABILITIES } from "./intent.mjs"
  * edited in place, not a new one per run. An HTML comment so a reader never
  * sees it.
  */
+/**
+ * Is this comment one WE wrote? — review of #3101, M2.
+ *
+ * "Any bot" was the old answer, and it was not good enough. Another App on
+ * the repository, or `github-actions[bot]` driven by any other workflow in
+ * it, could post a comment carrying our proposal marker. A maintainer's `go`
+ * then fed that body to a live `--yolo` run as the approved plan — no write
+ * access needed, just a workflow, and plenty of repositories run one on a
+ * fork's pull request.
+ *
+ * Fails CLOSED: with no login to compare against, nothing is ours. The worst
+ * case is proposing again; the alternative is running someone else's text.
+ */
+export const isOurs = (comment, us) =>
+	Boolean(us) && comment?.user?.type === "Bot" && comment?.user?.login === us
+
 export const COMMENT_MARKER = "<!-- test-companion-run -->"
 
 const previewRun = (summary) => summary?.preview === "true"
@@ -190,8 +206,8 @@ export function renderComment(args) {
  * person quoting our comment in their reply capture the thread, after which
  * every run would overwrite their words.
  */
-export function chooseCommentAction(comments) {
-	const ours = (comments ?? []).filter((c) => c?.user?.type === "Bot" && (c.body ?? "").includes(COMMENT_MARKER))
+export function chooseCommentAction(comments, us) {
+	const ours = (comments ?? []).filter((c) => isOurs(c, us) && (c.body ?? "").includes(COMMENT_MARKER))
 	if (ours.length === 0) return { action: "create" }
 	// Oldest, so repeated runs converge on one comment even if a duplicate
 	// somehow appeared.
@@ -310,7 +326,7 @@ export function renderProposal(body, sha, requester, workflow) {
 	return [
 		body,
 		"",
-		"Reply **go** to run this for real. Nothing is written until you do — you can edit the list first, or say **stop** to drop it.",
+		"Reply **go** to run this for real. Nothing is written until you do. To change the list first, reply **@test-companion go** with your edits; to drop it, say **stop**.",
 		"",
 		proposalMarkerFor(sha, requester, workflow),
 	].join("\n")
@@ -326,13 +342,19 @@ export function renderProposal(body, sha, requester, workflow) {
  * Fails CLOSED on an unreadable timestamp — treated as expired, so the worst
  * case is a fresh proposal rather than approving one of unknown age.
  */
-export function findProposal(comments, sha, now = Date.now()) {
+export function findProposal(comments, sha, now = Date.now(), us) {
 	// `by=` is optional so proposals written before the requester was recorded
 	// stay approvable rather than becoming stuck.
 	// `by=` and `workflow=` are both optional, so proposals written before
 	// either was recorded stay approvable rather than becoming stuck.
 	const want = String(sha ?? "").trim()
-	const ours = (comments ?? []).filter((c) => c?.user?.type === "Bot" && readMarker(c.body)?.sha === want)
+	// Spent, either way round: approved and run (M5), or dropped by `stop` or
+	// by the sweep. Checked before anything else, so neither a second `go` nor
+	// the sweep can act on a plan that is already finished with.
+	const spent = [proposalConsumedMarkerFor(want), proposalDroppedMarkerFor(want)]
+	if ((comments ?? []).some((c) => isOurs(c, us) && spent.some((m) => (c.body ?? "").includes(m)))) return undefined
+
+	const ours = (comments ?? []).filter((c) => isOurs(c, us) && readMarker(c.body)?.sha === want)
 	if (ours.length === 0) return undefined
 	const newest = ours.reduce((a, b) => (a.id >= b.id ? a : b))
 	const age = now - Date.parse(newest.created_at ?? "")
@@ -396,6 +418,20 @@ export function renderApprovedPlan(proposalBody, replyText) {
  * a fresh "Action required" check and a fresh comment on the same dead proposal
  * every night for as long as the pull request stayed open.
  */
+/**
+ * A proposal has been APPROVED and run — review of #3101, M5.
+ *
+ * Approving left no trace, so the proposal stayed "waiting" after it had
+ * already been carried out: a second `go` ran the job again, and a day later
+ * the sweep told the person their approved plan had gone unanswered.
+ *
+ * Separate from the dropped marker because they are different events and the
+ * reply text differs, but both mean the same thing here — this plan is spent.
+ */
+export function proposalConsumedMarkerFor(sha) {
+	return `<!-- test-companion-proposal-consumed sha=${String(sha ?? "")} -->`
+}
+
 export function proposalDroppedMarkerFor(sha) {
 	return `<!-- test-companion-proposal-dropped sha=${sha} -->`
 }
@@ -410,11 +446,11 @@ export function proposalDroppedMarkerFor(sha) {
  * then blocked by a check that never resolves — the exact failure Release 2
  * avoided by posting the tick at the end of a run rather than the start.
  */
-export function proposalNeedsDropping(comments, sha, now = Date.now()) {
-	const waiting = findProposal(comments, sha, now)
+export function proposalNeedsDropping(comments, sha, now = Date.now(), us) {
+	const waiting = findProposal(comments, sha, now, us)
 	if (!waiting?.expired) return false
 	const dropped = proposalDroppedMarkerFor(sha)
-	return !(comments ?? []).some((c) => c?.user?.type === "Bot" && (c.body ?? "").includes(dropped))
+	return !(comments ?? []).some((c) => isOurs(c, us) && (c.body ?? "").includes(dropped))
 }
 
 /**
@@ -541,11 +577,11 @@ export function renderProposalBody({ summary, plan, sizeNote } = {}) {
  * Only our own comments count, so a person quoting the marker cannot
  * manufacture one.
  */
-export function findSupersededProposal(comments, sha) {
+export function findSupersededProposal(comments, sha, us) {
 	const current = String(sha ?? "").trim()
 	// Same reader as findProposal, so the two cannot drift again.
 	const stale = (comments ?? []).filter((c) => {
-		if (c?.user?.type !== "Bot") return false
+		if (!isOurs(c, us)) return false
 		const found = readMarker(c.body)
 		return Boolean(found) && found.sha !== current
 	})

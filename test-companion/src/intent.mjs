@@ -165,7 +165,7 @@ const saysAll = (said, name) => name.length > 0 && said.some((_, i) => name.ever
  * `workflows` is what the repository has bound, so a job can be asked for by
  * name. Without it, only the written-out phrases are understood.
  */
-export function readIntent(instructions, { workflows = [] } = {}) {
+export function readIntent(instructions, { workflows = [], proposalWaiting = false } = {}) {
 	const text = withoutQuotes(String(instructions ?? "")).trim()
 	if (!text) return { kind: INTENT.UNKNOWN }
 
@@ -176,6 +176,14 @@ export function readIntent(instructions, { workflows = [] } = {}) {
 	if (SETUP.test(asked)) return { kind: INTENT.SETUP }
 
 	const preview = PREVIEW.test(text)
+
+	// With a plan waiting, an approval is what a reply most likely IS — and
+	// FR-43 invites edits alongside it ("you can edit the list first"). Job
+	// words match anywhere, so testing them first read "go, and fix case 3's
+	// title" as a fresh request for `fix` and quietly dropped the approval
+	// (M4, review of #3101). Still after STOP: approving and cancelling in one
+	// breath has to cancel.
+	if (proposalWaiting && GO.test(text)) return { kind: INTENT.GO }
 
 	for (const [pattern, candidates] of PHRASES) {
 		if (pattern.test(text)) {

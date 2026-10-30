@@ -37,6 +37,7 @@ import {
 	accessibilityFailsCheck,
 	renderApprovedPlan,
 	proposalDroppedMarkerFor,
+	proposalConsumedMarkerFor,
 	proposalNeedsDropping,
 	flattenPages,
 	hasApproverEdits,
@@ -58,6 +59,7 @@ import {
 	pushCredentialEnv,
 	pushUrlFor,
 	unexpectedConfigKeys,
+	agentCommitted,
 	CONFIG_READ_ARGS,
 	trustedGitPath,
 	gitEnvFrom,
@@ -130,6 +132,43 @@ function gh(args, body) {
  * repository without the App installed is the normal case, not an error, and
  * FR-4 says the run finishes either way.
  */
+/**
+ * The login this Action's comments appear under — review of #3101, M2.
+ *
+ * `github-actions[bot]` with the workflow token; `<app-slug>[bot]` when the
+ * App is installed, discovered from the installation lookup below. Used to
+ * tell OUR comments from any other bot's, because "any bot" let another App
+ * post a proposal marker that a maintainer's `go` would then run live.
+ */
+let botLogin = "github-actions[bot]"
+
+/** HEAD before the agent ran, so a commit it made can be told from ours (M7). */
+let headBeforeRun = ""
+
+/** Set when this run is carrying out an approved proposal, so the plan is marked spent (M5). */
+let consumedMarker = ""
+
+/**
+ * Put the working tree on one commit — review of #3101, M8.
+ *
+ * Was two blocks doing the same job with different flags. One used
+ * `--depth 1`, which SHALLOWS a clone the starter deliberately made with
+ * `fetch-depth: 0`, so anything that looks at history afterwards sees one
+ * commit. The other checked its fetch but ignored whether the checkout
+ * worked, and carried on as if it had.
+ *
+ * The URL is explicit and carries its own credential, because the starter now
+ * sets `persist-credentials: false` (M1) — the workflow token must not sit in
+ * `.git/config` where a shell command the agent chose can read it.
+ */
+function fetchAndCheckout(sha, branch) {
+	const url = pushUrlFor(REPO, env.GITHUB_SERVER_URL)
+	if (!url || !sha) return false
+	const cred = pushCredentialEnv(env.GH_TOKEN, url)
+	if (!git(["fetch", url, sha], cred).ok) return false
+	return branch ? git(["checkout", "-B", branch, sha]).ok : git(["checkout", "--detach", sha]).ok
+}
+
 function appInstallationToken() {
 	const creds = appCredentials(env)
 	if (!creds) return undefined
@@ -165,7 +204,12 @@ function appInstallationToken() {
 	}
 	let installationId
 	try {
-		installationId = JSON.parse(found.stdout)?.id
+		const installation = JSON.parse(found.stdout)
+		installationId = installation?.id
+		// M2 (review of #3101): what WE post as. An App comments as
+		// `<slug>[bot]`, and knowing that is what lets us tell our own
+		// proposal from another App's.
+		if (installation?.app_slug) botLogin = `${installation.app_slug}[bot]`
 	} catch {
 		return undefined
 	}
@@ -479,11 +523,8 @@ function main() {
 		if (plan.skip) finishSkipped(plan.skip, `PR #${plan.context.pr}`)
 		// Work on the commit that was asked about. The starter checks out the
 		// default branch for a comment event, since the payload names no ref.
-		const co = spawnSync("git", ["fetch", "--depth", "1", "origin", plan.context.sha], { stdio: "inherit" })
-		if (co.status === 0) {
-			spawnSync("git", ["checkout", "--detach", "FETCH_HEAD"], { stdio: "inherit" })
-		} else {
-			warn(`Could not fetch ${plan.context.sha}; running against the checked-out tree.`)
+		if (!fetchAndCheckout(plan.context.sha)) {
+			warn(`Could not check out ${plan.context.sha}; running against the tree this job checked out.`)
 		}
 	}
 
@@ -526,7 +567,12 @@ function main() {
 		if (!allowed) {
 			// FR-33 wants a one-line reply, not a line in a log the person who
 			// asked will never open.
-			replyOnPr(plan.context?.pr, renderNotAuthorized(who ?? "there", askTeam))
+			//
+			// Unless they never addressed us. An unaddressed comment reaches
+			// here only because it was a bare "go", and answering a bystander's
+			// one-word comment with a public refusal is noise in someone else's
+			// conversation (M3, review of #3101).
+			if (!plan.approvalOnly) replyOnPr(plan.context?.pr, renderNotAuthorized(who ?? "there", askTeam))
 			finishSkipped("not-authorized", who)
 		}
 	}
@@ -538,8 +584,16 @@ function main() {
 	if (plan.event === TC_EVENTS.PR_COMMENT) {
 		// FR-34: pass what this repository has actually bound, so a job can be
 		// asked for by name and not only by the phrases written into PHRASES.
+		// Fetched BEFORE the intent is read, because what a reply means depends
+		// on whether we asked a question: with a plan waiting, "go, and fix
+		// case 3's title" is an approval with an edit, not a request to run
+		// `fix` (M4, review of #3101).
+		const comments = flattenPages(gh(["api", `repos/${REPO}/issues/${plan.context.pr}/comments`, "--paginate", "--slurp"]))
+		const waiting = findProposal(comments, plan.context.sha, Date.now(), botLogin)
+
 		const intent = readIntent(plan.context.instructions, {
 			workflows: (bindingsDoc?.bindings ?? []).filter((b) => b.enabled).map((b) => b.workflow),
+			proposalWaiting: Boolean(waiting),
 		})
 
 		if (intent.kind === INTENT.UNKNOWN) {
@@ -576,9 +630,6 @@ function main() {
 			finishSkipped("not-bound", intent.workflow)
 		}
 
-		const comments = flattenPages(gh(["api", `repos/${REPO}/issues/${plan.context.pr}/comments`, "--paginate", "--slurp"]))
-		const waiting = findProposal(comments, plan.context.sha)
-
 		// An unaddressed comment only ever reaches us as a possible approval.
 		// With nothing waiting, it is what it looked like: a person talking to
 		// each other, not to us.
@@ -588,7 +639,7 @@ function main() {
 		// "no @test-companion mention" is both wrong and unhelpful — the reason
 		// is sitting in the comment history (FR-44).
 		if (plan.approvalOnly && !waiting) {
-			const stale = findSupersededProposal(comments, plan.context.sha)
+			const stale = findSupersededProposal(comments, plan.context.sha, botLogin)
 			if (stale) {
 				replyOnPr(
 					plan.context.pr,
@@ -633,6 +684,15 @@ function main() {
 			// from the event alone — whichever binding came first in the file —
 			// and a `fix` proposal could run something else, live, with --yolo.
 			if (waiting?.workflow) plan.workflow = waiting.workflow
+
+			// Adopt the check the PROPOSAL run left in progress. This run is a
+			// different process with an empty memo, so without the lookup it
+			// posts a SECOND check and the proposal's one stays pending beside
+			// it for the life of the branch (M5). The sweep already does this;
+			// the approval path did not.
+			const pending = inFlightCheckId(gh(["api", `repos/${REPO}/commits/${plan.context.sha}/check-runs?per_page=100`])?.check_runs)
+			if (pending) rememberCheck(plan.context.sha, pending)
+			consumedMarker = proposalConsumedMarkerFor(plan.context.sha)
 
 			// FR-43: the run carries out the approved plan — the proposal as the
 			// approver left it, edits and all. Written to a file rather than
@@ -724,14 +784,12 @@ function main() {
 		finishWithStarter(configPath)
 	}
 
-	// An event-driven run names no job: the pipeline file decides, via --event.
-	// A manual run names one and carries no event, which is how the CLI is told
-	// to ignore the bindings entirely.
-	// A manual run names its job. An event-driven run does NOT: which job an
-	// event runs is the pipeline file's decision, so the Action passes only
-	// --event and lets the CLI resolve the binding. Guessing a name here was the
-	// first live run's failure — it produced `no binding for "pr_opened"
-	// (workflow "test")` because the repo had bound `generate`, not `test`.
+	// A manual run names its job and carries no event, which is how the CLI is
+	// told to ignore the bindings. An event-driven run does NOT name one:
+	// which job an event runs is the pipeline file's decision, so the Action
+	// passes only --event. Guessing a name here was the first live run's
+	// failure — `no binding for "pr_opened" (workflow "test")`, because the
+	// repository had bound `generate`.
 	const args = ["workflow", "run"]
 	if (plan.workflow) args.push(plan.workflow)
 	if (plan.event) args.push("--event", plan.event)
@@ -750,9 +808,8 @@ function main() {
 	// default one. The starter workflow cannot be amended once customers have
 	// merged it, so the Action puts itself on the right commit.
 	//
-	// Read-only with respect to the remote, and advisory: a checkout we cannot
-	// do is reported and the run continues against whatever is here, because a
-	// proposal built from the diff is still worth having.
+	// Read-only with respect to the remote, and advisory: see the checkout
+	// below, which says what happens when it cannot be done.
 	// Every arm fails CLOSED, and each is read from the world rather than
 	// asserted. An earlier draft hard-coded sameRepo on the reasoning that
 	// plan-run.mjs already skips forks — true today, and exactly the shape
@@ -779,8 +836,7 @@ function main() {
 		plan.context.sha &&
 		needsCheckout({ headSha: git(["rev-parse", "HEAD"]).out, wantSha: plan.context.sha })
 	) {
-		const fetched = git(["fetch", "origin", plan.context.sha])
-		const moved = fetched.ok && git(["checkout", "-B", plan.context.branch, plan.context.sha]).ok
+		const moved = fetchAndCheckout(plan.context.sha, plan.context.branch)
 		if (moved) notice(`Working on ${plan.context.branch} at ${String(plan.context.sha).slice(0, 7)}.`)
 		else warn(`Could not check out ${plan.context.branch}; the run sees whatever this job checked out.`)
 	}
@@ -825,6 +881,8 @@ function main() {
 		)
 	}
 
+	// Where HEAD was before the agent touched anything (M7).
+	headBeforeRun = git(["rev-parse", "HEAD"]).out
 	notice(`tc ${args.join(" ")}`)
 	// Both files are written by `tc` itself, and the result file only when the
 	// run generates cases. Remove any stale copy first so a run that produces
@@ -984,7 +1042,7 @@ function main() {
 			? OUTCOMES.TESTS_FAILED
 			: outcome
 	postCheck(checkOutcome, view, checkSha(plan.context, summary, env.GITHUB_SHA), annotations)
-	if (plan.context.pr) postComment(plan.context.pr, { ...view, approvalNote })
+	if (plan.context.pr) postComment(plan.context.pr, { ...view, approvalNote, consumedMarker })
 
 	// Always exit 0. Whether the build goes red is the build effect's call, and
 	// a separate step applies it — otherwise the report never gets attached.
@@ -1007,6 +1065,18 @@ function main() {
 function saveWork(saving, plan) {
 	if (!saving.ok) return undefined
 	const branch = plan.context.branch
+	// M7 (review of #3101). We push HEAD, so a commit the AGENT made rides
+	// along unfiltered — source, lockfiles, `.github/` — and a workflow-file
+	// change fails the whole push with an error nobody can read. Our own
+	// commit happens below, after this check, so a HEAD that moved during the
+	// run was not us.
+	if (agentCommitted(headBeforeRun, git(["rev-parse", "HEAD"]).out)) {
+		return [
+			`**Could not save this work to \`${branch}\`:** the run committed to this branch itself,`,
+			"so what is on HEAD is not what Test Companion chose to write. Nothing was pushed —",
+			"the run's changes are in the job's workspace only.",
+		].join(" ")
+	}
 	if (!GIT_BIN) {
 		return `**Could not save this work to \`${branch}\`:** no trusted \`git\` was found on this runner (looked for a root-owned /usr/bin/git and /bin/git). Nothing was committed or pushed.`
 	}
@@ -1031,7 +1101,11 @@ function saveWork(saving, plan) {
 	// `-c core.quotePath=false` stops git octal-escaping non-ASCII bytes, so a
 	// path like café.spec.ts arrives as itself. unquote() decodes the escapes
 	// anyway, but not producing them is the better half of the fix.
-	const status = git(["-c", "core.quotePath=false", "status", "--porcelain"])
+	// `-uall` so a NEW DIRECTORY arrives as its files. Without it git reports
+	// `?? tests/`, splitPushable sees one path with one segment, and
+	// `git add tests/` commits `tests/.env` and `tests/run.log` along with the
+	// spec (M6, review of #3101).
+	const status = git(["-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all"])
 	if (!status.ok) return undefined
 	const { push, skip } = splitPushable(changedPaths(status.raw))
 	if (push.length === 0) return undefined
@@ -1196,7 +1270,28 @@ function stopRuns(plan, who) {
 		)
 		return
 	}
-	replyOnPr(pr, `Stopped by @${who}.`)
+	// M5 (review of #3101). The proposal comment says "say **stop** to drop
+	// it", and stop cancelled runs without dropping anything — so a later `go`
+	// still ran the plan the person had just stopped.
+	//
+	// The check goes with it. Cancelling a run leaves its check in progress,
+	// and a check that never resolves blocks anyone who made it required.
+	dropProposalAndCheck(sha, `Stopped by @${who}.`)
+	replyOnPr(pr, `Stopped by @${who}.\n\n${proposalDroppedMarkerFor(sha)}`)
+}
+
+/**
+ * Mark the plan on this commit as spent and finish its check.
+ *
+ * Shared by `stop` and the stale-proposal sweep, because leaving either half
+ * undone is what M5 was about: a dropped plan that a later `go` still runs,
+ * or a check nobody ever completes.
+ */
+function dropProposalAndCheck(sha, title) {
+	if (!sha) return
+	const existing = inFlightCheckId(gh(["api", `repos/${REPO}/commits/${sha}/check-runs?per_page=100`])?.check_runs)
+	if (existing) rememberCheck(sha, existing)
+	postCheck(OUTCOMES.SKIPPED, { outcome: "Skipped", summary: {}, runUrl: RUN_URL }, sha, [], "completed", title)
 }
 
 /**
@@ -1296,7 +1391,7 @@ function sweepExpiredProposals() {
 		const sha = pr?.head?.sha
 		if (!sha || !pr?.number) continue
 		const comments = flattenPages(gh(["api", `repos/${REPO}/issues/${pr.number}/comments`, "--paginate", "--slurp"]))
-		if (!proposalNeedsDropping(comments, sha)) continue
+		if (!proposalNeedsDropping(comments, sha, Date.now(), botLogin)) continue
 
 		// Complete the check the PROPOSAL run left in progress, rather than
 		// adding a second one beside it. The sweep is a different process with
@@ -1384,8 +1479,11 @@ function postComment(pr, view) {
 	// []. Every run then posted a NEW comment instead of editing its own, which
 	// is the single-comment guarantee in FR-29 (review finding, PR #3030).
 	const existing = flattenPages(gh(["api", `repos/${REPO}/issues/${pr}/comments`, "--paginate", "--slurp"]))
-	const choice = chooseCommentAction(existing)
-	const body = { body: renderComment(view) }
+	const choice = chooseCommentAction(existing, botLogin)
+	// M5 (review of #3101): an approved proposal must stop looking like one.
+	// Without this a second `go` reran the job, and a day later the sweep told
+	// the person their approved plan had gone unanswered.
+	const body = { body: renderComment(view) + (view.consumedMarker ? `\n${view.consumedMarker}` : "") }
 	if (choice.action === "update") {
 		gh(["api", `repos/${REPO}/issues/comments/${choice.id}`, "--method", "PATCH", "--input", "-"], body)
 	} else {

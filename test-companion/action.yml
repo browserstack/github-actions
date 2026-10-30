@@ -112,8 +112,13 @@ runs:
               TC_SHA256: ${{ inputs.cli-sha256 }}
           run: |
               set -euo pipefail
-              curl -fsSL -o /tmp/tc-install.sh https://test-companion.browserstack.com/cli/install.sh
-              sh /tmp/tc-install.sh
+              # $RUNNER_TEMP, not /tmp: it is per-job and cleaned up, where a
+              # fixed /tmp path is shared with everything else on the runner
+              # and can be written before this step runs. The Action's own
+              # report files already take this care; this step did not.
+              installer="${RUNNER_TEMP:-/tmp}/tc-install.sh"
+              curl -fsSL -o "$installer" https://test-companion.browserstack.com/cli/install.sh
+              sh "$installer"
               echo "$HOME/.local/bin" >> "$GITHUB_PATH"
               version="$("$HOME/.local/bin/tc" --version 2>/dev/null | head -1 || echo unknown)"
               # FR-2: pinning only means something if the pin actually took. The
@@ -121,7 +126,15 @@ runs:
               # silent fallback to latest would leave the run reporting a version
               # nobody asked for — and "the same pipeline behaves the same next
               # month" is the entire point of the input.
-              if [ -n "${TC_VERSION:-}" ] && [ "${version#*"$TC_VERSION"}" = "$version" ]; then
+              # EXACT, not a substring. `${version#*$TC_VERSION}` accepted a pin
+              # of 1.2.0 when 11.2.0 was installed, and a pin of 1.1 when 1.1.9
+              # was — so the check passed for a version nobody asked for, which
+              # is the one thing it exists to catch.
+              # The first version-shaped token. Stripping non-digits instead
+              # would fold the architecture into the number, turning a version
+              # line ending "linux/amd64" into 1.1.964.
+              installed="$(printf '%s' "$version" | grep -oE '[0-9]+(\.[0-9]+)+' | head -1 || true)"
+              if [ -n "${TC_VERSION:-}" ] && [ "$installed" != "$TC_VERSION" ]; then
                 echo "::error::Asked for Test Companion CLI $TC_VERSION but got '$version'." >&2
                 exit 1
               fi

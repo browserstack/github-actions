@@ -220,12 +220,16 @@ function fromComment(payload, inputs) {
 	// proposal was instructing an action that could not work (found by the
 	// first approved run).
 	//
-	// Narrow on purpose: the comment must OPEN with the approval word, or
-	// ordinary chatter — "good to go once CI passes" — starts runs. And
-	// main.mjs drops this one anyway unless a proposal is really waiting, so
-	// the mention stays required for everything that is not an answer to a
-	// question we asked.
-	const approvalOnly = !addressed && /^\s*(go|approved?)\b/i.test(body)
+	// EXACTLY the approval and nothing else. Opening with the word was not
+	// narrow enough: "Approved, but rename the login case" is an ordinary
+	// review comment on any pull request, and it started a live write run with
+	// "but rename the login case" carried in as approver edits that win
+	// (M3, review of #3101).
+	//
+	// Edits alongside an approval are still supported — FR-43 invites them —
+	// but then the person has to address us, which is the difference between
+	// talking to Test Companion and talking about the change.
+	const approvalOnly = !addressed && /^\s*(go|approved?)\s*[.!]*\s*$/i.test(body)
 	if (!addressed && !approvalOnly) return skip("not-addressed-to-us")
 
 	// Everything after the mention is what the person actually asked for. The

@@ -75,6 +75,21 @@ jobs:
     test-companion:
         runs-on: ubuntu-latest
         timeout-minutes: 35
+        # Don't boot a runner for a conversation we are not part of.
+        #
+        # Without this, EVERY comment on every pull request started a job that
+        # cloned the repository, installed the CLI and signed in to
+        # BrowserStack, only to decide "not addressed to us" and stop. On a
+        # busy repository that is most of the runs.
+        #
+        # The second and third lines are the bare approval: a proposal says
+        # "reply go", and people reply without a mention. String comparison in
+        # these expressions is case-insensitive, so `Go` is covered.
+        if: >-
+            github.event_name != 'issue_comment'
+            || contains(github.event.comment.body, '@test-companion')
+            || startsWith(github.event.comment.body, 'go')
+            || startsWith(github.event.comment.body, 'approve')
         # With the Test Companion GitHub App installed, this whole block can be
         # deleted: the App's installation token carries these permissions
         # itself. Pass app-id and app-private-key below instead.
@@ -90,6 +105,11 @@ jobs:
             - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
               with:
                   fetch-depth: 0 # jobs that look at what changed need history
+                  # The workflow token would otherwise be left in .git/config,
+                  # where any shell command the agent chooses to run can read
+                  # it — and it carries `contents: write`. Test Companion does
+                  # not need it there: it authenticates its own push.
+                  persist-credentials: false
 
             # A floating major tag, deliberately, and the one place in this
             # file that stays unpinned: @v1 is how you receive fixes to Test

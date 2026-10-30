@@ -14,6 +14,7 @@ import {
 	findProposal,
 	renderProposal,
 	proposalDroppedMarkerFor,
+	proposalConsumedMarkerFor,
 	proposalNeedsDropping,
 	flattenPages,
 	renderExtraChecks,
@@ -25,6 +26,9 @@ import {
 	checkRequestFor,
 	inFlightCheckId,
 } from "../src/report.mjs"
+
+/** The login this Action posts as. Identity, not account type — see M2. */
+const US = "test-companion[bot]"
 
 const base = {
 	workflow: "generate",
@@ -86,31 +90,31 @@ describe("renderComment — FR-29", () => {
 })
 
 describe("chooseCommentAction — FR-29", () => {
-	const ours = { id: 7, body: `hello ${COMMENT_MARKER}`, user: { type: "Bot" } }
+	const ours = { id: 7, body: `hello ${COMMENT_MARKER}`, user: { type: "Bot", login: US } }
 	const theirs = { id: 8, body: "looks good", user: { type: "User" } }
 
 	test("updates our existing comment rather than adding another", () => {
-		assert.deepEqual(chooseCommentAction([theirs, ours]), { action: "update", id: 7 })
+		assert.deepEqual(chooseCommentAction([theirs, ours], US), { action: "update", id: 7 })
 	})
 
 	test("creates one when there is none yet", () => {
-		assert.deepEqual(chooseCommentAction([theirs]), { action: "create" })
+		assert.deepEqual(chooseCommentAction([theirs], US), { action: "create" })
 	})
 
 	// Someone quoting our comment in their own reply must not capture the thread.
 	test("ignores a human comment that merely quotes the marker", () => {
 		const quoting = { id: 9, body: `> ${COMMENT_MARKER}\nwhy did this fail?`, user: { type: "User" } }
-		assert.deepEqual(chooseCommentAction([quoting]), { action: "create" })
+		assert.deepEqual(chooseCommentAction([quoting], US), { action: "create" })
 	})
 
 	test("updates the oldest of ours if somehow there are two", () => {
-		const second = { id: 11, body: `later ${COMMENT_MARKER}`, user: { type: "Bot" } }
-		assert.deepEqual(chooseCommentAction([ours, second]), { action: "update", id: 7 })
+		const second = { id: 11, body: `later ${COMMENT_MARKER}`, user: { type: "Bot", login: US } }
+		assert.deepEqual(chooseCommentAction([ours, second], US), { action: "update", id: 7 })
 	})
 
 	test("an empty thread is not a crash", () => {
-		assert.deepEqual(chooseCommentAction([]), { action: "create" })
-		assert.deepEqual(chooseCommentAction(undefined), { action: "create" })
+		assert.deepEqual(chooseCommentAction([], US), { action: "create" })
+		assert.deepEqual(chooseCommentAction(undefined, US), { action: "create" })
 	})
 })
 
@@ -259,8 +263,8 @@ describe("replying when we will not run — FR-33, FR-34", () => {
 	})
 
 	test("a refusal is not mistaken for the tracked comment", () => {
-		const refusal = { id: 1, user: { type: "Bot" }, body: renderNotAuthorized("octocat") }
-		assert.deepEqual(chooseCommentAction([refusal]), { action: "create" })
+		const refusal = { id: 1, user: { type: "Bot", login: US }, body: renderNotAuthorized("octocat") }
+		assert.deepEqual(chooseCommentAction([refusal], US), { action: "create" })
 	})
 })
 
@@ -270,14 +274,14 @@ describe("the waiting proposal — FR-43, FR-44", () => {
 	const hoursAgo = (h) => new Date(Date.now() - h * 3600_000).toISOString()
 	const proposal = (over = {}) => ({
 		id: 10,
-		user: { type: "Bot" },
+		user: { type: "Bot", login: US },
 		body: `here is what I plan to do\n\n${marker}`,
 		created_at: hoursAgo(1),
 		...over,
 	})
 
 	test("a proposal is found for the commit it was made on", () => {
-		assert.equal(findProposal([proposal()], SHA)?.id, 10)
+		assert.equal(findProposal([proposal()], SHA, undefined, US)?.id, 10)
 	})
 
 	/**
@@ -287,31 +291,31 @@ describe("the waiting proposal — FR-43, FR-44", () => {
 	 * stale proposal cannot approve work nobody reviewed.
 	 */
 	test("a proposal for an older commit is not found", () => {
-		assert.equal(findProposal([proposal()], "deadbee"), undefined)
+		assert.equal(findProposal([proposal()], "deadbee", undefined, US), undefined)
 	})
 
 	// Same reasoning as chooseCommentAction: a person quoting our proposal in
 	// their reply would otherwise be able to approve their own request.
 	test("only a comment WE wrote counts", () => {
 		const quoted = proposal({ user: { type: "User" } })
-		assert.equal(findProposal([quoted], SHA), undefined)
+		assert.equal(findProposal([quoted], SHA, undefined, US), undefined)
 	})
 
 	test("the newest proposal wins when there are several", () => {
-		assert.equal(findProposal([proposal({ id: 10 }), proposal({ id: 12 })], SHA)?.id, 12)
+		assert.equal(findProposal([proposal({ id: 10 }), proposal({ id: 12 })], SHA, undefined, US)?.id, 12)
 	})
 
 	test("a proposal inside the window has not expired — FR-44", () => {
-		assert.equal(findProposal([proposal({ created_at: hoursAgo(23) })], SHA)?.expired, false)
+		assert.equal(findProposal([proposal({ created_at: hoursAgo(23) })], SHA, undefined, US)?.expired, false)
 	})
 
 	test("after 24 hours it has — FR-44", () => {
-		assert.equal(findProposal([proposal({ created_at: hoursAgo(25) })], SHA)?.expired, true)
+		assert.equal(findProposal([proposal({ created_at: hoursAgo(25) })], SHA, undefined, US)?.expired, true)
 	})
 
 	test("no proposals at all is undefined, not a throw", () => {
-		assert.equal(findProposal([], SHA), undefined)
-		assert.equal(findProposal(undefined, SHA), undefined)
+		assert.equal(findProposal([], SHA, undefined, US), undefined)
+		assert.equal(findProposal(undefined, SHA, undefined, US), undefined)
 	})
 
 	test("the proposal says how to approve it, and carries its marker", () => {
@@ -323,8 +327,8 @@ describe("the waiting proposal — FR-43, FR-44", () => {
 	// It must not be mistaken for the tracked run comment, for the same reason
 	// a refusal must not be.
 	test("a proposal is not the tracked run comment", () => {
-		const p = { id: 1, user: { type: "Bot" }, body: renderProposal("x", SHA) }
-		assert.deepEqual(chooseCommentAction([p]), { action: "create" })
+		const p = { id: 1, user: { type: "Bot", login: US }, body: renderProposal("x", SHA) }
+		assert.deepEqual(chooseCommentAction([p], US), { action: "create" })
 	})
 })
 
@@ -333,11 +337,11 @@ describe("dropping a proposal nobody answered — FR-44", () => {
 	const hoursAgo = (h) => new Date(Date.now() - h * 3600_000).toISOString()
 	const proposal = (h) => ({
 		id: 10,
-		user: { type: "Bot" },
+		user: { type: "Bot", login: US },
 		body: `plan\n\n${proposalMarkerFor(SHA)}`,
 		created_at: hoursAgo(h),
 	})
-	const dropNotice = { id: 11, user: { type: "Bot" }, body: proposalDroppedMarkerFor(SHA) }
+	const dropNotice = { id: 11, user: { type: "Bot", login: US }, body: proposalDroppedMarkerFor(SHA) }
 
 	/**
 	 * Without this sweep, a proposal nobody replies to leaves the check on
@@ -347,25 +351,25 @@ describe("dropping a proposal nobody answered — FR-44", () => {
 	 * if something is guaranteed to end it.
 	 */
 	test("an expired proposal needs dropping", () => {
-		assert.equal(proposalNeedsDropping([proposal(25)], SHA), true)
+		assert.equal(proposalNeedsDropping([proposal(25)], SHA, undefined, US), true)
 	})
 
 	test("one still inside the window is left alone", () => {
-		assert.equal(proposalNeedsDropping([proposal(2)], SHA), false)
+		assert.equal(proposalNeedsDropping([proposal(2)], SHA, undefined, US), false)
 	})
 
 	// The sweep runs nightly. Without this it would post a fresh check and a
 	// fresh comment on the same dead proposal every single night.
 	test("one already dropped is not dropped again", () => {
-		assert.equal(proposalNeedsDropping([proposal(25), dropNotice], SHA), false)
+		assert.equal(proposalNeedsDropping([proposal(25), dropNotice], SHA, undefined, US), false)
 	})
 
 	test("the drop notice is not mistaken for a proposal", () => {
-		assert.equal(findProposal([dropNotice], SHA), undefined)
+		assert.equal(findProposal([dropNotice], SHA, undefined, US), undefined)
 	})
 
 	test("no proposal at all needs nothing", () => {
-		assert.equal(proposalNeedsDropping([], SHA), false)
+		assert.equal(proposalNeedsDropping([], SHA, undefined, US), false)
 	})
 })
 
@@ -401,36 +405,36 @@ describe("reading a paginated gh response — FR-29", () => {
 	})
 
 	test("our comment is found once the pages are flattened", () => {
-		const pages = [[{ id: 5, user: { type: "Bot" }, body: `x ${COMMENT_MARKER}` }]]
-		assert.deepEqual(chooseCommentAction(flattenPages(pages)), { action: "update", id: 5 })
+		const pages = [[{ id: 5, user: { type: "Bot", login: US }, body: `x ${COMMENT_MARKER}` }]]
+		assert.deepEqual(chooseCommentAction(flattenPages(pages), US), { action: "update", id: 5 })
 		// and is NOT found without flattening, which is the bug
-		assert.deepEqual(chooseCommentAction(pages), { action: "create" })
+		assert.deepEqual(chooseCommentAction(pages, US), { action: "create" })
 	})
 })
 
 describe("who asked for a proposal — FR-43", () => {
 	const SHA = "abc123"
-	const bot = (body, over = {}) => ({ id: 10, user: { type: "Bot" }, body, created_at: new Date().toISOString(), ...over })
+	const bot = (body, over = {}) => ({ id: 10, user: { type: "Bot", login: US }, body, created_at: new Date().toISOString(), ...over })
 
 	test("the marker records who asked", () => {
 		assert.match(proposalMarkerFor(SHA, "octocat"), /by=octocat/)
 	})
 
 	test("findProposal reports it, so self-approval can be seen", () => {
-		const p = findProposal([bot(`plan\n\n${proposalMarkerFor(SHA, "octocat")}`)], SHA)
+		const p = findProposal([bot(`plan\n\n${proposalMarkerFor(SHA, "octocat")}`)], SHA, undefined, US)
 		assert.equal(p?.requester, "octocat")
 	})
 
 	// Proposals written before the requester was recorded must keep working
 	// rather than becoming unapprovable.
 	test("a marker with no requester is still found", () => {
-		const p = findProposal([bot(`plan\n\n${proposalMarkerFor(SHA)}`)], SHA)
+		const p = findProposal([bot(`plan\n\n${proposalMarkerFor(SHA)}`)], SHA, undefined, US)
 		assert.equal(p?.id, 10)
 		assert.equal(p?.requester, undefined)
 	})
 
 	test("a proposal for another commit is still not found, requester or not", () => {
-		assert.equal(findProposal([bot(`x\n\n${proposalMarkerFor(SHA, "octocat")}`)], "deadbee"), undefined)
+		assert.equal(findProposal([bot(`x\n\n${proposalMarkerFor(SHA, "octocat")}`)], "deadbee", undefined, US), undefined)
 	})
 })
 
@@ -543,7 +547,7 @@ describe("the approved plan handed to the run — FR-43", () => {
 
 	test("findProposal returns the body, because the run has to read it", () => {
 		const body = `## what I plan to do\n- case one\n\n${proposalMarkerFor(SHA, "octocat")}`
-		const found = findProposal([{ id: 1, user: { type: "Bot" }, body, created_at: new Date().toISOString() }], SHA)
+		const found = findProposal([{ id: 1, user: { type: "Bot", login: US }, body, created_at: new Date().toISOString() }], SHA, undefined, US)
 		assert.ok(found.body.includes("case one"))
 	})
 
@@ -657,22 +661,22 @@ describe("findSupersededProposal — telling a stale plan from silence (FR-44)",
 	 * This is only about saying why.
 	 */
 	const proposal = (sha) => ({
-		user: { type: "Bot" },
+		user: { type: "Bot", login: US },
 		body: `a plan\n\n<!-- test-companion-proposal sha=${sha} by=someone -->`,
 	})
 
 	test("a proposal for an earlier commit is found, and its sha reported", () => {
-		const found = findSupersededProposal([proposal("aaaaaaa1")], "bbbbbbb2")
+		const found = findSupersededProposal([proposal("aaaaaaa1")], "bbbbbbb2", US)
 		assert.equal(found?.sha, "aaaaaaa1")
 	})
 
 	test("a proposal for THIS commit is not superseded — it is live", () => {
-		assert.equal(findSupersededProposal([proposal("aaaaaaa1")], "aaaaaaa1"), undefined)
+		assert.equal(findSupersededProposal([proposal("aaaaaaa1")], "aaaaaaa1", US), undefined)
 	})
 
 	test("no proposal at all means nobody was talking to us", () => {
-		assert.equal(findSupersededProposal([], "aaaaaaa1"), undefined)
-		assert.equal(findSupersededProposal(undefined, "aaaaaaa1"), undefined)
+		assert.equal(findSupersededProposal([], "aaaaaaa1", US), undefined)
+		assert.equal(findSupersededProposal(undefined, "aaaaaaa1", US), undefined)
 	})
 
 	test("the newest superseded proposal wins, not the first", () => {
@@ -682,13 +686,14 @@ describe("findSupersededProposal — telling a stale plan from silence (FR-44)",
 				{ ...proposal("bbb22222"), id: 2 },
 			],
 			"ccc33333",
+			US,
 		)
 		assert.equal(found?.sha, "bbb22222")
 	})
 
 	test("a person quoting our marker cannot fake one", () => {
 		const human = { user: { type: "User" }, body: "<!-- test-companion-proposal sha=aaaaaaa1 -->" }
-		assert.equal(findSupersededProposal([human], "bbbbbbb2"), undefined)
+		assert.equal(findSupersededProposal([human], "bbbbbbb2", US), undefined)
 	})
 })
 
@@ -712,25 +717,25 @@ describe("the proposal marker carries the JOB, not just the commit (FR-43)", () 
 	test("findProposal hands the workflow back, so the run can be pinned to it", () => {
 		const comments = [
 			{
-				user: { type: "Bot" },
+				user: { type: "Bot", login: US },
 				body: `a plan\n\n${proposalMarkerFor("abc1234", "someone", "fix")}`,
 			},
 		]
-		assert.equal(findProposal(comments, "abc1234")?.workflow, "fix")
+		assert.equal(findProposal(comments, "abc1234", undefined, US)?.workflow, "fix")
 	})
 
 	/** Proposals written before the marker carried a job stay approvable. */
 	test("a marker with no workflow still matches, and reports none", () => {
-		const old = [{ user: { type: "Bot" }, body: "plan\n\n<!-- test-companion-proposal sha=abc1234 by=someone -->" }]
-		const found = findProposal(old, "abc1234")
+		const old = [{ user: { type: "Bot", login: US }, body: "plan\n\n<!-- test-companion-proposal sha=abc1234 by=someone -->" }]
+		const found = findProposal(old, "abc1234", undefined, US)
 		assert.ok(found, "an older marker must still be found")
 		assert.equal(found.workflow, undefined)
 		assert.equal(found.requester, "someone")
 	})
 
 	test("the requester still survives alongside the workflow", () => {
-		const comments = [{ user: { type: "Bot" }, body: proposalMarkerFor("abc1234", "someone", "test-pr") }]
-		const found = findProposal(comments, "abc1234")
+		const comments = [{ user: { type: "Bot", login: US }, body: proposalMarkerFor("abc1234", "someone", "test-pr") }]
+		const found = findProposal(comments, "abc1234", undefined, US)
 		assert.equal(found.requester, "someone")
 		assert.equal(found.workflow, "test-pr")
 	})
@@ -772,17 +777,17 @@ describe("the two marker readers must not drift apart", () => {
 	 * fixture while the new marker tests only ever fed proposalMarkerFor()
 	 * output to findProposal. Nothing crossed the two. These do.
 	 */
-	const bot = (body, id = 1) => ({ user: { type: "Bot" }, id, body: `a plan\n\n${body}` })
+	const bot = (body, id = 1) => ({ user: { type: "Bot", login: US }, id, body: `a plan\n\n${body}` })
 
 	test("a marker written by proposalMarkerFor is found by BOTH readers", () => {
 		const marker = proposalMarkerFor("def5678", "alice", "test-pr")
-		assert.equal(findProposal([bot(marker)], "def5678")?.workflow, "test-pr")
-		assert.equal(findSupersededProposal([bot(marker)], "aaa1111")?.sha, "def5678")
+		assert.equal(findProposal([bot(marker)], "def5678", undefined, US)?.workflow, "test-pr")
+		assert.equal(findSupersededProposal([bot(marker)], "aaa1111", US)?.sha, "def5678")
 	})
 
 	test("and the superseded reader still reports who asked", () => {
 		const marker = proposalMarkerFor("def5678", "alice", "fix")
-		assert.equal(findSupersededProposal([bot(marker)], "aaa1111")?.requester, "alice")
+		assert.equal(findSupersededProposal([bot(marker)], "aaa1111", US)?.requester, "alice")
 	})
 
 	test("every shape proposalMarkerFor can emit is readable by both", () => {
@@ -793,8 +798,8 @@ describe("the two marker readers must not drift apart", () => {
 			["def5678", undefined, undefined],
 		]) {
 			const marker = proposalMarkerFor(...args)
-			assert.ok(findProposal([bot(marker)], "def5678"), `findProposal missed ${marker}`)
-			assert.ok(findSupersededProposal([bot(marker)], "aaa1111"), `findSupersededProposal missed ${marker}`)
+			assert.ok(findProposal([bot(marker)], "def5678", undefined, US), `findProposal missed ${marker}`)
+			assert.ok(findSupersededProposal([bot(marker)], "aaa1111", US), `findSupersededProposal missed ${marker}`)
 		}
 	})
 })
@@ -909,16 +914,16 @@ describe("a proposal marker search is built from literals, never from raw input"
 	test("a sha with regex metacharacters matches itself and nothing else", () => {
 		const nasty = "a.c*d+"
 		const body = `<!-- test-companion-proposal sha=${nasty} by=dev workflow=rca -->`
-		assert.ok(findProposal([{ user: { type: "Bot" }, body, id: 1 }], nasty), "an escaped sha must still match itself")
+		assert.ok(findProposal([{ user: { type: "Bot", login: US }, body, id: 1 }], nasty, undefined, US), "an escaped sha must still match itself")
 		// Unescaped, `a.c*d+` would also match "abcccd" — a proposal for another commit.
 		const other = "<!-- test-companion-proposal sha=abcccd by=dev workflow=rca -->"
-		assert.equal(findProposal([{ user: { type: "Bot" }, body: other, id: 2 }], nasty), undefined)
+		assert.equal(findProposal([{ user: { type: "Bot", login: US }, body: other, id: 2 }], nasty, undefined, US), undefined)
 	})
 
 	test("a long run of repeats does not hang the search", () => {
 		// The shape ReDoS reports are about. Linear here, so it returns at once.
 		const started = Date.now()
-		findProposal([{ user: { type: "Bot" }, body: `<!-- test-companion-proposal sha=${"a".repeat(50_000)}`, id: 3 }], "a".repeat(40))
+		findProposal([{ user: { type: "Bot", login: US }, body: `<!-- test-companion-proposal sha=${"a".repeat(50_000)}`, id: 3 }], "a".repeat(40), undefined, US)
 		assert.ok(Date.now() - started < 1000, "the marker search must not backtrack")
 	})
 })
@@ -955,5 +960,100 @@ describe("the commit a pending check belongs to", () => {
 	test("no check and no sha is nothing, not a crash", () => {
 		assert.equal(checkSubjectFor(new Map(), undefined), undefined)
 		assert.equal(checkSubjectFor(undefined, undefined), undefined)
+	})
+})
+
+/**
+ * Review of PR #3101, M2. The worst of the set.
+ *
+ * "Any bot is us" was the whole identity check. Another App installed on the
+ * repository — or `github-actions[bot]` driven by any other workflow in it —
+ * could post a comment carrying our proposal marker for the head sha. A
+ * maintainer's `go` then handed that body to a live `--yolo` run as the
+ * approved plan. The attacker needs no write access; they need a workflow,
+ * and plenty of repositories run one on a fork's pull request.
+ *
+ * So identity is now the login we post as, not the type of account.
+ */
+describe("only OUR OWN comments count as ours", () => {
+	const marker = (sha) => `<!-- test-companion-proposal sha=${sha} by=dev workflow=test-pr -->`
+	const them = (body, id = 9) => ({ user: { type: "Bot", login: "github-actions[bot]" }, body, id, created_at: new Date().toISOString() })
+	const us = (body, id = 1) => ({ user: { type: "Bot", login: US }, body, id, created_at: new Date().toISOString() })
+
+	test("another bot's proposal is NOT approvable", () => {
+		assert.equal(
+			findProposal([them(marker("abc123"))], "abc123", Date.now(), US),
+			undefined,
+			"a foreign proposal reaching a live --yolo run is the whole point of this check",
+		)
+	})
+
+	test("our own proposal still is", () => {
+		assert.ok(findProposal([us(marker("abc123"))], "abc123", Date.now(), US))
+	})
+
+	test("another bot's superseded proposal is not ours to explain", () => {
+		assert.equal(findSupersededProposal([them(marker("old111"))], "new222", US), undefined)
+		assert.ok(findSupersededProposal([us(marker("old111"))], "new222", US))
+	})
+
+	test("we never edit another bot's comment", () => {
+		const theirs = them(`something ${COMMENT_MARKER}`, 7)
+		assert.deepEqual(chooseCommentAction([theirs], US), { action: "create" })
+		assert.deepEqual(chooseCommentAction([us(`ours ${COMMENT_MARKER}`, 7)], US), { action: "update", id: 7 })
+	})
+
+	test("a human quoting the marker is still not us", () => {
+		const human = { user: { type: "User", login: "dev" }, body: marker("abc123"), id: 3, created_at: new Date().toISOString() }
+		assert.equal(findProposal([human], "abc123", Date.now(), US), undefined)
+	})
+})
+
+/**
+ * Review of PR #3101, M5.
+ *
+ * Approving a proposal left no trace that it had been approved. Three things
+ * followed from that one gap:
+ *
+ *  - a second `go` found the same proposal and ran the job again;
+ *  - the proposal's in-progress check was never adopted, so it stayed pending
+ *    beside the real run's check;
+ *  - a day later the sweep said "that proposal went a day without a reply"
+ *    about a proposal that had been approved and had already run.
+ *
+ * And `stop` had the same gap from the other side: the comment told people
+ * "say stop to drop it", and stop cancelled runs without dropping anything.
+ */
+describe("a proposal that has been used up is not waiting any more", () => {
+	const US = "test-companion[bot]"
+	const SHA = "abc1234"
+	const ours = (body, id) => ({ user: { type: "Bot", login: US }, body, id, created_at: new Date().toISOString() })
+	const proposal = () => ours(`plan\n\n${proposalMarkerFor(SHA, "dev", "test-pr")}`, 1)
+
+	test("approving it means a second go finds nothing", () => {
+		const after = [proposal(), ours(`ran it\n\n${proposalConsumedMarkerFor(SHA)}`, 2)]
+		assert.ok(findProposal([proposal()], SHA, Date.now(), US), "precondition: it was approvable")
+		assert.equal(findProposal(after, SHA, Date.now(), US), undefined, "a second go must not rerun the job")
+	})
+
+	test("stopping it means a later go finds nothing either", () => {
+		const after = [proposal(), ours(`stopped\n\n${proposalDroppedMarkerFor(SHA)}`, 2)]
+		assert.equal(findProposal(after, SHA, Date.now(), US), undefined)
+	})
+
+	test("the sweep leaves an approved proposal alone", () => {
+		const old = { ...proposal(), created_at: new Date(Date.now() - 25 * 3600_000).toISOString() }
+		assert.equal(proposalNeedsDropping([old], SHA, Date.now(), US), true, "precondition: stale and unanswered")
+		const approved = [old, ours(`ran it\n\n${proposalConsumedMarkerFor(SHA)}`, 2)]
+		assert.equal(
+			proposalNeedsDropping(approved, SHA, Date.now(), US),
+			false,
+			"telling someone their approved plan went unanswered is worse than saying nothing",
+		)
+	})
+
+	test("the marker is per commit, so another commit's plan still stands", () => {
+		const after = [proposal(), ours(`ran it\n\n${proposalConsumedMarkerFor("deadbee")}`, 2)]
+		assert.ok(findProposal(after, SHA, Date.now(), US))
 	})
 })

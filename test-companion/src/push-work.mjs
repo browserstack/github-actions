@@ -421,6 +421,24 @@ const EXPECTED_CONFIG = [
  * `extensions.worktreeConfig` in the local file, which is not an expected key,
  * so a repository using it is refused by this same check.
  */
+/**
+ * Did the agent commit something itself? — review of #3101, M7.
+ *
+ * We push `HEAD`, so anything the agent committed rides along: edits to
+ * source, to lockfiles, to `.github/`, none of it filtered by splitPushable
+ * — and a workflow-file change makes the whole push fail with a permissions
+ * error nobody can read. The run's own commit is made by us, after this
+ * check, so a HEAD that moved during the run was not us.
+ *
+ * Fails CLOSED. Not knowing where HEAD started is not permission to push.
+ */
+export function agentCommitted(headBefore, headNow) {
+	const before = String(headBefore ?? "").trim()
+	const now = String(headNow ?? "").trim()
+	if (!before) return true
+	return Boolean(now) && before !== now
+}
+
 export const CONFIG_READ_ARGS = Object.freeze(["config", "--local", "--list", "--name-only"])
 
 /**
