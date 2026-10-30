@@ -80,3 +80,40 @@ describe("every src module is reachable", () => {
 		}
 	})
 })
+
+/**
+ * Found by a live run, run 41048725625. Asking "@test-companion explain why
+ * the contract check is failing" worked: the Action found the red build and
+ * passed it to the CLI. Replying "go" to the proposal it put up did NOT —
+ * the CLI was spawned with no build at all and died with
+ * `rca requires --context build=<url|number>`.
+ *
+ * The cause is pure ordering. `rca`, `fix` and `verdict` need to know which
+ * build failed, and the lookup is guarded by `NEEDS_A_BUILD.has(plan.workflow)`.
+ * On an approval, the workflow is not known from the comment — "go" names no
+ * job — it comes from the proposal we are approving, and that assignment sat
+ * BELOW the lookup. So the lookup ran against the wrong workflow, decided no
+ * build was needed, and the run broke at the last step of the feature.
+ *
+ * Ordering inside one long procedure is not something the pure modules can
+ * pin, so it is pinned here.
+ */
+describe("main.mjs — the failing build is resolved after the workflow is final", () => {
+	const at = (needle) => {
+		const i = main.indexOf(needle)
+		assert.notEqual(i, -1, `main.mjs no longer contains ${JSON.stringify(needle)}`)
+		return i
+	}
+
+	test("the proposal pins the workflow BEFORE the build is looked up", () => {
+		assert.ok(
+			at("plan.workflow = waiting.workflow") < at("NEEDS_A_BUILD.has(plan.workflow)"),
+			"an approved rca/fix/verdict would be spawned with no build, and the CLI refuses it",
+		)
+	})
+
+	test("there is exactly one build lookup, so the two paths cannot drift", () => {
+		const calls = main.split("NEEDS_A_BUILD.has(plan.workflow)").length - 1
+		assert.equal(calls, 1, `found ${calls} build lookups; two copies will diverge`)
+	})
+})

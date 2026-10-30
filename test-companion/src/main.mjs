@@ -539,32 +539,6 @@ function main() {
 		// by comment must not be a way around the repository's own settings.
 		if (intent.workflow) plan.workflow = intent.workflow
 
-		// `rca`, `fix` and `verdict` need to know WHICH build failed. A
-		// build_failed trigger is handed the run; a COMMENT is not, so these
-		// three used to fail on the first comment with "Could not run" — while
-		// we advertise all three by name.
-		//
-		// The newest red run on this commit is what a person means by "the
-		// failure". Only looked up when the job needs it and the caller has
-		// not already said.
-		if (NEEDS_A_BUILD.has(plan.workflow) && !plan.context.build) {
-			const runs = gh(["api", `repos/${REPO}/actions/runs?head_sha=${plan.context.sha}&per_page=100`])
-			const failed = latestFailedRun(runs?.workflow_runs, {
-				selfRunId: env.GITHUB_RUN_ID,
-				selfWorkflowName: env.TC_ACTION_SELF_WORKFLOW,
-			})
-			if (!failed) {
-				// Nothing red is an answer, not an error.
-				replyOnPr(
-					plan.context.pr,
-					`Nothing has failed on \`${String(plan.context.sha).slice(0, 7)}\`, so there is no build for me to look at. Re-run me once something is red, or say what you want tested instead.`,
-				)
-				finishSkipped("nothing-failed", plan.workflow)
-			}
-			plan.context.build = failed
-			notice(`Test Companion: reading the failure from ${failed}`)
-		}
-
 		const bindings = bindingsDoc
 		const binding = pickBinding(bindings, intent.workflow)
 
@@ -679,6 +653,41 @@ function main() {
 		// writes nothing, and its report is what the reviewer approves.
 		if (proposing && CARRIES_A_PLAN.has(plan.workflow)) plan.context.propose_only = "true"
 		if (gate.preview || intent.preview) plan.preview = true
+
+		// THIS RUNS LAST, and it has to.
+		//
+		// `rca`, `fix` and `verdict` need to know WHICH build failed. A
+		// build_failed trigger is handed the run; a COMMENT is not, so these
+		// three used to fail on the first comment with "Could not run" — while
+		// we advertise all three by name.
+		//
+		// Last, because the workflow is not final until the approval handling
+		// above has run: "go" names no job, so the job comes from the proposal
+		// being approved. With this block higher up, asking for an rca worked
+		// and APPROVING it did not — the CLI was spawned with no build and
+		// refused it with `rca requires --context build=<url|number>`. Live run
+		// 41048725625.
+		//
+		// The newest red run on this commit is what a person means by "the
+		// failure". Only looked up when the job needs it and the caller has
+		// not already said.
+		if (NEEDS_A_BUILD.has(plan.workflow) && !plan.context.build) {
+			const runs = gh(["api", `repos/${REPO}/actions/runs?head_sha=${plan.context.sha}&per_page=100`])
+			const failed = latestFailedRun(runs?.workflow_runs, {
+				selfRunId: env.GITHUB_RUN_ID,
+				selfWorkflowName: env.TC_ACTION_SELF_WORKFLOW,
+			})
+			if (!failed) {
+				// Nothing red is an answer, not an error.
+				replyOnPr(
+					plan.context.pr,
+					`Nothing has failed on \`${String(plan.context.sha).slice(0, 7)}\`, so there is no build for me to look at. Re-run me once something is red, or say what you want tested instead.`,
+				)
+				finishSkipped("nothing-failed", plan.workflow)
+			}
+			plan.context.build = failed
+			notice(`Test Companion: reading the failure from ${failed}`)
+		}
 	}
 
 	// FR-13: no settings file means a clean pass and the file they need. Checked
