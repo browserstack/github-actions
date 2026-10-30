@@ -38,7 +38,7 @@ const STRAIGHT_THROUGH = "straight-through"
  * the Go side: the cost of a needless proposal is one comment, and the cost of
  * the other mistake is an unreviewed run that writes.
  */
-export function decideGate({ intent, approval, proposal, actor } = {}) {
+export function decideGate({ intent, approval, proposal, actor, workflow } = {}) {
 	if (intent?.kind === INTENT.GO) {
 		if (!proposal) return { action: GATE.NOTHING_TO_APPROVE }
 		if (proposal.expired) return { action: GATE.EXPIRED }
@@ -60,11 +60,31 @@ export function decideGate({ intent, approval, proposal, actor } = {}) {
 	// would be asking permission to write nothing.
 	if (intent?.preview) return { action: GATE.RUN, preview: true }
 
+	// The same reasoning, for a job that CANNOT write. `rca` and `verdict`
+	// produce an explanation and nothing else, so there is nothing for a
+	// reviewer to approve — and the proposal they got was literally empty,
+	// because only `test-pr` writes a plan to review. Asking "why did this
+	// fail?" cost two comments and answered on the second.
+	//
+	// The binding's own mode still applies: this decides whether to HOLD the
+	// run, not whether the run may write.
+	if (ANSWER_JOBS.has(workflow)) return { action: GATE.RUN, preview: false }
+
 	if (approval === STRAIGHT_THROUGH) return { action: GATE.RUN, preview: false }
 
 	// "review-before-run", and anything unrecognised, which fails closed here.
 	return { action: GATE.PROPOSE, preview: true }
 }
+
+/**
+ * Jobs that produce an explanation and no artefact.
+ *
+ * One list, used for three things: the gate below, whether the Action shows
+ * the answer in the comment, and — mirrored in
+ * cli/pkg/cli/commands/narrative.go — whether the CLI writes the answer to
+ * the result file at all.
+ */
+export const ANSWER_JOBS = new Set(["rca", "verdict"])
 
 /** FR-44's thresholds, both marked ASSUMPTION in the PRD. */
 const MANY_FILES = 20

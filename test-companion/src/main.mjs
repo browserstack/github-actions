@@ -17,7 +17,7 @@ import { tmpdir } from "node:os"
 import { planRun, contextArgs, withPullRequestHead, TC_EVENTS } from "./plan-run.mjs"
 import { readIntent, INTENT } from "./intent.mjs"
 import { chooseRunsToCancel, runIdsFromChecks, latestFailedRun } from "./runs.mjs"
-import { decideGate, GATE, describeChangeSize } from "./gate.mjs"
+import { decideGate, GATE, describeChangeSize, ANSWER_JOBS } from "./gate.mjs"
 import { mayAsk, describeTestRepoAccess } from "./access.mjs"
 import { findTicket } from "./ticket.mjs"
 import { childEnvFor } from "./child-env.mjs"
@@ -78,6 +78,8 @@ const SUMMARY_FILE = join(REPORT_DIR, "test-companion-report.md")
 // the result. For a preview run — which refuses to save by design — this file
 // is the only place the generated cases survive (FR-20).
 const RESULT_FILE = join(REPORT_DIR, "test-companion-result.md")
+
+
 // The artifact the result is uploaded under, named here so the report can
 // point a reader at it by name. Must match the upload step in action.yml.
 const RESULT_ARTIFACT = "test-companion-result"
@@ -582,6 +584,9 @@ function main() {
 			approval: binding?.approval,
 			proposal: waiting,
 			actor: plan.commenter ?? plan.context.actor,
+			// Named by the comment when it named one, otherwise whatever the
+			// binding would run — the gate needs the job that will ACTUALLY run.
+			workflow: plan.workflow ?? binding?.workflow,
 		})
 
 		if (gate.action === GATE.NOTHING_TO_APPROVE) {
@@ -843,6 +848,15 @@ function main() {
 	// Absent whenever the run generated nothing, which is most workflows. Its
 	// presence is what tells the report there is something to point a reader at.
 	const hasResult = existsSync(RESULT_FILE)
+	const readResult = () => {
+		try {
+			return readFileSync(RESULT_FILE, "utf8")
+		} catch {
+			// Best effort, exactly as the CLI treats writing it: a report we
+			// cannot read back is not worth failing a finished run over.
+			return undefined
+		}
+	}
 
 	// FR-42: a configured write that could not happen is said out loud, naming
 	// what is missing — a silent skip reads as "there was nothing to write".
@@ -878,6 +892,14 @@ function main() {
 		// same CLI version, which means showing it.
 		cliVersion: summary.cli_version || env.TC_ACTION_CLI_VERSION,
 		resultArtifact: hasResult ? RESULT_ARTIFACT : undefined,
+		// `rca` and `verdict` leave no artefact — their result file holds the
+		// agent's own closing words, and that IS what was asked for. Without
+		// this the comment was a table saying "Succeeded" with no answer in it
+		// (live run 41049398591). ANSWER_JOBS mirrors the CLI's own list in
+		// cli/pkg/cli/commands/narrative.go; a job missing there writes nothing
+		// to the file, so a mismatch shows up as an empty answer, never as
+		// someone else's output.
+		answer: hasResult && ANSWER_JOBS.has(plan.workflow ?? summary.workflow) ? readResult() : undefined,
 		failedTests,
 	}
 	// FR-43: a held request posts what it WOULD do and ends. The run that

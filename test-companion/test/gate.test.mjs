@@ -141,3 +141,37 @@ describe("a very large change — FR-44", () => {
 		assert.equal(describeChangeSize({}).large, false)
 	})
 })
+
+/**
+ * Asking "why did this fail?" cost two comments and a round trip: the first
+ * run posted an empty proposal — empty because only `test-pr` has a plan to
+ * show — and the answer only came after someone replied "go". Seen on live
+ * runs 41048492170 and 41049253928.
+ *
+ * The gate exists to stop WRITES. `rca` and `verdict` produce an explanation
+ * and nothing else, which is the same reasoning already applied one line
+ * above for a preview that was asked for directly.
+ */
+describe("decideGate — a job that only answers does not ask permission first", () => {
+	const asked = { kind: INTENT.WORKFLOW }
+
+	test("rca and verdict run straight away, even with approval required", () => {
+		for (const workflow of ["rca", "verdict"]) {
+			const got = decideGate({ intent: asked, approval: "review-before-run", workflow })
+			assert.equal(got.action, GATE.RUN, `${workflow} writes nothing; holding it asks permission to write nothing`)
+		}
+	})
+
+	test("everything that CAN write still waits", () => {
+		for (const workflow of ["generate", "fix", "test-pr", "automate", undefined]) {
+			const got = decideGate({ intent: asked, approval: "review-before-run", workflow })
+			assert.equal(got.action, GATE.PROPOSE, `${workflow} can write, so it must still be reviewed`)
+		}
+	})
+
+	test("an explicit preview request is still honoured for them", () => {
+		const got = decideGate({ intent: { kind: INTENT.WORKFLOW, preview: true }, approval: "review-before-run", workflow: "rca" })
+		assert.equal(got.action, GATE.RUN)
+		assert.equal(got.preview, true, "asking for a preview must not be overridden by this")
+	})
+})

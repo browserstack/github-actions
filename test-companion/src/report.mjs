@@ -87,6 +87,7 @@ export function renderJobSummary({
 	resultArtifact,
 	failedTests,
 	approvalNote,
+	answer,
 	workNote,
 	extraChecks = [],
 	warnings = [],
@@ -140,6 +141,14 @@ export function renderJobSummary({
 	lines.push("| | |", "|---|---|")
 	for (const [k, v] of rows) lines.push(`| ${k} | ${v} |`)
 	lines.push("")
+
+	// For `rca` and `verdict` this IS the report — they produce no artefact, only
+	// an explanation. It goes directly under the table, above the run links,
+	// because it is the thing the person who commented actually asked for.
+	// Everything else leaves the view untouched: no answer, nothing rendered.
+	if (String(answer ?? "").trim()) {
+		lines.push(String(answer).trim(), "")
+	}
 
 	lines.push(...failureLines(failedTests))
 	lines.push(...producedLines(summary, resultArtifact))

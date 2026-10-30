@@ -855,3 +855,44 @@ describe("a proposal for a job that writes no plan file", () => {
 		assert.match(out, /nothing here to approve/)
 	})
 })
+
+/**
+ * Live run 41049398591. Someone asked "@test-companion explain why the
+ * contract check is failing". The agent answered — "CI failure analysis from
+ * a run link is not enabled for your account yet. Please reach out to support
+ * to get access." — and the pull request comment showed a table saying
+ * "Succeeded" and not one word of it.
+ *
+ * For `rca` and `verdict` the answer is the whole product. A reply that does
+ * not contain the reply is not a reply.
+ */
+describe("renderJobSummary — the answer is the report, for jobs that only answer", () => {
+	const base = { workflow: "rca", outcome: "Succeeded", summary: { event: "pr_comment", duration: "28s" } }
+
+	test("the answer is shown, above the links rather than under them", () => {
+		const out = renderJobSummary({
+			...base,
+			runUrl: "https://github.com/acme/shop/actions/runs/1",
+			answer: "The contract check fails because a negative credit is accepted.",
+		})
+		assert.match(out, /negative credit is accepted/)
+		assert.ok(
+			out.indexOf("negative credit") < out.indexOf("https://github.com/acme/shop/actions/runs/1"),
+			"an answer below the run link is an answer nobody reads",
+		)
+	})
+
+	test("no answer changes nothing — every other job still reports as it did", () => {
+		const without = renderJobSummary(base)
+		assert.equal(renderJobSummary({ ...base, answer: "" }), without)
+		assert.equal(renderJobSummary({ ...base, answer: "   " }), without)
+		assert.equal(renderJobSummary({ ...base, answer: undefined }), without)
+	})
+
+	test("the answer is quoted as prose, not squeezed into the table", () => {
+		const out = renderJobSummary({ ...base, answer: "Line one.\n\nLine two." })
+		assert.match(out, /Line one\./)
+		assert.match(out, /Line two\./)
+		assert.ok(!/\| Line one/.test(out), "the answer must not land inside the table")
+	})
+})
