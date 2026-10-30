@@ -363,6 +363,14 @@ export function gitEnvFrom(env = {}) {
  * "Sure of" means: it exists, and WE cannot write it. A binary this process
  * could overwrite is a binary the agent could have overwritten.
  *
+ * What this does NOT survive: on a GitHub-hosted runner the job's user has
+ * passwordless sudo, so an agent that chose to could replace /usr/bin/git
+ * itself and the replacement would pass this check. Nothing inside this
+ * process can close that — the same access reaches our own source, node, and
+ * the token in our memory. It closes with containment, by running the agent
+ * somewhere that does not also hold the token, or by moving the commit to a
+ * job that never shares a filesystem with it. Both are bigger than this file.
+ *
  * There is deliberately no fallback to the bare name. Falling back would
  * reinstate the hole on exactly the machines where it matters, so the caller
  * handles the absence instead — and for us that means skipping the commit,
