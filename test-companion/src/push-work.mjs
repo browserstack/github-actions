@@ -280,11 +280,31 @@ export function isSameRepo(headRepoFullName, repo) {
  * No token returns nothing, so the checkout's own credential is used — which
  * is correct whenever the App is not installed.
  */
-export function pushCredentialArgs(token) {
+export function pushCredentialArgs(token, url) {
 	const t = String(token ?? "").trim()
-	if (!t) return []
+	const u = String(url ?? "").trim()
+	if (!t || !u) return []
 	const basic = Buffer.from(`x-access-token:${t}`, "utf8").toString("base64")
-	return ["-c", `http.extraheader=AUTHORIZATION: basic ${basic}`]
+	// SCOPED to the one URL. A global `http.extraheader` attaches to whatever
+	// the push resolves to — and `url.<base>.insteadOf` in the repository's own
+	// config, which the agent can write, silently redirects `origin` to another
+	// host. Verified: one config line turns github.com into evil.test. A global
+	// header would have handed the App's installation token straight to it.
+	return ["-c", `http.${u}.extraheader=AUTHORIZATION: basic ${basic}`]
+}
+
+/**
+ * Where to push, built from the trusted repository name rather than resolved
+ * through the repository's own config.
+ *
+ * `git push origin` asks .git/config where origin is, and the agent can
+ * rewrite that. Naming the URL outright means a rewritten remote is simply
+ * not used.
+ */
+export function pushUrlFor(repo, server = "https://github.com") {
+	const r = String(repo ?? "").trim()
+	if (!/^[^/\s]+\/[^/\s]+$/.test(r)) return undefined
+	return `${String(server).replace(/\/+$/, "")}/${r}.git`
 }
 
 /**
@@ -308,6 +328,10 @@ export function gitEnvFrom(env = {}) {
 	for (const k of ["PATH", "HOME", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"]) {
 		if (env[k] !== undefined) out[k] = env[k]
 	}
+	// Ignore the system and user config too, so the only configuration in play
+	// is what this process passes with -c.
+	out.GIT_CONFIG_NOSYSTEM = "1"
+	out.GIT_CONFIG_GLOBAL = "/dev/null"
 	return out
 }
 
@@ -318,4 +342,24 @@ export function gitEnvFrom(env = {}) {
  * `git commit` would run for us. fsmonitor off for the same reason — it is a
  * configurable command git will start on its own.
  */
-export const GIT_SAFE_ARGS = Object.freeze(["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"])
+export const GIT_SAFE_ARGS = Object.freeze([
+	"-c",
+	"core.hooksPath=/dev/null",
+	"-c",
+	"core.fsmonitor=false",
+	// Every other key that is a way for the repository to make git run a
+	// program on our behalf.
+	"-c",
+	"core.sshCommand=",
+	"-c",
+	"core.pager=cat",
+	"-c",
+	"diff.external=",
+	"-c",
+	"commit.gpgsign=false",
+	"-c",
+	"gpg.program=false",
+	// .gitattributes can name a filter command; ignore the file entirely.
+	"-c",
+	"core.attributesFile=/dev/null",
+])

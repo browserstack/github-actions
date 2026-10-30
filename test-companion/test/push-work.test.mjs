@@ -11,6 +11,7 @@ import {
 	pushCredentialArgs,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
+	pushUrlFor,
 	BOT_EMAIL,
 } from "../src/push-work.mjs"
 
@@ -379,24 +380,51 @@ describe("pushCredentialArgs — the App token has to reach git, not just gh", (
 	 * Passed with `-c` rather than written into the remote URL: a token in a
 	 * URL ends up in the reflog, in error messages and in `git remote -v`.
 	 */
-	test("builds a basic auth header from the token", () => {
-		const args = pushCredentialArgs("ghs_abc123")
+	const URL = "https://github.com/acme/shop.git"
+
+	test("builds a basic auth header SCOPED to the push url", () => {
+		const args = pushCredentialArgs("ghs_abc123", URL)
 		assert.equal(args[0], "-c")
-		assert.match(args[1], /^http\.extraheader=AUTHORIZATION: basic /)
+		assert.match(args[1], /^http\.https:\/\/github\.com\/acme\/shop\.git\.extraheader=AUTHORIZATION: basic /)
 		const b64 = args[1].split("basic ")[1]
 		assert.equal(Buffer.from(b64, "base64").toString("utf8"), "x-access-token:ghs_abc123")
 	})
 
-	test("no token means no argument — fall back to the checkout's own credential", () => {
-		assert.deepEqual(pushCredentialArgs(undefined), [])
-		assert.deepEqual(pushCredentialArgs(""), [])
-		assert.deepEqual(pushCredentialArgs("   "), [])
+	/**
+	 * `url.<base>.insteadOf` in the repository's own config — which the agent
+	 * can write — redirects a push to another host. Verified: one line turns
+	 * github.com into evil.test. A GLOBAL header follows it there and hands
+	 * over the App's installation token.
+	 */
+	test("the header is never global", () => {
+		const args = pushCredentialArgs("ghs_abc123", URL)
+		assert.ok(
+			!args.some((a) => /^http\.extraheader=/.test(a)),
+			`a global header would follow a rewritten remote: ${JSON.stringify(args)}`,
+		)
 	})
 
-	/** The token must never be a bare argument that `ps` or a log would show. */
+	test("no token, or no url, means no argument", () => {
+		assert.deepEqual(pushCredentialArgs(undefined, URL), [])
+		assert.deepEqual(pushCredentialArgs("", URL), [])
+		assert.deepEqual(pushCredentialArgs("ghs_abc123", ""), [])
+		assert.deepEqual(pushCredentialArgs("ghs_abc123", undefined), [])
+	})
+
 	test("the token itself is never passed in the clear", () => {
-		const args = pushCredentialArgs("ghs_secret")
+		const args = pushCredentialArgs("ghs_secret", URL)
 		assert.ok(!args.some((a) => a.includes("ghs_secret")), `the raw token appeared in ${JSON.stringify(args)}`)
+	})
+
+	test("the push url comes from the repository NAME, not from git config", () => {
+		assert.equal(pushUrlFor("acme/shop"), "https://github.com/acme/shop.git")
+		assert.equal(pushUrlFor("acme/shop", "https://ghe.corp/"), "https://ghe.corp/acme/shop.git")
+	})
+
+	test("a repository name we cannot read gives no url, so no push", () => {
+		for (const bad of ["", "   ", "acme", "acme/shop/extra", undefined, "acme shop"]) {
+			assert.equal(pushUrlFor(bad), undefined, `accepted ${JSON.stringify(bad)}`)
+		}
 	})
 })
 
@@ -442,12 +470,42 @@ describe("our own git commands must not carry secrets or run hooks", () => {
 		assert.equal(got.HTTPS_PROXY, "http://proxy:8080", "a push has to reach the network")
 	})
 
-	test("an empty environment is fine", () => {
-		assert.deepEqual(gitEnvFrom({}), {})
-		assert.deepEqual(gitEnvFrom(), {})
+	test("an empty environment still disables the system and user config", () => {
+		// Nothing is inherited, and git is told to ignore /etc/gitconfig and
+		// ~/.gitconfig too, so the only configuration in play is what this
+		// process passes with -c.
+		for (const got of [gitEnvFrom({}), gitEnvFrom()]) {
+			assert.deepEqual(Object.keys(got).sort(), ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"])
+			assert.equal(got.GIT_CONFIG_NOSYSTEM, "1")
+			assert.equal(got.GIT_CONFIG_GLOBAL, "/dev/null")
+		}
 	})
 
-	test("hooks and fsmonitor are disabled, since both run code from the repo", () => {
-		assert.deepEqual(GIT_SAFE_ARGS, ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"])
+	/**
+	 * Every one of these is a way the REPOSITORY can ask git to run a program
+	 * on our behalf, and the agent can write all of them. Asserted by name so
+	 * removing one is a failing test rather than a quiet loss.
+	 */
+	test("every exec-capable config key is pinned shut", () => {
+		const settings = GIT_SAFE_ARGS.filter((a) => a !== "-c")
+		for (const key of [
+			"core.hooksPath=/dev/null",
+			"core.fsmonitor=false",
+			"core.sshCommand=",
+			"core.pager=cat",
+			"diff.external=",
+			"commit.gpgsign=false",
+			"gpg.program=false",
+			"core.attributesFile=/dev/null",
+		]) {
+			assert.ok(settings.includes(key), `${key} is not pinned: ${JSON.stringify(settings)}`)
+		}
+	})
+
+	test("they are passed as -c pairs, so git reads them as config", () => {
+		assert.equal(GIT_SAFE_ARGS.length % 2, 0)
+		for (let i = 0; i < GIT_SAFE_ARGS.length; i += 2) {
+			assert.equal(GIT_SAFE_ARGS[i], "-c")
+		}
 	})
 })

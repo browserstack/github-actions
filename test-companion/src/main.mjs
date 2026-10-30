@@ -55,6 +55,7 @@ import {
 	needsCheckout,
 	isSameRepo,
 	pushCredentialArgs,
+	pushUrlFor,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
 } from "./push-work.mjs"
@@ -965,7 +966,15 @@ function saveWork(saving, plan) {
 	// Authenticate as the App when it is installed. Without this the push
 	// uses whatever actions/checkout left in .git/config, so a team that
 	// deleted the permissions block as we advise got a 403.
-	const pushed = git([...pushCredentialArgs(env.GH_TOKEN), "push", "origin", `HEAD:refs/heads/${branch}`])
+	//
+	// The URL is built here from GITHUB_REPOSITORY rather than taken from the
+	// remote named `origin`. The agent has had write access to this tree, and
+	// `url.<base>.insteadOf` in .git/config silently redirects `origin` to any
+	// host — which would hand the App token to it. The credential header is
+	// scoped to this exact URL for the same reason.
+	const target = pushUrlFor(REPO, env.GITHUB_SERVER_URL)
+	if (!target) return renderPushNote({ branch, files: push, skipped: skip, error: `cannot push: bad repository name "${REPO}"` })
+	const pushed = git([...pushCredentialArgs(env.GH_TOKEN, target), "push", target, `HEAD:refs/heads/${branch}`])
 	if (!pushed.ok) {
 		// The one failure worth spelling out, because it is a settings problem
 		// rather than a bug: the workflow's token is read-only by default.
