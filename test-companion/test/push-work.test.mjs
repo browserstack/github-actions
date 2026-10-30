@@ -9,6 +9,8 @@ import {
 	needsCheckout,
 	isSameRepo,
 	pushCredentialArgs,
+	gitEnvFrom,
+	GIT_SAFE_ARGS,
 	BOT_EMAIL,
 } from "../src/push-work.mjs"
 
@@ -395,5 +397,57 @@ describe("pushCredentialArgs — the App token has to reach git, not just gh", (
 	test("the token itself is never passed in the clear", () => {
 		const args = pushCredentialArgs("ghs_secret")
 		assert.ok(!args.some((a) => a.includes("ghs_secret")), `the raw token appeared in ${JSON.stringify(args)}`)
+	})
+})
+
+describe("our own git commands must not carry secrets or run hooks", () => {
+	/**
+	 * These commands run AFTER the agent, which has had --yolo write access to
+	 * the working tree. spawnSync with no `env` inherits everything, so an
+	 * agent that wrote .git/hooks/pre-commit would have it executed by our
+	 * `git commit` with TC_ACTION_APP_PRIVATE_KEY, GH_TOKEN and the customer's
+	 * BrowserStack key in its environment. On pull_request_target the diff is
+	 * attacker-authored, so that is one prompt injection from a key leaving
+	 * the runner. Reported by the security review of this change.
+	 */
+	const dirty = {
+		PATH: "/usr/bin",
+		HOME: "/home/runner",
+		HTTPS_PROXY: "http://proxy:8080",
+		TC_ACTION_APP_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----",
+		TC_ACTION_APP_ID: "12345",
+		GH_TOKEN: "ghs_secret",
+		BROWSERSTACK_ACCESS_KEY: "bs_secret",
+		GITHUB_TOKEN: "ghp_secret",
+	}
+
+	test("no secret survives", () => {
+		const got = gitEnvFrom(dirty)
+		for (const k of [
+			"TC_ACTION_APP_PRIVATE_KEY",
+			"TC_ACTION_APP_ID",
+			"GH_TOKEN",
+			"BROWSERSTACK_ACCESS_KEY",
+			"GITHUB_TOKEN",
+		]) {
+			assert.equal(got[k], undefined, `${k} reached git`)
+		}
+		assert.ok(!JSON.stringify(got).includes("secret"), `a secret value leaked: ${JSON.stringify(got)}`)
+	})
+
+	test("what git actually needs survives", () => {
+		const got = gitEnvFrom(dirty)
+		assert.equal(got.PATH, "/usr/bin")
+		assert.equal(got.HOME, "/home/runner")
+		assert.equal(got.HTTPS_PROXY, "http://proxy:8080", "a push has to reach the network")
+	})
+
+	test("an empty environment is fine", () => {
+		assert.deepEqual(gitEnvFrom({}), {})
+		assert.deepEqual(gitEnvFrom(), {})
+	})
+
+	test("hooks and fsmonitor are disabled, since both run code from the repo", () => {
+		assert.deepEqual(GIT_SAFE_ARGS, ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"])
 	})
 })

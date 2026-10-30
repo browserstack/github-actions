@@ -286,3 +286,36 @@ export function pushCredentialArgs(token) {
 	const basic = Buffer.from(`x-access-token:${t}`, "utf8").toString("base64")
 	return ["-c", `http.extraheader=AUTHORIZATION: basic ${basic}`]
 }
+
+/**
+ * The environment our own git commands run in — deliberately almost empty.
+ *
+ * These run AFTER the agent, which has had --yolo write access to the working
+ * tree. An agent that writes `.git/hooks/pre-commit` gets it executed by our
+ * `git commit`, with whatever environment we hand it — and that environment
+ * held TC_ACTION_APP_PRIVATE_KEY, GH_TOKEN and the customer's BrowserStack
+ * key, because spawnSync with no `env` inherits everything.
+ *
+ * On `pull_request_target` the diff under test is attacker-authored, so that
+ * is a prompt-injection away from a key leaving the runner.
+ *
+ * childEnvFor already does this for the AGENT's subprocess. This is the same
+ * reasoning applied to the commands that run after it. Proxy settings are kept
+ * because a push has to reach the network; nothing else is.
+ */
+export function gitEnvFrom(env = {}) {
+	const out = {}
+	for (const k of ["PATH", "HOME", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"]) {
+		if (env[k] !== undefined) out[k] = env[k]
+	}
+	return out
+}
+
+/**
+ * Arguments that stop git running anything the agent may have planted.
+ *
+ * `core.hooksPath` to nowhere, because a hook is code in the repository that
+ * `git commit` would run for us. fsmonitor off for the same reason — it is a
+ * configurable command git will start on its own.
+ */
+export const GIT_SAFE_ARGS = Object.freeze(["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"])

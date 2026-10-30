@@ -55,6 +55,8 @@ import {
 	needsCheckout,
 	isSameRepo,
 	pushCredentialArgs,
+	gitEnvFrom,
+	GIT_SAFE_ARGS,
 } from "./push-work.mjs"
 
 const env = process.env
@@ -263,7 +265,11 @@ function isOnTeam(login, team) {
  * failure as "we could not save the work", which is reported, not fatal.
  */
 function git(args) {
-	const r = spawnSync("git", args, { encoding: "utf8" })
+	// A near-empty environment, and no hooks. These run AFTER the agent, which
+	// has had --yolo write access to the tree: a planted .git/hooks/pre-commit
+	// would otherwise be executed by our own `git commit` with the App's
+	// private key and the customer's credentials in its environment.
+	const r = spawnSync("git", [...GIT_SAFE_ARGS, ...args], { encoding: "utf8", env: gitEnvFrom(env) })
 	// `raw` is deliberate. `git status --porcelain` puts a SPACE in the first
 	// column for an unstaged modification, and trimming the whole output eats
 	// it on the first line — which cost run 40845669513 ten passing tests.
