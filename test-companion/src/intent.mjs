@@ -112,8 +112,6 @@ const PHRASES = [
 /** The first candidate this repository has bound, or the first overall. */
 const pickBound = (candidates, workflows) => candidates.find((c) => (workflows ?? []).includes(c)) ?? candidates[0]
 
-/** Regex-escape a job name before it goes into a pattern. */
-const escapeRe = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 /**
  * A job asked for by its own name — FR-34.
@@ -127,9 +125,38 @@ const escapeRe = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
  * "regenerated the lockfile" is not a request to run `generate`.
  */
 function namedWorkflow(text, workflows) {
+	const said = wordsOf(text)
 	const byLength = [...(workflows ?? [])].filter(Boolean).sort((a, b) => b.length - a.length)
-	return byLength.find((name) => new RegExp(`\\b${escapeRe(name)}\\b`, "i").test(text))
+	return byLength.find((name) => saysAll(said, wordsOf(name)))
 }
+
+/**
+ * The words in a string, lowercased.
+ *
+ * Underscore counts as part of a word, matching what `\b` does, so `test_pr`
+ * is one word and is not read as the job `test-pr`.
+ */
+const wordsOf = (text) =>
+	String(text ?? "")
+		.toLowerCase()
+		.match(/[a-z0-9_]+/g) ?? []
+
+/**
+ * Does `said` contain `name` as a consecutive run of WHOLE words?
+ *
+ * This replaced a regex built per name from the name itself. The regex was
+ * escaped and safe, but a pattern assembled from input is a pattern someone
+ * can get wrong later, and Semgrep flagged it twice
+ * (browserstack/github-actions#91, findings 8 and 12). Comparing words needs
+ * no escaping at all.
+ *
+ * One deliberate difference: punctuation inside a name is now a word break,
+ * so a job called `a.c` is also found in the words "a c". Names come from the
+ * repository's own pipeline file and are ordinary words in practice, and
+ * being slightly more willing to recognise one is the safe direction — the
+ * alternative is telling someone their own job name is not a job.
+ */
+const saysAll = (said, name) => name.length > 0 && said.some((_, i) => name.every((w, j) => said[i + j] === w))
 
 /**
  * Read a comment's instruction — the body with the @mention already stripped by

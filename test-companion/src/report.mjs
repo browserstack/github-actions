@@ -270,25 +270,25 @@ export function proposalMarkerFor(sha, requester, workflow) {
  * Groups: 1 = requester, 2 = workflow. Both optional, so markers written
  * before either field existed stay readable.
  *
- * Pass a sha to pin the search to one commit, or ANY_SHA to match any and
- * capture it.
+ * ONE LITERAL pattern, with the sha captured rather than interpolated.
  *
- * The escaping is done HERE, not by the caller. Both callers did it correctly,
- * but "every caller remembers" is not a property you can check — and an
- * unescaped sha does not fail loudly, it quietly matches other commits:
- * `a.c*d+` would also find a proposal for `abcccd`. Semgrep flagged this as a
- * ReDoS risk (browserstack/github-actions#91, finding 9); the matching bug
- * underneath it was the one worth closing.
+ * It used to be built per-search from the sha, which meant the sha had to be
+ * regex-escaped or it would quietly match OTHER commits — `a.c*d+` also finds
+ * `abcccd`, so a plan for one commit could be approved against another. The
+ * escaping was correct, but it was a rule every caller had to remember.
+ *
+ * Comparing captured text with `===` removes the rule instead of restating
+ * it: there is nothing to escape, nothing to get wrong, and no pattern built
+ * from input (which is also what Semgrep was pointing at —
+ * browserstack/github-actions#91, findings 9 and 12).
  */
-const ANY_SHA = Symbol("any sha")
+const MARKER = /<!-- test-companion-proposal sha=([^\s>]+)(?: by=([^\s>]+))?(?: workflow=([^\s>]+))? -->/
 
-const markerPattern = (sha) =>
-	new RegExp(
-		`<!-- test-companion-proposal sha=${sha === ANY_SHA ? "([0-9a-f]+)" : escapeRe(sha)}(?: by=([^\\s>]+))?(?: workflow=([^\\s>]+))? -->`,
-	)
-
-/** Regex-escape, so a sha is matched literally. */
-const escapeRe = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+/** The marker's fields, or undefined when the comment has none. */
+const readMarker = (body) => {
+	const found = MARKER.exec(String(body ?? ""))
+	return found ? { sha: found[1], requester: found[2], workflow: found[3] } : undefined
+}
 
 /** The proposal comment: what the run would do, and how to let it — FR-43. */
 export function renderProposal(body, sha, requester, workflow) {
@@ -316,18 +316,19 @@ export function findProposal(comments, sha, now = Date.now()) {
 	// stay approvable rather than becoming stuck.
 	// `by=` and `workflow=` are both optional, so proposals written before
 	// either was recorded stay approvable rather than becoming stuck.
-	const re = markerPattern(sha)
-	const ours = (comments ?? []).filter((c) => c?.user?.type === "Bot" && re.test(c.body ?? ""))
+	const want = String(sha ?? "").trim()
+	const ours = (comments ?? []).filter((c) => c?.user?.type === "Bot" && readMarker(c.body)?.sha === want)
 	if (ours.length === 0) return undefined
 	const newest = ours.reduce((a, b) => (a.id >= b.id ? a : b))
 	const age = now - Date.parse(newest.created_at ?? "")
+	const mark = readMarker(newest.body)
 	return {
 		id: newest.id,
 		expired: !(age <= PROPOSAL_WINDOW_MS),
-		requester: re.exec(newest.body ?? "")?.[1],
+		requester: mark?.requester,
 		// The job the person actually read and approved. Undefined on a
 		// proposal written before the marker carried one.
-		workflow: re.exec(newest.body ?? "")?.[2],
+		workflow: mark?.workflow,
 		// The run has to READ the approved plan to carry it out (FR-43), so the
 		// body travels with the decision rather than being fetched again.
 		body: newest.body ?? "",
@@ -527,19 +528,18 @@ export function renderProposalBody({ summary, plan, sizeNote } = {}) {
  */
 export function findSupersededProposal(comments, sha) {
 	const current = String(sha ?? "").trim()
-	// Same pattern, sha as a group. Shared so the two cannot drift again.
-	const marker = markerPattern(ANY_SHA)
+	// Same reader as findProposal, so the two cannot drift again.
 	const stale = (comments ?? []).filter((c) => {
 		if (c?.user?.type !== "Bot") return false
-		const found = marker.exec(c.body ?? "")
-		return Boolean(found) && found[1] !== current
+		const found = readMarker(c.body)
+		return Boolean(found) && found.sha !== current
 	})
 	if (stale.length === 0) return undefined
 	// Newest wins: with several old plans, the one they most plausibly meant is
 	// the last one we put up.
 	const newest = stale.reduce((a, b) => ((a.id ?? 0) >= (b.id ?? 0) ? a : b))
-	const found = marker.exec(newest.body ?? "")
-	return { sha: found?.[1], requester: found?.[2], id: newest.id }
+	const found = readMarker(newest.body)
+	return { sha: found?.sha, requester: found?.requester, id: newest.id }
 }
 
 /**

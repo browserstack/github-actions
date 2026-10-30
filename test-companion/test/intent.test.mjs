@@ -239,3 +239,32 @@ describe("stop and set up are what the comment ASKS FOR, not words it contains",
 		assert.equal(out.workflow, "fix")
 	})
 })
+
+/**
+ * Semgrep flagged the per-name `new RegExp` (browserstack/github-actions#91,
+ * finding 8). These pin the behaviour that matters so it can be rewritten
+ * without a pattern built from input.
+ */
+describe("naming a bound job — matched on whole words, never as a substring", () => {
+	const bound = { workflows: ["generate", "test-pr", "mobile run", "rca"] }
+
+	test("a name is found when it is said", () => {
+		assert.equal(readIntent("please run generate", bound).workflow, "generate")
+		assert.equal(readIntent("do a test-pr on this", bound).workflow, "test-pr")
+	})
+
+	test("a name inside a longer word is NOT a request for it", () => {
+		assert.notEqual(readIntent("I regenerated the lockfile", bound).workflow, "generate")
+	})
+
+	test("longest wins, so 'mobile run' is never read as a shorter name", () => {
+		assert.equal(readIntent("kick off mobile run", bound).workflow, "mobile run")
+	})
+
+	test("a name with regex metacharacters cannot blow up or match wildly", () => {
+		const odd = { workflows: ["c++ build", "a.c"] }
+		assert.equal(readIntent("start the c++ build", odd).workflow, "c++ build")
+		// `a.c` unescaped would match "abc"; it must not.
+		assert.notEqual(readIntent("abc", odd).workflow, "a.c")
+	})
+})
