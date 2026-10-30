@@ -409,7 +409,22 @@ const EXPECTED_CONFIG = [
 ]
 
 /**
- * The keys in `git config --list --name-only` output that an ordinary
+ * How to read the repository's own config.
+ *
+ * `--local` is load-bearing: a bare `git config --list` also includes config
+ * given on the command line with `-c`, which is where all of GIT_SAFE_ARGS
+ * lives. Without it the check reads our own hardening back and calls it
+ * tampering — live run 41049398591 refused to save, listing fifteen keys we
+ * had passed ourselves.
+ *
+ * Worktree config needs no separate read: turning it on requires
+ * `extensions.worktreeConfig` in the local file, which is not an expected key,
+ * so a repository using it is refused by this same check.
+ */
+export const CONFIG_READ_ARGS = Object.freeze(["config", "--local", "--list", "--name-only"])
+
+/**
+ * The keys in that output that an ordinary
  * checkout would not have written — empty when the config is as we left it.
  *
  * Fails closed by construction: an unknown key is unexpected.

@@ -57,6 +57,7 @@ import {
 	pushCredentialEnv,
 	pushUrlFor,
 	unexpectedConfigKeys,
+	CONFIG_READ_ARGS,
 	trustedGitPath,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
@@ -974,9 +975,7 @@ function saveWork(saving, plan) {
 	//
 	// This runs before `git status`, because status can run a clean filter
 	// itself — by the time we have a file list it is already too late.
-	// No --local: the environment has already shut out the system and global
-	// files, so this is the repository's own config plus any worktree config.
-	const unexpected = unexpectedConfigKeys(git(["config", "--list", "--name-only"]).raw)
+	const unexpected = unexpectedConfigKeys(git(CONFIG_READ_ARGS).raw)
 	if (unexpected.length) {
 		return [
 			`**Could not save this work to \`${branch}\`:** the repository's git config carries`,

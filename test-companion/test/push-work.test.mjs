@@ -1,5 +1,9 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
+import { execFileSync } from "node:child_process"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
 	shouldPushWork,
 	changedPaths,
@@ -10,6 +14,7 @@ import {
 	isSameRepo,
 	pushCredentialEnv,
 	unexpectedConfigKeys,
+	CONFIG_READ_ARGS,
 	trustedGitPath,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
@@ -676,5 +681,38 @@ describe("git itself must be the real git", () => {
 	test("PATH is pinned, not inherited — a planted directory cannot come along", () => {
 		const got = gitEnvFrom({ PATH: "/home/runner/.local/bin:/usr/bin" })
 		assert.equal(got.PATH, "/usr/bin:/bin")
+	})
+})
+
+/**
+ * Found by live run 41049398591, which refused to save with a list of
+ * fifteen "unexpected" keys — every one of them a flag WE pass in
+ * GIT_SAFE_ARGS.
+ *
+ * `git config --list` includes config given on the command line with `-c`.
+ * So the check read our own hardening back and reported it as tampering,
+ * which would have blocked every push the Action ever makes.
+ *
+ * This runs real git, because the bug was in what git returns, not in how
+ * the listing is parsed — a fixture would have agreed with the broken code.
+ */
+describe("the config check reads the repository, not our own flags", () => {
+	test("-c values do not come back as unexpected keys", () => {
+		const dir = mkdtempSync(join(tmpdir(), "tc-config-"))
+		try {
+			execFileSync("git", ["init", "-q", dir])
+			const listing = execFileSync(
+				"git",
+				[...GIT_SAFE_ARGS, "-C", dir, ...CONFIG_READ_ARGS],
+				{ encoding: "utf8", env: gitEnvFrom({}) },
+			)
+			assert.deepEqual(
+				unexpectedConfigKeys(listing),
+				[],
+				"a freshly initialised repository must be acceptable, with our own -c flags in play",
+			)
+		} finally {
+			rmSync(dir, { recursive: true, force: true })
+		}
 	})
 })
