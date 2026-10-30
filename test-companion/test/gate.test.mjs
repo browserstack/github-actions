@@ -159,6 +159,9 @@ describe("decideGate — a job that only answers does not ask permission first",
 		for (const workflow of ["rca", "verdict"]) {
 			const got = decideGate({ intent: asked, approval: "review-before-run", workflow })
 			assert.equal(got.action, GATE.RUN, `${workflow} writes nothing; holding it asks permission to write nothing`)
+			// Skipping the hold is only safe because the run cannot write, so
+			// the run is MADE unable to write rather than assumed to be.
+			assert.equal(got.preview, true, `an unapproved ${workflow} must not get write tools`)
 		}
 	})
 

@@ -66,9 +66,12 @@ export function decideGate({ intent, approval, proposal, actor, workflow } = {})
 	// because only `test-pr` writes a plan to review. Asking "why did this
 	// fail?" cost two comments and answered on the second.
 	//
-	// The binding's own mode still applies: this decides whether to HOLD the
-	// run, not whether the run may write.
-	if (ANSWER_JOBS.has(workflow)) return { action: GATE.RUN, preview: false }
+	// PREVIEW, not just unheld. Skipping the hold is only safe because the run
+	// cannot write, and that has to be made true rather than assumed: these
+	// jobs analyse, but they run with --yolo and a shell, and a binding set to
+	// `mode: live` would otherwise give an unapproved run write tools.
+	// Preview costs nothing here — an explanation is prose either way.
+	if (ANSWER_JOBS.has(workflow)) return { action: GATE.RUN, preview: true }
 
 	if (approval === STRAIGHT_THROUGH) return { action: GATE.RUN, preview: false }
 
