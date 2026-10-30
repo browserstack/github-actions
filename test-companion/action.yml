@@ -1,0 +1,210 @@
+name: "Test Companion"
+description: >
+    Run Test Companion from a GitHub workflow — generate test cases, explain a red
+    build, fix stale tests — and report the result back onto the pull request.
+    Add this as one step with two secrets; everything else is read from the
+    testcompanion-pipeline.yml in your repository.
+author: "BrowserStack"
+branding:
+    icon: check-circle
+    color: orange
+
+inputs:
+    username:
+        description: "BrowserStack username. Store it as a repository secret, never inline."
+        required: true
+    access-key:
+        description: "BrowserStack access key. Store it as a repository secret, never inline."
+        required: true
+    app-id:
+        description: >-
+            Test Companion GitHub App id. With it, comments and the check come from
+            "Test Companion" rather than github-actions[bot], and the permissions
+            block below can be deleted. Optional — without it the workflow's own
+            token is used.
+        required: false
+    app-private-key:
+        description: >-
+            The App's private key. Store it as a repository or organisation secret,
+            never inline. It is never passed to the agent's shell.
+        required: false
+
+    workflow:
+        description: >
+            Which job to run, for a manual run only (see `tc workflow list`). Leave it
+            unset for event-driven runs, where the job comes from your pipeline file.
+        required: false
+    preview:
+        description: "Manual runs only: report what would happen and change nothing."
+        required: false
+        default: "false"
+
+    cli-version:
+        description: >
+            Exact Test Companion CLI version to install, e.g. 1.39.8. Pinning keeps
+            the same pipeline behaving the same next month. LEAVE IT UNSET AND THE
+            LATEST RELEASE IS INSTALLED, which can change between runs — so pin it
+            if you want a pipeline that does not move under you.
+        required: false
+    cli-sha256:
+        description: >
+            Checksum for the pinned CLI. Required alongside cli-version, because the
+            installer refuses an unverified pinned install.
+        required: false
+
+    config:
+        description: "Path to the pipeline file. Defaults to testcompanion-pipeline.yml at the repo root."
+        required: false
+    build-effect:
+        description: >
+            Whether a bad outcome reddens THIS step: off, report or fail. The
+            Test Companion check always reports truthfully regardless.
+        required: false
+        default: "report"
+    github-token:
+        description: >
+            Token used to post the check and the comment. Override only to post as a
+            different identity, such as a GitHub App.
+        required: false
+        default: ${{ github.token }}
+    self-workflow-name:
+        description: >
+            This workflow's own name, so a red run of it is never explained by itself.
+            Defaults to the running workflow.
+        required: false
+        default: ${{ github.workflow }}
+
+outputs:
+    outcome:
+        description: "One of: Succeeded, Tests failed, Run broke, Stopped at limit, Could not run."
+        value: ${{ steps.run.outputs.outcome }}
+    result-file:
+        description: >-
+            Path to the run's RESULT — the test cases it generated, with their steps.
+            Written whether or not they reached Test Management, which is the only
+            record a preview run leaves behind. Distinct from summary-file, which
+            records how the run went rather than what it produced.
+        value: ${{ steps.run.outputs.result-file }}
+    summary-file:
+        description: "Path to the run's report file."
+        value: ${{ steps.run.outputs.summary-file }}
+    cli-version:
+        description: "The CLI version that actually ran."
+        value: ${{ steps.install.outputs.cli-version }}
+
+runs:
+    using: composite
+    steps:
+        # A fresh runner has no git identity, and several jobs commit internally.
+        # Scoped to this repository rather than --global so nothing outlives the run.
+        - name: Give this run a git identity
+          shell: bash
+          run: |
+              set -euo pipefail
+              git config user.email "test-companion[bot]@users.noreply.github.com"
+              git config user.name "Test Companion"
+
+        - name: Install the Test Companion CLI
+          id: install
+          shell: bash
+          env:
+              TC_VERSION: ${{ inputs.cli-version }}
+              TC_SHA256: ${{ inputs.cli-sha256 }}
+          run: |
+              set -euo pipefail
+              curl -fsSL -o /tmp/tc-install.sh https://test-companion.browserstack.com/cli/install.sh
+              sh /tmp/tc-install.sh
+              echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+              version="$("$HOME/.local/bin/tc" --version 2>/dev/null | head -1 || echo unknown)"
+              # FR-2: pinning only means something if the pin actually took. The
+              # installer refuses an unverified pinned install on its own, but a
+              # silent fallback to latest would leave the run reporting a version
+              # nobody asked for — and "the same pipeline behaves the same next
+              # month" is the entire point of the input.
+              if [ -n "${TC_VERSION:-}" ] && [ "${version#*"$TC_VERSION"}" = "$version" ]; then
+                echo "::error::Asked for Test Companion CLI $TC_VERSION but got '$version'." >&2
+                exit 1
+              fi
+              echo "cli-version=$version" >> "$GITHUB_OUTPUT"
+              echo "::notice::Test Companion $version"
+
+        # The CLI only picks up ambient BROWSERSTACK_* credentials during `auth
+        # login`; other commands just find no stored session and exit 3. Assuming
+        # the environment variables alone were enough cost a live run to discover.
+        - name: Sign in
+          shell: bash
+          env:
+              BROWSERSTACK_USERNAME: ${{ inputs.username }}
+              BROWSERSTACK_ACCESS_KEY: ${{ inputs.access-key }}
+              # FR-2. This is the FIRST tc command of the job, and without the
+              # pin here the CLI self-upgrades during `auth login` — before the
+              # Run step below ever applies it. The pin then correctly reports
+              # a mismatch against the binary the pin was meant to preserve,
+              # so ASKING FOR A PINNED VERSION MADE THE RUN FAIL. Seen live on
+              # 2026-10-29 when tc 1.1.9 shipped: "pinned to version 1.1.8 but
+              # the installed binary is 1.1.9".
+              #
+              # Every step that runs tc needs this, not just the one that does
+              # the work.
+              TC_PIN_VERSION: ${{ inputs.cli-version }}
+              TC_SKIP_AGENT_SKILL_INSTALL: "1"
+              TC_ACTION_CLI_VERSION: ${{ steps.install.outputs.cli-version }}
+          run: |
+              set -euo pipefail
+              # Bounded: a surface that cannot draw a browser must never sit waiting
+              # on an interactive sign-in.
+              timeout 120 tc auth login
+
+        - name: Run
+          id: run
+          shell: bash
+          env:
+              # The CLI picks these up on a non-interactive shell with no extra flags.
+              BROWSERSTACK_USERNAME: ${{ inputs.username }}
+              BROWSERSTACK_ACCESS_KEY: ${{ inputs.access-key }}
+              # Stops the CLI upgrading itself mid-pipeline, so a pinned version stays
+              # pinned and the 90-second first-response budget is not spent on a download.
+              TC_PIN_VERSION: ${{ inputs.cli-version }}
+              # Only this step may talk to the GitHub API. Deliberately not exported to
+              # the environment the agent's own shell commands run in.
+              GH_TOKEN: ${{ inputs.github-token }}
+              # A CI runner has no Claude Code to install a skill into; it just adds
+              # noise and a write to the home directory.
+              TC_SKIP_AGENT_SKILL_INSTALL: "1"
+              TC_ACTION_WORKFLOW: ${{ inputs.workflow }}
+              TC_ACTION_PREVIEW: ${{ inputs.preview }}
+              TC_ACTION_CONFIG: ${{ inputs.config }}
+              TC_ACTION_BUILD_EFFECT: ${{ inputs.build-effect }}
+              TC_ACTION_SELF_WORKFLOW: ${{ inputs.self-workflow-name }}
+              TC_ACTION_APP_ID: ${{ inputs.app-id }}
+              TC_ACTION_APP_PRIVATE_KEY: ${{ inputs.app-private-key }}
+          run: node "${{ github.action_path }}/src/main.mjs"
+
+        - name: Attach the report
+          if: always() && steps.run.outputs.summary-file != ''
+          uses: actions/upload-artifact@v4
+          with:
+              name: test-companion-report
+              path: ${{ steps.run.outputs.summary-file }}
+              if-no-files-found: ignore
+
+        # Separate artifact from the report, because it answers a different
+        # question and has a different reader: the report says how the run went,
+        # this is the work itself. For a preview run it is the only place that
+        # work survives, so it is attached even when the run is about to go red.
+        - name: Attach the generated test cases
+          if: always() && steps.run.outputs.result-file != ''
+          uses: actions/upload-artifact@v4
+          with:
+              name: test-companion-result
+              path: ${{ steps.run.outputs.result-file }}
+              if-no-files-found: ignore
+
+        # Separate from the run step so the report is attached even when the build
+        # effect says this run should redden the build.
+        - name: Apply the build effect
+          if: always() && steps.run.outputs.should-fail == 'true'
+          shell: bash
+          run: |
+              echo "::error::Test Companion: ${{ steps.run.outputs.outcome }}"
+              exit 1

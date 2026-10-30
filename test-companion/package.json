@@ -1,0 +1,13 @@
+{
+  "name": "test-companion-action",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "GitHub Action wrapper around the Test Companion CLI (STM-3663).",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

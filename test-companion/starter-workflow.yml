@@ -1,0 +1,103 @@
+# Test Companion — copy this to .github/workflows/test-companion.yml
+#
+# Two secrets and you are done: BROWSERSTACK_USERNAME and BROWSERSTACK_ACCESS_KEY,
+# under Settings → Secrets and variables → Actions.
+#
+# WHAT RUNS is not decided here. It comes from testcompanion-pipeline.yml in your
+# repository, which you can edit freely without touching this file. That split is
+# deliberate: this file is awkward to change once it is in many repositories, so
+# keep it as it is and tune the pipeline file instead.
+#
+# Every trigger is listed from the start, including ones for jobs you have not
+# bound yet. A trigger that matches nothing costs one no-op job; adding a trigger
+# later costs a pull request in every repository.
+name: Test Companion
+
+on:
+    # Ask for something by commenting "@test-companion ..." on a pull request.
+    issue_comment:
+        types: [created]
+    # A pull request opening or receiving commits.
+    pull_request:
+        types: [opened, reopened, synchronize, closed]
+    push:
+        branches: [main]
+    # React to one of your own workflows finishing red. Replace "CI" with its name.
+    workflow_run:
+        workflows: ["CI"]
+        types: [completed]
+    schedule:
+        - cron: "0 2 * * *"
+    # Run any job by hand from the Actions tab.
+    workflow_dispatch:
+        inputs:
+            workflow:
+                description: "Which job to run (see `tc workflow list`)"
+                required: true
+                default: generate
+            preview:
+                description: "Report what would happen and change nothing"
+                type: boolean
+                default: true
+
+concurrency:
+    # One run per pull request, or per triggering event where there is no pull
+    # request.
+    #
+    # `github.event.pull_request.number` is empty for issue_comment, push,
+    # schedule and workflow_run, so keying on it alone collapsed ALL of those
+    # onto one group named after the default branch: a comment on PR A, a
+    # comment on PR B, the nightly schedule and a red-build run all queued
+    # together. GitHub keeps one pending run per group, so a reviewer's
+    # @test-companion request could be cancelled by an unrelated push.
+    #
+    # issue_comment carries the PR number as `issue.number`; everything else
+    # falls back to the run id, which is unique, so those events never share a
+    # group with each other.
+    group: >-
+        test-companion-${{ github.event.pull_request.number
+        || github.event.issue.number
+        || github.run_id }}
+    # Queue rather than cancel: a run already in flight has spent credits, and
+    # the newer one waits its turn instead of superseding it.
+    cancel-in-progress: false
+
+jobs:
+    test-companion:
+        runs-on: ubuntu-latest
+        timeout-minutes: 35
+        # With the Test Companion GitHub App installed, this whole block can be
+        # deleted: the App's installation token carries these permissions
+        # itself. Pass app-id and app-private-key below instead.
+        permissions:
+            contents: write # branches and commits for fix / reconcile jobs
+            pull-requests: write # the one comment, and opening a pull request
+            checks: write # the "Test Companion" check
+            actions: write # reading the red run, and cancelling one on "stop"
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0 # jobs that look at what changed need history
+
+            - uses: browserstack/github-actions/test-companion@v1
+              with:
+                  username: ${{ secrets.BROWSERSTACK_USERNAME }}
+                  access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+                  # PIN THE CLI once you know which version you want. Without
+                  # a pin the CLI upgrades itself the first time it runs on a
+                  # release day: your pipeline spends time on a download, and
+                  # two runs a day apart are not the same software.
+                  #
+                  # Both lines or neither. A version with no checksum is
+                  # REFUSED — "refusing an unverified pinned install" — and the
+                  # job stops before it reports anything. Take both from the
+                  # release you tested with.
+                  # cli-version: "1.2.0"
+                  # cli-sha256: "<sha256 of that release for linux-amd64>"
+                  # With the App installed, uncomment these and delete the
+                  # permissions block above.
+                  # app-id: ${{ secrets.TEST_COMPANION_APP_ID }}
+                  # app-private-key: ${{ secrets.TEST_COMPANION_APP_PRIVATE_KEY }}
+                  # Manual runs only; event-driven runs read the pipeline file.
+                  workflow: ${{ inputs.workflow }}
+                  preview: ${{ inputs.preview }}
