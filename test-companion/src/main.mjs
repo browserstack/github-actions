@@ -10,7 +10,7 @@
  * Zero dependencies — Node's standard library plus `gh`, which is preinstalled
  * on every GitHub runner and is already how this product talks to GitHub.
  */
-import { readFileSync, appendFileSync, writeFileSync, existsSync, rmSync, readdirSync } from "node:fs"
+import { readFileSync, appendFileSync, writeFileSync, existsSync, rmSync, readdirSync, accessSync, constants } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -57,6 +57,7 @@ import {
 	pushCredentialEnv,
 	pushUrlFor,
 	unexpectedConfigKeys,
+	trustedGitPath,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
 } from "./push-work.mjs"
@@ -266,12 +267,29 @@ function isOnTeam(login, team) {
  * Run git in the checkout. Never throws: every caller here treats a git
  * failure as "we could not save the work", which is reported, not fatal.
  */
+/**
+ * Resolved once, at module load — BEFORE the agent runs, so a `git` planted on
+ * PATH later cannot be the one we find. Absent means we do not commit at all.
+ */
+const GIT_BIN = trustedGitPath({
+	exists: (p) => existsSync(p),
+	canWrite: (p) => {
+		try {
+			accessSync(p, constants.W_OK)
+			return true
+		} catch {
+			return false
+		}
+	},
+})
+
 function git(args, extraEnv = {}) {
 	// A near-empty environment, and no hooks. These run AFTER the agent, which
 	// has had --yolo write access to the tree: a planted .git/hooks/pre-commit
 	// would otherwise be executed by our own `git commit` with the App's
 	// private key and the customer's credentials in its environment.
-	const r = spawnSync("git", [...GIT_SAFE_ARGS, ...args], {
+	if (!GIT_BIN) return { ok: false, out: "", raw: "", err: "no trusted git binary" }
+	const r = spawnSync(GIT_BIN, [...GIT_SAFE_ARGS, ...args], {
 		encoding: "utf8",
 		env: { ...gitEnvFrom(env), ...extraEnv },
 	})
@@ -936,6 +954,9 @@ function main() {
 function saveWork(saving, plan) {
 	if (!saving.ok) return undefined
 	const branch = plan.context.branch
+	if (!GIT_BIN) {
+		return `**Could not save this work to \`${branch}\`:** no trusted \`git\` was found on this runner (looked for a root-owned /usr/bin/git and /bin/git). Nothing was committed or pushed.`
+	}
 
 	// .git/config decides whether git runs a program for us and where a push
 	// ends up, and the agent has just had --yolo write access to it. An

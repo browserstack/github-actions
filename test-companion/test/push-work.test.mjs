@@ -10,6 +10,7 @@ import {
 	isSameRepo,
 	pushCredentialEnv,
 	unexpectedConfigKeys,
+	trustedGitPath,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
 	pushUrlFor,
@@ -466,7 +467,8 @@ describe("our own git commands must not carry secrets or run hooks", () => {
 
 	test("what git actually needs survives", () => {
 		const got = gitEnvFrom(dirty)
-		assert.equal(got.PATH, "/usr/bin")
+		// PATH is pinned rather than inherited — see the hijack test below.
+		assert.equal(got.PATH, "/usr/bin:/bin")
 		assert.equal(got.HOME, "/home/runner")
 		assert.equal(got.HTTPS_PROXY, "http://proxy:8080", "a push has to reach the network")
 	})
@@ -483,7 +485,7 @@ describe("our own git commands must not carry secrets or run hooks", () => {
 			assert.equal(got.SSH_ASKPASS, "")
 			assert.equal(got.GIT_ATTR_NOSYSTEM, "1")
 			// Nothing was inherited: every key is one we set deliberately.
-			assert.ok(Object.keys(got).every((k) => k.startsWith("GIT_") || k === "SSH_ASKPASS"))
+			assert.ok(Object.keys(got).every((k) => k.startsWith("GIT_") || k === "SSH_ASKPASS" || k === "PATH"))
 		}
 	})
 
@@ -643,5 +645,36 @@ describe("the credential travels in the environment, not in argv", () => {
 		assert.deepEqual(pushCredentialEnv("", "https://github.com/a/b.git"), {})
 		assert.deepEqual(pushCredentialEnv("ghs_x", ""), {})
 		assert.deepEqual(pushCredentialEnv(undefined, undefined), {})
+	})
+})
+
+/**
+ * The agent writes to the runner as the same user we do, and several
+ * directories on the default PATH are writable by that user. A planted `git`
+ * earlier on PATH would be handed the installation token.
+ */
+describe("git itself must be the real git", () => {
+	const exists = (p) => ["/usr/bin/git", "/bin/git"].includes(p)
+	const notWritable = () => false
+
+	test("an absolute, root-owned path is used, never a bare name", () => {
+		assert.equal(trustedGitPath({ exists, canWrite: notWritable }), "/usr/bin/git")
+	})
+
+	test("a candidate WE can write is not trusted — that is the hijack", () => {
+		const canWriteUsrBin = (p) => p === "/usr/bin/git"
+		assert.equal(trustedGitPath({ exists, canWrite: canWriteUsrBin }), "/bin/git")
+	})
+
+	test("nothing trustworthy means nothing, not a fallback to PATH", () => {
+		// A fallback to bare "git" would reintroduce exactly the hole this
+		// closes, so the caller is made to handle the absence instead.
+		assert.equal(trustedGitPath({ exists: () => false, canWrite: notWritable }), undefined)
+		assert.equal(trustedGitPath({ exists, canWrite: () => true }), undefined)
+	})
+
+	test("PATH is pinned, not inherited — a planted directory cannot come along", () => {
+		const got = gitEnvFrom({ PATH: "/home/runner/.local/bin:/usr/bin" })
+		assert.equal(got.PATH, "/usr/bin:/bin")
 	})
 })

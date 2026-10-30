@@ -330,9 +330,15 @@ export function pushUrlFor(repo, server = "https://github.com") {
  */
 export function gitEnvFrom(env = {}) {
 	const out = {}
-	for (const k of ["PATH", "HOME", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"]) {
+	for (const k of ["HOME", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"]) {
 		if (env[k] !== undefined) out[k] = env[k]
 	}
+	// PINNED, not inherited. The agent writes to the runner as the same user we
+	// do, and the default PATH includes directories that user can write — a
+	// planted `git` there would be handed the installation token. git shells out
+	// to its own subcommands, so it still needs a PATH; this is the smallest one
+	// that works and contains nothing the agent could have written to.
+	out.PATH = "/usr/bin:/bin"
 	// Ignore the system and user config too, so the only configuration in play
 	// is what this process passes with -c.
 	out.GIT_CONFIG_NOSYSTEM = "1"
@@ -343,6 +349,27 @@ export function gitEnvFrom(env = {}) {
 	out.SSH_ASKPASS = ""
 	out.GIT_ATTR_NOSYSTEM = "1"
 	return out
+}
+
+/**
+ * Where the real git is, as an absolute path — or nothing, when we cannot find
+ * one we are sure of.
+ *
+ * `spawnSync("git", ...)` resolves through PATH, and on a GitHub runner several
+ * PATH directories are writable by the job's own user, which is also the user
+ * the agent just ran as. A planted `git` would receive the credential we pass
+ * in the environment.
+ *
+ * "Sure of" means: it exists, and WE cannot write it. A binary this process
+ * could overwrite is a binary the agent could have overwritten.
+ *
+ * There is deliberately no fallback to the bare name. Falling back would
+ * reinstate the hole on exactly the machines where it matters, so the caller
+ * handles the absence instead — and for us that means skipping the commit,
+ * which is already how every other refusal in this module behaves.
+ */
+export function trustedGitPath({ candidates = ["/usr/bin/git", "/bin/git"], exists, canWrite } = {}) {
+	return candidates.find((p) => exists(p) && !canWrite(p))
 }
 
 /**
