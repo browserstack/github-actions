@@ -346,53 +346,44 @@ export function gitEnvFrom(env = {}) {
 }
 
 /**
- * Git config keys the repository is not allowed to carry when we are about to
- * commit on its behalf. Every one of them either runs a program or sends the
- * push somewhere else.
+ * The git config an ordinary `actions/checkout` leaves behind. Anything else
+ * means the repository's config was changed after the checkout.
  *
- * This is a deny list over a CLOSED set — git's own exec-capable and
- * URL-rewriting keys — not an attempt to guess at bad values. A key here is
- * never set by actions/checkout, so its presence means someone changed the
- * repository's config, and the only safe answer is to refuse.
+ * An ALLOW list, not a deny list. Config is where git keeps every "run this
+ * program for me" hook it has — credential helpers, clean filters, textconv,
+ * ssh commands, pagers — plus `insteadOf`, which rewrites any URL including
+ * one given on the command line. Listing the dangerous keys means losing to
+ * the next key git adds; listing the expected ones means a key we have never
+ * heard of is refused by default, which is the right way round.
  *
  * `.gitattributes` is deliberately absent: it only names a filter, and the
- * command a filter runs comes from `filter.<name>.*` in config, which is
- * covered below.
+ * command a filter runs comes from `filter.<name>.*` in config, which is not
+ * on this list.
  */
-const UNSAFE_CONFIG = [
-	// Runs a command on the first 401, as a shell string.
-	/^credential\./,
-	// insteadOf / pushInsteadOf. These rewrite ANY url, including one given
-	// on the command line — verified against real git.
-	/^url\./,
-	// Pulls in another config file, which could set anything above or below.
-	/^include\./,
-	/^includeif[.:]/,
-	// Commands git starts on its own behalf.
-	/^core\.(sshcommand|gitproxy|hookspath|fsmonitor|pager|editor|askpass)$/,
-	/^filter\./,
-	/^diff\.external$/,
-	/^diff\..*\.(textconv|command)$/,
-	/^gpg\.(.*\.)?program$/,
-	/^uploadpack\.packobjectshook$/,
-	/^sequence\.editor$/,
-	/^pager\./,
-	// ext:: URLs execute; anything here is a change to what transports exist.
-	/^protocol\./,
-	/^remote\..*\.(uploadpack|receivepack)$/,
-	// Sends the traffic through somewhere else.
-	/\.proxy$/,
+const EXPECTED_CONFIG = [
+	/^core\.(repositoryformatversion|filemode|bare|logallrefupdates|symlinks|ignorecase|precomposeunicode|quotepath|autocrlf|safecrlf|sparsecheckout|sparsecheckoutcone)$/,
+	/^remote\.[^.]+\.(url|fetch|mirror|tagopt|partialclonefilter|promisor)$/,
+	/^branch\.[^.]+\.(remote|merge|rebase)$/,
+	// Scoped only. A bare `http.extraheader` goes to every host, so it is not
+	// expected and not allowed.
+	/^http\..+\.extraheader$/,
+	/^gc\.auto$/,
+	/^user\.(name|email)$/,
+	/^extensions\.objectformat$/,
+	/^init\.defaultbranch$/,
 ]
 
 /**
- * The offending keys in `git config --local --list --name-only` output, or an
- * empty list when the repository's config is ordinary.
+ * The keys in `git config --list --name-only` output that an ordinary
+ * checkout would not have written — empty when the config is as we left it.
+ *
+ * Fails closed by construction: an unknown key is unexpected.
  */
-export function unsafeConfigKeys(listing) {
+export function unexpectedConfigKeys(listing) {
 	return String(listing ?? "")
 		.split("\n")
 		.map((l) => l.trim())
-		.filter((l) => l && UNSAFE_CONFIG.some((re) => re.test(l.toLowerCase())))
+		.filter((l) => l && !EXPECTED_CONFIG.some((re) => re.test(l.toLowerCase())))
 }
 
 /**
@@ -422,6 +413,8 @@ export const GIT_SAFE_ARGS = Object.freeze([
 	"http.proxy=",
 	"-c",
 	"core.gitProxy=",
+	"-c",
+	"http.sslVerify=true",
 	// Every other key that is a way for the repository to make git run a
 	// program on our behalf.
 	"-c",

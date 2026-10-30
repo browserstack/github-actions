@@ -56,7 +56,7 @@ import {
 	isSameRepo,
 	pushCredentialEnv,
 	pushUrlFor,
-	unsafeConfigKeys,
+	unexpectedConfigKeys,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
 } from "./push-work.mjs"
@@ -944,12 +944,16 @@ function saveWork(saving, plan) {
 	//
 	// This runs before `git status`, because status can run a clean filter
 	// itself — by the time we have a file list it is already too late.
-	const tampered = unsafeConfigKeys(git(["config", "--local", "--list", "--name-only"]).raw)
-	if (tampered.length) {
+	// No --local: the environment has already shut out the system and global
+	// files, so this is the repository's own config plus any worktree config.
+	const unexpected = unexpectedConfigKeys(git(["config", "--list", "--name-only"]).raw)
+	if (unexpected.length) {
 		return [
-			`**Could not save this work to \`${branch}\`:** the repository's own git config sets`,
-			`${tampered.map((k) => `\`${k}\``).join(", ")}, which can send a push to another host or make git`,
-			"run a program. Nothing was committed or pushed. The run's changes are in the job's workspace only.",
+			`**Could not save this work to \`${branch}\`:** the repository's git config carries`,
+			`${unexpected.map((k) => `\`${k}\``).join(", ")}, which \`actions/checkout\` does not write. Config is`,
+			"where git keeps its \"run this program\" hooks and its URL rewrites, so Test Companion will not",
+			"commit against a config it does not recognise. Nothing was committed or pushed — the run's",
+			"changes are in the job's workspace only.",
 		].join(" ")
 	}
 	// `-c core.quotePath=false` stops git octal-escaping non-ASCII bytes, so a
