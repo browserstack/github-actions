@@ -270,11 +270,22 @@ export function proposalMarkerFor(sha, requester, workflow) {
  * Groups: 1 = requester, 2 = workflow. Both optional, so markers written
  * before either field existed stay readable.
  *
- * Pass a literal sha to pin the search to one commit, or `([0-9a-f]+)` to
- * match any and capture it.
+ * Pass a sha to pin the search to one commit, or ANY_SHA to match any and
+ * capture it.
+ *
+ * The escaping is done HERE, not by the caller. Both callers did it correctly,
+ * but "every caller remembers" is not a property you can check — and an
+ * unescaped sha does not fail loudly, it quietly matches other commits:
+ * `a.c*d+` would also find a proposal for `abcccd`. Semgrep flagged this as a
+ * ReDoS risk (browserstack/github-actions#91, finding 9); the matching bug
+ * underneath it was the one worth closing.
  */
-const markerPattern = (shaPattern) =>
-	new RegExp(`<!-- test-companion-proposal sha=${shaPattern}(?: by=([^\\s>]+))?(?: workflow=([^\\s>]+))? -->`)
+const ANY_SHA = Symbol("any sha")
+
+const markerPattern = (sha) =>
+	new RegExp(
+		`<!-- test-companion-proposal sha=${sha === ANY_SHA ? "([0-9a-f]+)" : escapeRe(sha)}(?: by=([^\\s>]+))?(?: workflow=([^\\s>]+))? -->`,
+	)
 
 /** Regex-escape, so a sha is matched literally. */
 const escapeRe = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -305,7 +316,7 @@ export function findProposal(comments, sha, now = Date.now()) {
 	// stay approvable rather than becoming stuck.
 	// `by=` and `workflow=` are both optional, so proposals written before
 	// either was recorded stay approvable rather than becoming stuck.
-	const re = markerPattern(escapeRe(sha))
+	const re = markerPattern(sha)
 	const ours = (comments ?? []).filter((c) => c?.user?.type === "Bot" && re.test(c.body ?? ""))
 	if (ours.length === 0) return undefined
 	const newest = ours.reduce((a, b) => (a.id >= b.id ? a : b))
@@ -517,7 +528,7 @@ export function renderProposalBody({ summary, plan, sizeNote } = {}) {
 export function findSupersededProposal(comments, sha) {
 	const current = String(sha ?? "").trim()
 	// Same pattern, sha as a group. Shared so the two cannot drift again.
-	const marker = markerPattern("([0-9a-f]+)")
+	const marker = markerPattern(ANY_SHA)
 	const stale = (comments ?? []).filter((c) => {
 		if (c?.user?.type !== "Bot") return false
 		const found = marker.exec(c.body ?? "")

@@ -896,3 +896,28 @@ describe("renderJobSummary — the answer is the report, for jobs that only answ
 		assert.ok(!/\| Line one/.test(out), "the answer must not land inside the table")
 	})
 })
+
+/**
+ * Semgrep flagged `new RegExp(shaPattern)` as a possible ReDoS (finding 9 on
+ * browserstack/github-actions#91). Both callers already escaped, so the
+ * finding was a false positive — but it was only false because every caller
+ * remembered. These pin that it is now the helper's job, which is what makes
+ * the answer stay true.
+ */
+describe("a proposal marker search is built from literals, never from raw input", () => {
+	test("a sha with regex metacharacters matches itself and nothing else", () => {
+		const nasty = "a.c*d+"
+		const body = `<!-- test-companion-proposal sha=${nasty} by=dev workflow=rca -->`
+		assert.ok(findProposal([{ user: { type: "Bot" }, body, id: 1 }], nasty), "an escaped sha must still match itself")
+		// Unescaped, `a.c*d+` would also match "abcccd" — a proposal for another commit.
+		const other = "<!-- test-companion-proposal sha=abcccd by=dev workflow=rca -->"
+		assert.equal(findProposal([{ user: { type: "Bot" }, body: other, id: 2 }], nasty), undefined)
+	})
+
+	test("a long run of repeats does not hang the search", () => {
+		// The shape ReDoS reports are about. Linear here, so it returns at once.
+		const started = Date.now()
+		findProposal([{ user: { type: "Bot" }, body: `<!-- test-companion-proposal sha=${"a".repeat(50_000)}`, id: 3 }], "a".repeat(40))
+		assert.ok(Date.now() - started < 1000, "the marker search must not backtrack")
+	})
+})

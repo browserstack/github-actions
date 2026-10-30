@@ -182,7 +182,9 @@ runs:
 
         - name: Attach the report
           if: always() && steps.run.outputs.summary-file != ''
-          uses: actions/upload-artifact@v4
+          # v4.6.2, pinned to a commit: a tag can be repointed by its owner,
+          # and this step runs in the customer's job with the customer's token.
+          uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
           with:
               name: test-companion-report
               path: ${{ steps.run.outputs.summary-file }}
@@ -194,7 +196,9 @@ runs:
         # work survives, so it is attached even when the run is about to go red.
         - name: Attach the generated test cases
           if: always() && steps.run.outputs.result-file != ''
-          uses: actions/upload-artifact@v4
+          # v4.6.2, pinned to a commit: a tag can be repointed by its owner,
+          # and this step runs in the customer's job with the customer's token.
+          uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
           with:
               name: test-companion-result
               path: ${{ steps.run.outputs.result-file }}
