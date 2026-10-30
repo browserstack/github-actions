@@ -86,7 +86,7 @@ jobs:
             # file that stays unpinned: @v1 is how you receive fixes to Test
             # Companion without editing this file. Pinning it to a commit
             # would freeze you on whatever shipped the day you copied this.
-            # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag
+            # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
             - uses: browserstack/github-actions/test-companion@v1
               with:
                   username: ${{ secrets.BROWSERSTACK_USERNAME }}
