@@ -290,6 +290,21 @@ const readMarker = (body) => {
 	return found ? { sha: found[1], requester: found[2], workflow: found[3] } : undefined
 }
 
+/**
+ * The commit a check we already posted belongs to — review of #3101, B1.
+ *
+ * The "in progress" check goes up BEFORE the CLI runs, so a later `stop` has
+ * something to cancel, and it is posted on the PULL REQUEST's head. Anything
+ * that finishes the run afterwards has to complete THAT check, on THAT
+ * commit. Reaching for the event's own sha instead is wrong on a comment run,
+ * where GITHUB_SHA is the default branch's commit: the second check lands on
+ * main and the pull request's one stays pending for ever.
+ */
+export function checkSubjectFor(made, fallbackSha) {
+	for (const sha of made?.keys?.() ?? []) return sha
+	return fallbackSha
+}
+
 /** The proposal comment: what the run would do, and how to let it — FR-43. */
 export function renderProposal(body, sha, requester, workflow) {
 	return [

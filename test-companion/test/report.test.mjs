@@ -6,6 +6,7 @@ import {
 	renderComment,
 	chooseCommentAction,
 	checkSha,
+	checkSubjectFor,
 	COMMENT_MARKER,
 	renderNotAuthorized,
 	renderUnknownRequest,
@@ -919,5 +920,40 @@ describe("a proposal marker search is built from literals, never from raw input"
 		const started = Date.now()
 		findProposal([{ user: { type: "Bot" }, body: `<!-- test-companion-proposal sha=${"a".repeat(50_000)}`, id: 3 }], "a".repeat(40))
 		assert.ok(Date.now() - started < 1000, "the marker search must not backtrack")
+	})
+})
+
+/**
+ * Review of PR #3101, blocker B1.
+ *
+ * The "in progress" check is posted BEFORE the CLI runs, so a later `stop`
+ * has something to cancel. Two paths then left it pending forever:
+ *
+ *  - a skip after the check was posted (no binding, which is most events)
+ *    exited without completing it;
+ *  - a crash posted its check against GITHUB_SHA, which on a comment run is
+ *    the DEFAULT BRANCH's commit — so the crash check landed on main and the
+ *    pull request's check stayed stuck.
+ *
+ * Both need the same thing: the commit we already posted on.
+ */
+describe("the commit a pending check belongs to", () => {
+	test("is the one we already posted on, not the event's sha", () => {
+		const made = new Map([["prhead111", 42]])
+		assert.equal(checkSubjectFor(made, "defaultbranch999"), "prhead111")
+	})
+
+	test("falls back to the event's sha when we posted nothing", () => {
+		assert.equal(checkSubjectFor(new Map(), "defaultbranch999"), "defaultbranch999")
+	})
+
+	test("with several, the first is used — one run posts one check", () => {
+		const made = new Map([["first", 1], ["second", 2]])
+		assert.equal(checkSubjectFor(made, "fallback"), "first")
+	})
+
+	test("no check and no sha is nothing, not a crash", () => {
+		assert.equal(checkSubjectFor(new Map(), undefined), undefined)
+		assert.equal(checkSubjectFor(undefined, undefined), undefined)
 	})
 })

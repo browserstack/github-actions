@@ -54,12 +54,21 @@ concurrency:
     # issue_comment carries the PR number as `issue.number`; everything else
     # falls back to the run id, which is unique, so those events never share a
     # group with each other.
+    # CONTROL EVENTS GET THEIR OWN GROUP. `stop` and a closed pull request
+    # exist to act on a run that is already going. Sharing the work group with
+    # it, and queueing rather than cancelling, meant they waited behind the
+    # very run they were sent to stop and only started once it had finished by
+    # itself — so `stop` did nothing, slowly.
     group: >-
         test-companion-${{ github.event.pull_request.number
         || github.event.issue.number
-        || github.run_id }}
+        || github.run_id }}${{
+        (github.event.action == 'closed'
+        || contains(github.event.comment.body, 'stop'))
+        && '-control' || '' }}
     # Queue rather than cancel: a run already in flight has spent credits, and
-    # the newer one waits its turn instead of superseding it.
+    # the newer one waits its turn instead of superseding it. Control events
+    # are in their own group, so this no longer delays them.
     cancel-in-progress: false
 
 jobs:

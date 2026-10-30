@@ -28,6 +28,7 @@ import {
 	renderComment,
 	chooseCommentAction,
 	checkSha,
+	checkSubjectFor,
 	renderNotAuthorized,
 	renderUnknownRequest,
 	findProposal,
@@ -132,6 +133,15 @@ function gh(args, body) {
 function appInstallationToken() {
 	const creds = appCredentials(env)
 	if (!creds) return undefined
+	// B3 (review of #3101). `creds` holds its own copy, so the key can leave
+	// the environment the moment it has been read. Everything this process
+	// starts from here on inherits that environment — including the agent,
+	// which runs with --yolo and chooses its own commands — and a signing key
+	// is not something to leave lying where they can read it.
+	//
+	// childEnvFor strips it for the agent already; this closes the same hole
+	// for everything else, and does not rely on remembering to list it.
+	delete env.TC_ACTION_APP_PRIVATE_KEY
 
 	let jwt
 	try {
@@ -366,6 +376,17 @@ function finishSkipped(reason, detail) {
 	}[reason]
 	const msg = human ?? `Nothing to do (${reason}).`
 	notice(`Test Companion: ${msg}`)
+	// B1 (review of #3101). The "in progress" check goes up before the CLI
+	// runs so a later `stop` has something to cancel. Skipping out from under
+	// it left "Test Companion" pending for ever — and `no-binding` is most
+	// events, so for most repositories that was most runs.
+	//
+	// Completing it here rather than posting the check later keeps `stop`
+	// working. Nothing deliberately leaves a check pending through this
+	// function: the proposal path posts its own and exits directly.
+	for (const sha of checksMade.keys()) {
+		postCheck(OUTCOMES.SKIPPED, { outcome: "Skipped", summary: {}, runUrl: RUN_URL }, sha, [], "completed", msg)
+	}
 	addToJobSummary(`## Test Companion\n\n${msg}${detail ? `\n\n\`${detail}\`` : ""}`)
 	setOutput("outcome", "Skipped")
 	setOutput("should-fail", "false")
@@ -1393,7 +1414,15 @@ try {
 	setOutput("outcome", OUTCOMES.COULD_NOT_RUN)
 	setOutput("should-fail", String(stepShouldFail(env.TC_ACTION_BUILD_EFFECT, OUTCOMES.COULD_NOT_RUN)))
 	try {
-		postCheck(OUTCOMES.COULD_NOT_RUN, { outcome: OUTCOMES.COULD_NOT_RUN, summary: {}, runUrl: RUN_URL }, env.GITHUB_SHA)
+		// The commit we already posted the in-progress check on, NOT the
+		// event's sha: on a comment run GITHUB_SHA is the default branch's
+		// commit, so this used to post a second check on main and leave the
+		// pull request's one pending (B1).
+		postCheck(
+			OUTCOMES.COULD_NOT_RUN,
+			{ outcome: OUTCOMES.COULD_NOT_RUN, summary: {}, runUrl: RUN_URL },
+			checkSubjectFor(checksMade, env.GITHUB_SHA),
+		)
 	} catch {
 		// Nothing left to try. The job summary above is still written.
 	}

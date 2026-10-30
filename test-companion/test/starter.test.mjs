@@ -223,3 +223,32 @@ describe("the starter workflow points somewhere that exists", () => {
 		assert.match(starter, /cli-sha256/)
 	})
 })
+
+/**
+ * Review of PR #3101, blocker B2.
+ *
+ * `stop` and a closed pull request are CONTROL events: they exist to act on a
+ * run that is already going. Sharing a concurrency group with that run, with
+ * `cancel-in-progress: false`, meant they queued behind the very thing they
+ * were sent to stop and only ran once it had finished on its own.
+ */
+describe("control events do not queue behind the run they act on", () => {
+	const starter = readFileSync(new URL("../starter-workflow.yml", import.meta.url), "utf8")
+	const group = starter.slice(starter.indexOf("concurrency:"), starter.indexOf("\njobs:"))
+
+	test("a stop comment and a closed pull request land in a separate group", () => {
+		assert.match(group, /contains\(github\.event\.comment\.body, 'stop'\)/)
+		assert.match(group, /github\.event\.action == 'closed'/)
+		assert.match(group, /-control/)
+	})
+
+	test("work runs still queue rather than cancel each other", () => {
+		// A run in flight has already spent credits; the next one waits.
+		assert.match(group, /cancel-in-progress:\s*false/)
+	})
+
+	test("the group is still per pull request, so two PRs never share one", () => {
+		assert.match(group, /github\.event\.pull_request\.number/)
+		assert.match(group, /github\.event\.issue\.number/)
+	})
+})

@@ -117,3 +117,36 @@ describe("main.mjs — the failing build is resolved after the workflow is final
 		assert.equal(calls, 1, `found ${calls} build lookups; two copies will diverge`)
 	})
 })
+
+/**
+ * Review of PR #3101, blocker B3.
+ *
+ * The App's private key arrives in the environment and stays there. Anything
+ * spawned afterwards inherits it — and the agent runs with --yolo, so "what
+ * gets spawned afterwards" includes programs it chose.
+ *
+ * The git half of B3 is closed in push-work.mjs (minimal env, hooks and
+ * fsmonitor off, config allow-listed, binary pinned). This is the other half:
+ * once the key has been used, it should not still be readable.
+ */
+describe("main.mjs — the App private key does not outlive its use", () => {
+	const at = (needle) => {
+		const i = main.indexOf(needle)
+		assert.notEqual(i, -1, `main.mjs no longer contains ${JSON.stringify(needle)}`)
+		return i
+	}
+
+	test("it is deleted from the environment", () => {
+		assert.match(
+			main,
+			/delete env\.TC_ACTION_APP_PRIVATE_KEY/,
+			"the key stays readable by every process this one starts",
+		)
+	})
+
+	test("deleted while minting the token, before anything else is spawned", () => {
+		// The agent is the process that matters: it runs with --yolo and picks
+		// its own commands.
+		assert.ok(at("delete env.TC_ACTION_APP_PRIVATE_KEY") < at('spawnSync("tc"'), "the agent could still read it")
+	})
+})
