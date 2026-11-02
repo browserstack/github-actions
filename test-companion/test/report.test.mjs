@@ -1263,6 +1263,38 @@ describe("renderComment does not let borrowed text forge a marker", () => {
 		assert.ok(body.includes("on line 4"))
 	})
 
+	// Every field of the report is borrowed, not just the two obvious ones.
+	// `line` sat beside `file` and `name` and went in raw (review finding).
+	test("a line number cannot carry a marker, and is a number or nothing", () => {
+		const body = renderComment(view({ failedTests: [{ name: "t", file: "a.js", line: `1 --> ${COMMENT_MARKER}` }] }))
+		assert.equal(body.split(COMMENT_MARKER).length - 1, 1)
+		assert.ok(!body.includes("1 -->"), "a non-numeric line was printed verbatim")
+	})
+
+	test("a real line number still shows", () => {
+		const body = renderComment(view({ failedTests: [{ name: "t", file: "a.js", line: 42 }] }))
+		assert.ok(body.includes("a.js:42"))
+	})
+
+	for (const [field, where] of [
+		["error_type", "why it stopped"],
+		["saved_to", "where the cases went"],
+		["duration", "a table cell"],
+		["event", "a table cell"],
+	]) {
+		test(`a marker in the report's ${field} (${where}) cannot reach the body`, () => {
+			const summary = {
+				workflow: "generate",
+				event: "pr_comment",
+				cases_generated: 3,
+				cases_saved: 3,
+				[field]: `x ${COMMENT_MARKER} x`,
+			}
+			const body = renderComment(view({ summary }))
+			assert.equal(body.split(COMMENT_MARKER).length - 1, 1, `${field} forged a marker`)
+		})
+	}
+
 	// Neutralising makes the text LONGER, so the size cap has to measure what
 	// actually goes out. Measuring the raw answer let one full of markers
 	// overrun the limit and the comment would not post at all.
