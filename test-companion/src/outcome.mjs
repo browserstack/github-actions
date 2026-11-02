@@ -146,3 +146,25 @@ export function stepShouldFail(buildEffect, outcome) {
 	if (outcome === OUTCOMES.SKIPPED) return false
 	return outcome !== OUTCOMES.SUCCEEDED
 }
+
+/**
+ * Did this run use up the approval it was given — FR-43.
+ *
+ * Replying `go` is spent by the run that carries the plan out, so a second
+ * `go` cannot quietly run the same work twice. That marker used to be written
+ * whatever happened, including to a run that never started.
+ *
+ * Found live (run 41463749519): an approved `fix` died in under a second
+ * because the dedupe claim had no credential to push with. No work, nothing
+ * written — and the comment still said the plan was spent. Every later `go` on
+ * that commit was refused, a fresh proposal included, and the only way out was
+ * a new commit.
+ *
+ * So the question is whether a RUN happened, not whether it went well. Red
+ * tests and a ceiling both did the work and may have written some of it;
+ * re-running those would duplicate it and charge again. A run that broke or
+ * never started did neither, and the person should be able to simply ask again.
+ */
+export function approvalWasSpent(outcome) {
+	return outcome !== OUTCOMES.RUN_BROKE && outcome !== OUTCOMES.COULD_NOT_RUN && outcome !== OUTCOMES.SKIPPED
+}

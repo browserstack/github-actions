@@ -23,7 +23,7 @@ import { findTicket } from "./ticket.mjs"
 import { childEnvFor } from "./child-env.mjs"
 import { runCapturingAnswer } from "./answer.mjs"
 import { appCredentials, signJwt, installationTokenRequest } from "./app-auth.mjs"
-import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail } from "./outcome.mjs"
+import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent } from "./outcome.mjs"
 import {
 	renderJobSummary,
 	renderComment,
@@ -1076,7 +1076,15 @@ async function main() {
 			? OUTCOMES.TESTS_FAILED
 			: outcome
 	postCheck(checkOutcome, view, checkSha(plan.context, summary, env.GITHUB_SHA), annotations)
-	if (plan.context.pr) postComment(plan.context.pr, { ...view, approvalNote, consumedMarker })
+	// Mark the plan spent only if a run actually happened. A run that broke
+	// before doing anything used to spend it anyway, which left the commit
+	// permanently unapprovable — see approvalWasSpent (live run 41463749519).
+	if (plan.context.pr)
+		postComment(plan.context.pr, {
+			...view,
+			approvalNote,
+			consumedMarker: approvalWasSpent(outcome) ? consumedMarker : "",
+		})
 
 	// Always exit 0. Whether the build goes red is the build effect's call, and
 	// a separate step applies it — otherwise the report never gets attached.
