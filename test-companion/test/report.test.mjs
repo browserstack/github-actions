@@ -1356,3 +1356,41 @@ describe("renderProposalBody does not print the answer twice", () => {
 		assert.match(body, /what this run would do/)
 	})
 })
+
+/**
+ * One comment, edited in place, is good for a tidy thread and bad for working
+ * out what you are looking at. Several people ask for different things on a
+ * busy pull request and the comment silently becomes the answer to the most
+ * recent one, with nothing saying whose request that was.
+ */
+describe("the report says which request it is answering", () => {
+	const view = (over) => ({
+		workflow: "rca",
+		outcome: OUTCOMES.SUCCEEDED,
+		summary: { workflow: "rca", event: "pr_comment" },
+		runUrl: "https://github.com/o/r/actions/runs/1",
+		...over,
+	})
+	const asked = "https://github.com/o/r/pull/25#issuecomment-6579040229"
+
+	test("it links the comment that asked", () => {
+		const body = renderJobSummary(view({ askedBy: "naimish-browse", askedAt: asked }))
+		assert.ok(body.includes(asked), "the asking comment is not linked")
+	})
+
+	test("the link is labelled with who asked", () => {
+		const body = renderJobSummary(view({ askedBy: "naimish-browse", askedAt: asked }))
+		assert.ok(body.includes(`[@naimish-browse](${asked})`))
+	})
+
+	test("knowing who asked but not where still names them", () => {
+		const body = renderJobSummary(view({ askedBy: "naimish-browse" }))
+		assert.ok(body.includes("@naimish-browse"))
+	})
+
+	// A run nobody asked for — opened on a pull request, a red build, a timer.
+	test("a run nobody asked for gets no such row", () => {
+		const body = renderJobSummary(view({ summary: { workflow: "generate", event: "pr_opened" } }))
+		assert.ok(!body.includes("Asked by"), "an unasked run claims someone asked for it")
+	})
+})

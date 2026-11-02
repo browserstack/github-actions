@@ -247,6 +247,10 @@ function fromComment(payload, inputs) {
 		},
 		requiresWriteAccess: true,
 		commenter: payload.comment?.user?.login,
+		// Where the request was made. One comment edited in place cannot
+		// otherwise say WHICH request it is answering, and on a busy pull
+		// request that is most of the question.
+		askedAt: payload.comment?.html_url,
 		// Carried so main.mjs can refuse it when no proposal is waiting.
 		approvalOnly,
 	}

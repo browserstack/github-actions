@@ -992,6 +992,11 @@ async function main() {
 		// same CLI version, which means showing it.
 		cliVersion: summary.cli_version || env.TC_ACTION_CLI_VERSION,
 		resultArtifact: hasResult ? RESULT_ARTIFACT : undefined,
+		// Which request this answers. The comment is edited in place, so on a
+		// pull request where several people have asked for different things,
+		// nothing otherwise said whose question the current contents answer.
+		askedBy: plan.commenter,
+		askedAt: plan.askedAt,
 		// `rca` and `verdict` leave no artefact — their result file holds the
 		// agent's own closing words, and that IS what was asked for. Without
 		// this the comment was a table saying "Succeeded" with no answer in it
