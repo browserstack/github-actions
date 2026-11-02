@@ -75,6 +75,31 @@ function producedLines(summary, resultArtifact) {
  */
 const FAILURES_LISTED = 20
 
+/**
+ * Make text that came from outside safe to put in our own comment.
+ *
+ * The answer and the failing-test names are the only parts of the comment
+ * this Action did not write: agent prose quoting build logs and repository
+ * files, and test names out of the run's report. On a fork's pull request all
+ * of it is attacker-influenceable, and even without malice a log line can
+ * happen to contain one of our markers.
+ *
+ * Markers are how a later run finds this comment and how a proposal's state
+ * is tracked, and they are HTML comments — so one arriving inside borrowed
+ * text is read back as our own control data.
+ *
+ * Only the OPENING delimiter needs breaking; without it `-->` is three
+ * characters of prose. `&lt;!--` still reads as `<!--` once GitHub renders
+ * it, so a quoted log line is not altered for the person reading it. Breaking
+ * the syntax rather than the words also means a legitimate explanation that
+ * mentions a marker by name still says what it meant to say.
+ *
+ * Idempotent: the output contains no `<!--` for a second pass to find.
+ */
+function inertMarkers(text) {
+	return String(text).replace(/<!--/g, "&lt;!--")
+}
+
 /** The failing tests, named, with where they are when that is known. */
 function failureLines(failedTests) {
 	const failures = failedTests ?? []
@@ -82,8 +107,8 @@ function failureLines(failedTests) {
 
 	const lines = ["**Failed:**", ""]
 	for (const t of failures.slice(0, FAILURES_LISTED)) {
-		const where = t.file ? ` — \`${t.file}${t.line ? `:${t.line}` : ""}\`` : ""
-		lines.push(`- ${t.name}${where}`)
+		const where = t.file ? ` — \`${inertMarkers(t.file)}${t.line ? `:${t.line}` : ""}\`` : ""
+		lines.push(`- ${inertMarkers(t.name)}${where}`)
 	}
 	if (failures.length > FAILURES_LISTED) {
 		lines.push(`- …and ${failures.length - FAILURES_LISTED} more.`)
@@ -162,7 +187,7 @@ export function renderJobSummary({
 	// because it is the thing the person who commented actually asked for.
 	// Everything else leaves the view untouched: no answer, nothing rendered.
 	if (String(answer ?? "").trim()) {
-		lines.push(String(answer).trim(), "")
+		lines.push(inertMarkers(String(answer).trim()), "")
 	}
 
 	lines.push(...failureLines(failedTests))
@@ -223,7 +248,7 @@ export function renderComment(args) {
 	if (body.length + tail.length <= COMMENT_LIMIT) return body + tail
 
 	const note = cutShortNote(args?.runUrl)
-	const answer = String(args?.answer ?? "").trim()
+	const answer = inertMarkers(String(args?.answer ?? "").trim())
 	if (answer) {
 		// Measure the rest by rendering it with a one-character answer, so this
 		// stays exact if the layout around it ever changes.

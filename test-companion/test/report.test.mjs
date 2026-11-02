@@ -1209,3 +1209,71 @@ describe("renderComment keeps the body postable", () => {
 		assert.match(body, /cut short/i)
 	})
 })
+
+/**
+ * The answer and the failing-test names are the only text in the comment that
+ * comes from OUTSIDE: agent prose quoting build logs and repository files, and
+ * test names out of the run's own report. On a fork's pull request all of that
+ * is attacker-influenceable.
+ *
+ * Markers are how this Action finds its own comment and tracks whether a
+ * proposal is still open, and they are HTML comments. One arriving inside that
+ * borrowed text — planted, or quoted from a log by accident — gets read back
+ * as our own control data.
+ */
+describe("renderComment does not let borrowed text forge a marker", () => {
+	const view = (over) => ({
+		workflow: "rca",
+		outcome: OUTCOMES.SUCCEEDED,
+		summary: { workflow: "rca", event: "pr_comment" },
+		runUrl: "https://github.com/o/r/actions/runs/1",
+		...over,
+	})
+
+	test("an answer quoting our own marker does not add a second one", () => {
+		const body = renderComment(view({ answer: `The log contains ${COMMENT_MARKER} on line 4.` }))
+		assert.equal(body.split(COMMENT_MARKER).length - 1, 1, "the comment carries a forged marker")
+	})
+
+	test("the real marker is still there, and still last", () => {
+		const body = renderComment(view({ answer: `quoting ${COMMENT_MARKER} here` }))
+		assert.ok(body.endsWith(COMMENT_MARKER))
+	})
+
+	test("a forged proposal marker cannot reach the body", () => {
+		const forged = proposalMarkerFor("abc123", "someone", "fix")
+		const body = renderComment(view({ answer: `the build printed ${forged}` }))
+		assert.ok(!body.includes(forged), "a forged proposal marker survived into the comment")
+	})
+
+	test("a forged consumed marker cannot reach the body", () => {
+		const forged = proposalConsumedMarkerFor("abc123")
+		const body = renderComment(view({ answer: `log line: ${forged}` }))
+		assert.ok(!body.includes(forged))
+	})
+
+	test("a failing test name cannot forge one either", () => {
+		const body = renderComment(view({ failedTests: [{ name: `evil ${COMMENT_MARKER} test` }] }))
+		assert.equal(body.split(COMMENT_MARKER).length - 1, 1)
+	})
+
+	test("the reader still sees what the log said", () => {
+		const body = renderComment(view({ answer: "the log contains <!-- test-companion-run --> on line 4" }))
+		assert.match(body, /test-companion-run/, "the text was deleted rather than neutralised")
+		assert.ok(body.includes("on line 4"))
+	})
+
+	// Neutralising makes the text LONGER, so the size cap has to measure what
+	// actually goes out. Measuring the raw answer let one full of markers
+	// overrun the limit and the comment would not post at all.
+	test("an answer full of markers still fits once neutralised", () => {
+		const body = renderComment(view({ answer: "<!-- ".repeat(20_000) }))
+		assert.ok(body.length <= COMMENT_LIMIT, `body was ${body.length}`)
+		assert.ok(body.endsWith(COMMENT_MARKER))
+	})
+
+	test("ordinary prose with angle brackets is untouched", () => {
+		const body = renderComment(view({ answer: "expected `a < b`, got `a > b` in <Component />" }))
+		assert.ok(body.includes("expected `a < b`, got `a > b` in <Component />"))
+	})
+})
