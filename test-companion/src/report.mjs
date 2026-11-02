@@ -132,6 +132,8 @@ export function renderJobSummary({
 	failedTests,
 	approvalNote,
 	answer,
+	askedBy,
+	askedAt,
 	workNote,
 	extraChecks = [],
 	warnings = [],
@@ -180,6 +182,9 @@ export function renderJobSummary({
 		// with the limit the run was given.
 		["Cost", summary.credits ? `${summary.credits} credits` : ""],
 		["CLI", cliVersion],
+		// Which request this is the answer to. The comment is edited in place,
+		// so without this a reader cannot tell whose question it answers.
+		["Asked by", askedBy ? (askedAt ? `[@${askedBy}](${askedAt})` : `@${askedBy}`) : ""],
 	].filter(([, v]) => v)
 
 	lines.push("| | |", "|---|---|")

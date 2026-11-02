@@ -648,7 +648,11 @@ describe("an unaddressed comment counts as approval only when it is exactly that
 
 	test("an ordinary review comment that merely starts with the word does NOT", () => {
 		for (const body of ["Approved, but rename the login case", "go ahead and ship it", "approved pending CI"]) {
-			assert.equal(comment(body).skip?.reason ?? comment(body).skip, "not-addressed-to-us", `${JSON.stringify(body)} must not start a run`)
+			assert.equal(
+				comment(body).skip?.reason ?? comment(body).skip,
+				"not-addressed-to-us",
+				`${JSON.stringify(body)} must not start a run`,
+			)
 		}
 	})
 
@@ -656,5 +660,41 @@ describe("an unaddressed comment counts as approval only when it is exactly that
 		const plan = comment("@test-companion go, and also cover the empty-cart case")
 		assert.equal(plan.skip, undefined)
 		assert.match(plan.context.instructions, /also cover the empty-cart case/)
+	})
+})
+
+/**
+ * The result comment is edited in place, so it can only ever show the latest
+ * run. On a pull request where several people have asked for different jobs,
+ * nothing said whose request the current contents were answering. The report
+ * links back to the asking comment, which means carrying its URL out of here.
+ */
+describe("the asking comment is carried through", () => {
+	const at = "https://github.com/acme/shop/pull/412#issuecomment-99"
+
+	test("a comment run knows where it was asked", () => {
+		const r = plan("issue_comment", {
+			action: "created",
+			issue: { number: 412, pull_request: { url: "x" } },
+			comment: { body: "@test-companion explain this failure", user: { login: "dev" }, html_url: at },
+		})
+		assert.equal(r.askedAt, at)
+		assert.equal(r.commenter, "dev")
+	})
+
+	test("a payload without the link still plans the run", () => {
+		const r = plan("issue_comment", {
+			action: "created",
+			issue: { number: 412, pull_request: { url: "x" } },
+			comment: { body: "@test-companion explain this failure", user: { login: "dev" } },
+		})
+		assert.equal(r.skip, undefined)
+		assert.equal(r.askedAt, undefined)
+		assert.equal(r.commenter, "dev")
+	})
+
+	test("a run nobody asked for has no asking comment", () => {
+		const r = plan("pull_request", { action: "opened", pull_request: pr() })
+		assert.equal(r.askedAt, undefined)
 	})
 })
