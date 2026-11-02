@@ -191,7 +191,12 @@ runs:
           env:
               GH_TOKEN: ${{ inputs.github-token }}
           run: |
-              set -euo pipefail
+              # NOT `set -e`. Most jobs never read a build, and a problem
+              # signing gh in must not take down a generate or test-pr run.
+              # The first version did exactly that: the login failed, the step
+              # exited 1, and the whole Run step was skipped (live run
+              # 41445939531). Best effort, always exit 0.
+              set -uo pipefail
               if [ -z "${GH_TOKEN:-}" ]; then
                 echo "::notice::No GitHub token, so jobs that read a failed build will not be able to fetch its logs."
                 exit 0
@@ -221,8 +226,18 @@ runs:
               mkdir -p "$GH_CONFIG_DIR"
               chmod 700 "$GH_CONFIG_DIR"
               echo "GH_CONFIG_DIR=$GH_CONFIG_DIR" >> "$GITHUB_ENV"
-              printf '%s' "$GH_TOKEN" | gh auth login --with-token
-              gh auth status 2>&1 | sed 's/^/  /'
+              # GH_TOKEN REMOVED for the login itself. gh refuses to store a
+              # credential while that variable is set — "The value of the
+              # GH_TOKEN environment variable is being used for
+              # authentication. To have GitHub CLI store credentials instead,
+              # first clear the value from the environment." The token still
+              # reaches gh on stdin; it just must not also be in the env.
+              if printf '%s' "$GH_TOKEN" | env -u GH_TOKEN -u GITHUB_TOKEN gh auth login --with-token; then
+                echo "gh signed in for this job."
+              else
+                echo "::notice::Could not sign gh in. Jobs that read a failed build will not work in this run; everything else is unaffected."
+              fi
+              exit 0
 
         - name: Run
           id: run
