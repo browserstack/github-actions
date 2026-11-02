@@ -54,3 +54,47 @@ describe("action.yml — every step that runs tc must pin it (FR-2)", () => {
 		assert.ok(checked.length >= 2, `expected at least the sign-in and run steps, checked: ${checked.join(", ")}`)
 	})
 })
+
+/**
+ * A live run's dedupe claim is a real `git push` to origin, and the workflow
+ * sets `persist-credentials: false`, so git has no credential for it. Pointing
+ * git at gh's stored credential fixes that without putting a token in any
+ * environment variable.
+ *
+ * The teardown is the part worth pinning. The helper goes in the GLOBAL git
+ * config, which outlives the job on a self-hosted runner, and it points at a
+ * config dir the cleanup deletes. Left behind, the next job on that runner
+ * gets a helper that answers nothing and a git command that stops to ask for
+ * a password instead of failing.
+ */
+describe("action.yml — git's credential helper is cleaned up", () => {
+	test("git is pointed at gh's credential", () => {
+		assert.match(actionYml, /gh auth setup-git/, "a live run's dedupe claim has no credential to push with")
+	})
+
+	test("it is scoped to one host, not every remote", () => {
+		assert.match(actionYml, /gh auth setup-git --hostname github\.com/)
+	})
+
+	test("whatever sets the helper also unsets it", () => {
+		if (!/gh auth setup-git/.test(actionYml)) return
+		assert.match(
+			actionYml,
+			/--unset-all credential\.https:\/\/github\.com\.helper/,
+			"a self-hosted runner keeps a helper pointing at a deleted config dir",
+		)
+	})
+
+	test("the teardown runs even when the job failed", () => {
+		const teardown = actionYml.slice(actionYml.indexOf("Take gh's credentials back off the runner"))
+		assert.match(teardown.slice(0, 200), /if: always\(\)/)
+	})
+
+	// Set up after the login succeeds, not before: there is nothing stored to
+	// hand git until then.
+	test("the helper is set up only on the successful-login path", () => {
+		const login = actionYml.indexOf("gh auth login --with-token")
+		const setup = actionYml.indexOf("gh auth setup-git")
+		assert.ok(login !== -1 && setup > login, "setup-git runs before there is a credential to use")
+	})
+})
