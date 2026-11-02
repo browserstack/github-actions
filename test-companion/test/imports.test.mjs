@@ -137,16 +137,20 @@ describe("main.mjs — the App private key does not outlive its use", () => {
 	}
 
 	test("it is deleted from the environment", () => {
-		assert.match(
-			main,
-			/delete env\.TC_ACTION_APP_PRIVATE_KEY/,
-			"the key stays readable by every process this one starts",
-		)
+		assert.match(main, /delete env\.TC_ACTION_APP_PRIVATE_KEY/, "the key stays readable by every process this one starts")
 	})
 
 	test("deleted while minting the token, before anything else is spawned", () => {
 		// The agent is the process that matters: it runs with --yolo and picks
 		// its own commands.
-		assert.ok(at("delete env.TC_ACTION_APP_PRIVATE_KEY") < at('spawnSync("tc"'), "the agent could still read it")
+		//
+		// Anchored on the CALL. The spawn itself moved into answer.mjs when the
+		// Action started reading the agent's output (STM-5434), and anchoring on
+		// `spawn(` would now find that module's own line, which says nothing
+		// about the order things happen here.
+		assert.ok(
+			at("delete env.TC_ACTION_APP_PRIVATE_KEY") < at('await runCapturingAnswer("tc"'),
+			"the agent could still read it",
+		)
 	})
 })

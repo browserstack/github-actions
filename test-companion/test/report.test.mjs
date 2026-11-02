@@ -8,6 +8,7 @@ import {
 	checkSha,
 	checkSubjectFor,
 	COMMENT_MARKER,
+	COMMENT_LIMIT,
 	renderNotAuthorized,
 	renderUnknownRequest,
 	proposalMarkerFor,
@@ -415,7 +416,13 @@ describe("reading a paginated gh response — FR-29", () => {
 
 describe("who asked for a proposal — FR-43", () => {
 	const SHA = "abc123"
-	const bot = (body, over = {}) => ({ id: 10, user: { type: "Bot", login: US }, body, created_at: new Date().toISOString(), ...over })
+	const bot = (body, over = {}) => ({
+		id: 10,
+		user: { type: "Bot", login: US },
+		body,
+		created_at: new Date().toISOString(),
+		...over,
+	})
 
 	test("the marker records who asked", () => {
 		assert.match(proposalMarkerFor(SHA, "octocat"), /by=octocat/)
@@ -548,7 +555,12 @@ describe("the approved plan handed to the run — FR-43", () => {
 
 	test("findProposal returns the body, because the run has to read it", () => {
 		const body = `## what I plan to do\n- case one\n\n${proposalMarkerFor(SHA, "octocat")}`
-		const found = findProposal([{ id: 1, user: { type: "Bot", login: US }, body, created_at: new Date().toISOString() }], SHA, undefined, US)
+		const found = findProposal(
+			[{ id: 1, user: { type: "Bot", login: US }, body, created_at: new Date().toISOString() }],
+			SHA,
+			undefined,
+			US,
+		)
 		assert.ok(found.body.includes("case one"))
 	})
 
@@ -727,7 +739,9 @@ describe("the proposal marker carries the JOB, not just the commit (FR-43)", () 
 
 	/** Proposals written before the marker carried a job stay approvable. */
 	test("a marker with no workflow still matches, and reports none", () => {
-		const old = [{ user: { type: "Bot", login: US }, body: "plan\n\n<!-- test-companion-proposal sha=abc1234 by=someone -->" }]
+		const old = [
+			{ user: { type: "Bot", login: US }, body: "plan\n\n<!-- test-companion-proposal sha=abc1234 by=someone -->" },
+		]
 		const found = findProposal(old, "abc1234", undefined, US)
 		assert.ok(found, "an older marker must still be found")
 		assert.equal(found.workflow, undefined)
@@ -915,7 +929,10 @@ describe("a proposal marker search is built from literals, never from raw input"
 	test("a sha with regex metacharacters matches itself and nothing else", () => {
 		const nasty = "a.c*d+"
 		const body = `<!-- test-companion-proposal sha=${nasty} by=dev workflow=rca -->`
-		assert.ok(findProposal([{ user: { type: "Bot", login: US }, body, id: 1 }], nasty, undefined, US), "an escaped sha must still match itself")
+		assert.ok(
+			findProposal([{ user: { type: "Bot", login: US }, body, id: 1 }], nasty, undefined, US),
+			"an escaped sha must still match itself",
+		)
 		// Unescaped, `a.c*d+` would also match "abcccd" — a proposal for another commit.
 		const other = "<!-- test-companion-proposal sha=abcccd by=dev workflow=rca -->"
 		assert.equal(findProposal([{ user: { type: "Bot", login: US }, body: other, id: 2 }], nasty, undefined, US), undefined)
@@ -924,7 +941,12 @@ describe("a proposal marker search is built from literals, never from raw input"
 	test("a long run of repeats does not hang the search", () => {
 		// The shape ReDoS reports are about. Linear here, so it returns at once.
 		const started = Date.now()
-		findProposal([{ user: { type: "Bot", login: US }, body: `<!-- test-companion-proposal sha=${"a".repeat(50_000)}`, id: 3 }], "a".repeat(40), undefined, US)
+		findProposal(
+			[{ user: { type: "Bot", login: US }, body: `<!-- test-companion-proposal sha=${"a".repeat(50_000)}`, id: 3 }],
+			"a".repeat(40),
+			undefined,
+			US,
+		)
 		assert.ok(Date.now() - started < 1000, "the marker search must not backtrack")
 	})
 })
@@ -954,7 +976,10 @@ describe("the commit a pending check belongs to", () => {
 	})
 
 	test("with several, the first is used — one run posts one check", () => {
-		const made = new Map([["first", 1], ["second", 2]])
+		const made = new Map([
+			["first", 1],
+			["second", 2],
+		])
 		assert.equal(checkSubjectFor(made, "fallback"), "first")
 	})
 
@@ -978,7 +1003,12 @@ describe("the commit a pending check belongs to", () => {
  */
 describe("only OUR OWN comments count as ours", () => {
 	const marker = (sha) => `<!-- test-companion-proposal sha=${sha} by=dev workflow=test-pr -->`
-	const them = (body, id = 9) => ({ user: { type: "Bot", login: "github-actions[bot]" }, body, id, created_at: new Date().toISOString() })
+	const them = (body, id = 9) => ({
+		user: { type: "Bot", login: "github-actions[bot]" },
+		body,
+		id,
+		created_at: new Date().toISOString(),
+	})
 	const us = (body, id = 1) => ({ user: { type: "Bot", login: US }, body, id, created_at: new Date().toISOString() })
 
 	test("another bot's proposal is NOT approvable", () => {
@@ -1005,7 +1035,12 @@ describe("only OUR OWN comments count as ours", () => {
 	})
 
 	test("a human quoting the marker is still not us", () => {
-		const human = { user: { type: "User", login: "dev" }, body: marker("abc123"), id: 3, created_at: new Date().toISOString() }
+		const human = {
+			user: { type: "User", login: "dev" },
+			body: marker("abc123"),
+			id: 3,
+			created_at: new Date().toISOString(),
+		}
 		assert.equal(findProposal([human], "abc123", Date.now(), US), undefined)
 	})
 })
@@ -1077,7 +1112,10 @@ describe("a plan that was already used says so, rather than blaming the commit",
 	const ours = (body, id) => ({ user: { type: "Bot", login: US }, body, id, created_at: new Date().toISOString() })
 
 	test("an approved plan on THIS commit is reported as used", () => {
-		const comments = [ours(`plan\n\n${proposalMarkerFor(SHA, "dev", "generate")}`, 1), ours(`ran\n\n${proposalConsumedMarkerFor(SHA)}`, 2)]
+		const comments = [
+			ours(`plan\n\n${proposalMarkerFor(SHA, "dev", "generate")}`, 1),
+			ours(`ran\n\n${proposalConsumedMarkerFor(SHA)}`, 2),
+		]
 		assert.equal(proposalAlreadyUsed(comments, SHA, US), "approved")
 	})
 
@@ -1099,5 +1137,75 @@ describe("a plan that was already used says so, rather than blaming the commit",
 	test("another bot cannot declare our plan used", () => {
 		const theirs = { user: { type: "Bot", login: "github-actions[bot]" }, body: proposalConsumedMarkerFor(SHA), id: 3 }
 		assert.equal(proposalAlreadyUsed([theirs], SHA, US), undefined)
+	})
+})
+
+/**
+ * STM-5434: now that EVERY job's answer reaches the comment, the comment can
+ * be too big to post.
+ *
+ * GitHub refuses a body over 65,536 characters outright — the call fails and
+ * the run reports nothing at all, which is worse than the missing answer this
+ * change set out to fix. `generate` is the realistic case: thirty test cases
+ * described in prose.
+ */
+describe("renderComment keeps the body postable", () => {
+	const view = (answer) => ({
+		workflow: "fix",
+		outcome: OUTCOMES.SUCCEEDED,
+		summary: { workflow: "fix", event: "pr_comment", duration: "49s", credits: 6 },
+		runUrl: "https://github.com/o/r/actions/runs/1",
+		answer,
+	})
+
+	test("a normal comment is untouched", () => {
+		const body = renderComment(view("The import points one directory too high."))
+		assert.ok(body.includes("The import points one directory too high."))
+		assert.ok(body.endsWith(COMMENT_MARKER))
+		assert.ok(body.length < COMMENT_LIMIT)
+	})
+
+	test("an oversized answer is cut to fit", () => {
+		const body = renderComment(view("word ".repeat(40_000)))
+		assert.ok(body.length <= COMMENT_LIMIT, `body was ${body.length}`)
+	})
+
+	test("the marker survives the cut, or every run posts a second comment", () => {
+		const body = renderComment(view("word ".repeat(40_000)))
+		assert.ok(body.endsWith(COMMENT_MARKER))
+	})
+
+	test("the start of the answer is what is kept", () => {
+		const body = renderComment(view("THE CAUSE IS THE IMPORT.\n" + "filler ".repeat(40_000)))
+		assert.ok(body.includes("THE CAUSE IS THE IMPORT."))
+	})
+
+	test("it says it was cut and where the rest is", () => {
+		const body = renderComment(view("word ".repeat(40_000)))
+		assert.match(body, /cut short/i)
+		assert.ok(body.includes("https://github.com/o/r/actions/runs/1"))
+	})
+
+	test("the table still renders above the cut answer", () => {
+		const body = renderComment(view("word ".repeat(40_000)))
+		assert.ok(body.includes("| Job | fix |"))
+		assert.ok(body.includes("Test Companion — Succeeded"))
+	})
+
+	// Not the answer's fault. The listed failures are capped, but a test NAME
+	// comes from the run's own output and nothing bounds it, so the guarantee
+	// has to hold without an answer to cut.
+	test("a body that is too big even without the answer is still postable", () => {
+		const failedTests = [{ name: "deeply/nested/".repeat(6000) + "test_name" }]
+		const body = renderComment({ ...view(undefined), failedTests })
+		assert.ok(body.length <= COMMENT_LIMIT, `body was ${body.length}`)
+		assert.ok(body.endsWith(COMMENT_MARKER))
+		assert.match(body, /cut short/i)
+	})
+
+	test("no run link still produces a usable notice", () => {
+		const body = renderComment({ ...view("word ".repeat(40_000)), runUrl: undefined })
+		assert.ok(body.length <= COMMENT_LIMIT)
+		assert.match(body, /cut short/i)
 	})
 })

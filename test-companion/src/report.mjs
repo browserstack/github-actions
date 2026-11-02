@@ -27,8 +27,7 @@ import { CAPABILITIES } from "./intent.mjs"
  * Fails CLOSED: with no login to compare against, nothing is ours. The worst
  * case is proposing again; the alternative is running someone else's text.
  */
-export const isOurs = (comment, us) =>
-	Boolean(us) && comment?.user?.type === "Bot" && comment?.user?.login === us
+export const isOurs = (comment, us) => Boolean(us) && comment?.user?.type === "Bot" && comment?.user?.login === us
 
 export const COMMENT_MARKER = "<!-- test-companion-run -->"
 
@@ -194,9 +193,56 @@ export function renderJobSummary({
 	return lines.join("\n")
 }
 
-/** The pull request comment — the same content, plus the marker. */
+/**
+ * The longest body GitHub will accept on an issue comment.
+ *
+ * Over this the API rejects the call outright, so the run reports NOTHING —
+ * no table, no answer, no link. Worse than the missing answer that reading
+ * every job's closing words set out to fix (STM-5434).
+ */
+export const COMMENT_LIMIT = 65536
+
+/** Where the whole thing can still be read when the comment could not hold it. */
+function cutShortNote(runUrl) {
+	const where = runUrl ? `the [run page](${runUrl})` : "the run's summary"
+	return `\n\n_Cut short to fit a comment. The full version is on ${where}._`
+}
+
+/**
+ * The pull request comment — the same content, plus the marker.
+ *
+ * The answer is the one field with no natural bound: `generate` describing
+ * thirty test cases runs to tens of thousands of characters. It is cut before
+ * anything else, because the table, the links and the marker are what make the
+ * comment work at all — and the marker in particular is how the next run finds
+ * this comment to edit. Lose it and every run posts a new one (FR-29).
+ */
 export function renderComment(args) {
-	return `${renderJobSummary(args)}\n\n${COMMENT_MARKER}`
+	const tail = `\n\n${COMMENT_MARKER}`
+	const body = renderJobSummary(args)
+	if (body.length + tail.length <= COMMENT_LIMIT) return body + tail
+
+	const note = cutShortNote(args?.runUrl)
+	const answer = String(args?.answer ?? "").trim()
+	if (answer) {
+		// Measure the rest by rendering it with a one-character answer, so this
+		// stays exact if the layout around it ever changes.
+		const overhead = renderJobSummary({ ...args, answer: "x" }).length - 1
+		const room = COMMENT_LIMIT - overhead - tail.length - note.length
+		if (room > 0) {
+			// Back up to a line break where there is one nearby: cutting inside
+			// a code fence leaves it unterminated and the rest of the comment
+			// renders as code.
+			const cut = answer.slice(0, room)
+			const nl = cut.lastIndexOf("\n")
+			const kept = nl > room / 2 ? cut.slice(0, nl) : cut
+			return renderJobSummary({ ...args, answer: kept + note }) + tail
+		}
+	}
+	// Over the limit with no answer at all — a run with thousands of failing
+	// tests does this. Trim the rendered body itself; the marker still goes on.
+	const rest = renderJobSummary({ ...args, answer: undefined })
+	return rest.slice(0, Math.max(0, COMMENT_LIMIT - tail.length - note.length)) + note + tail
 }
 
 /**

@@ -21,6 +21,7 @@ import { decideGate, GATE, describeChangeSize, ANSWER_JOBS } from "./gate.mjs"
 import { mayAsk, describeTestRepoAccess } from "./access.mjs"
 import { findTicket } from "./ticket.mjs"
 import { childEnvFor } from "./child-env.mjs"
+import { runCapturingAnswer } from "./answer.mjs"
 import { appCredentials, signJwt, installationTokenRequest } from "./app-auth.mjs"
 import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail } from "./outcome.mjs"
 import {
@@ -82,7 +83,6 @@ const SUMMARY_FILE = join(REPORT_DIR, "test-companion-report.md")
 // the result. For a preview run — which refuses to save by design — this file
 // is the only place the generated cases survive (FR-20).
 const RESULT_FILE = join(REPORT_DIR, "test-companion-result.md")
-
 
 // The artifact the result is uploaded under, named here so the report can
 // point a reader at it by name. Must match the upload step in action.yml.
@@ -456,7 +456,7 @@ function finishWithStarter(path) {
 	process.exit(0)
 }
 
-function main() {
+async function main() {
 	// Release 4: act as the App when it is installed, so the comment and the
 	// tick carry Test Companion's name. Before anything else talks to GitHub.
 	const appToken = appInstallationToken()
@@ -709,7 +709,9 @@ function main() {
 			// posts a SECOND check and the proposal's one stays pending beside
 			// it for the life of the branch (M5). The sweep already does this;
 			// the approval path did not.
-			const pending = inFlightCheckId(gh(["api", `repos/${REPO}/commits/${plan.context.sha}/check-runs?per_page=100`])?.check_runs)
+			const pending = inFlightCheckId(
+				gh(["api", `repos/${REPO}/commits/${plan.context.sha}/check-runs?per_page=100`])?.check_runs,
+			)
 			if (pending) rememberCheck(plan.context.sha, pending)
 			consumedMarker = proposalConsumedMarkerFor(plan.context.sha)
 
@@ -919,7 +921,7 @@ function main() {
 	// environment is readable by them. Stripped rather than trusted, because the
 	// product only scrubs these on BrowserStack-hosted runs, not a customer's
 	// own machine (FR-3).
-	const run = spawnSync("tc", args, { stdio: "inherit", encoding: "utf8", env: childEnvFor(env) })
+	const run = await runCapturingAnswer("tc", args, childEnvFor(env))
 	const exitCode = run.status ?? 1
 
 	// The report is absent whenever the process was killed, so treat it as a
@@ -997,7 +999,15 @@ function main() {
 		// cli/pkg/cli/commands/narrative.go; a job missing there writes nothing
 		// to the file, so a mismatch shows up as an empty answer, never as
 		// someone else's output.
-		answer: hasResult && ANSWER_JOBS.has(plan.workflow ?? summary.workflow) ? readResult() : undefined,
+		// STM-5434: the agent's closing words, for EVERY job. They were always
+		// in the output stream (run_render.go emits an `answer` event whatever
+		// the verb); the Action inherited stdout and so never read them, and
+		// `fix` posted a "Succeeded" table with its diagnosis nowhere in sight.
+		// The result file stays as the fallback for the two verbs the CLI does
+		// write it for, so a stream we fail to parse cannot lose what worked.
+		// It stays gated on ANSWER_JOBS: for `generate` that file holds test
+		// cases, not prose, and dumping those here would be someone else's output.
+		answer: run.answer || (hasResult && ANSWER_JOBS.has(plan.workflow ?? summary.workflow) ? readResult() : undefined),
 		failedTests,
 	}
 	// FR-43: a held request posts what it WOULD do and ends. The run that
@@ -1112,7 +1122,7 @@ function saveWork(saving, plan) {
 		return [
 			`**Could not save this work to \`${branch}\`:** the repository's git config carries`,
 			`${unexpected.map((k) => `\`${k}\``).join(", ")}, which \`actions/checkout\` does not write. Config is`,
-			"where git keeps its \"run this program\" hooks and its URL rewrites, so Test Companion will not",
+			'where git keeps its "run this program" hooks and its URL rewrites, so Test Companion will not',
 			"commit against a config it does not recognise. Nothing was committed or pushed — the run's",
 			"changes are in the job's workspace only.",
 		].join(" ")
@@ -1162,7 +1172,8 @@ function saveWork(saving, plan) {
 	// host — which would hand the App token to it. The credential header is
 	// scoped to this exact URL for the same reason.
 	const target = pushUrlFor(REPO, env.GITHUB_SERVER_URL)
-	if (!target) return renderPushNote({ branch, files: push, skipped: skip, error: `cannot push: bad repository name "${REPO}"` })
+	if (!target)
+		return renderPushNote({ branch, files: push, skipped: skip, error: `cannot push: bad repository name "${REPO}"` })
 	const pushed = git(["push", target, `HEAD:refs/heads/${branch}`], pushCredentialEnv(env.GH_TOKEN, target))
 	if (!pushed.ok) {
 		// The one failure worth spelling out, because it is a settings problem
@@ -1520,7 +1531,7 @@ function postComment(pr, view) {
 // run", which is precisely what happened, and still exit 0 so the build-effect
 // step is what decides whether the build goes red.
 try {
-	main()
+	await main()
 } catch (e) {
 	const message = e?.stack || String(e)
 	const fence = "```"
