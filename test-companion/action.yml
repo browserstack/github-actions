@@ -202,6 +202,16 @@ runs:
                 echo "gh is already signed in; leaving it alone."
                 exit 0
               fi
+
+              # A JOB-SCOPED config dir, never the runner's shared one. A
+              # self-hosted runner outlives the job, so signing in to
+              # ~/.config/gh would leave the NEXT job — possibly another
+              # repository's — holding this repository's token. Cleaned up
+              # below whatever happens.
+              export GH_CONFIG_DIR="${RUNNER_TEMP}/tc-gh-config"
+              mkdir -p "$GH_CONFIG_DIR"
+              chmod 700 "$GH_CONFIG_DIR"
+              echo "GH_CONFIG_DIR=$GH_CONFIG_DIR" >> "$GITHUB_ENV"
               printf '%s' "$GH_TOKEN" | gh auth login --with-token
               gh auth status 2>&1 | sed 's/^/  /'
 
@@ -256,6 +266,20 @@ runs:
 
         # Separate from the run step so the report is attached even when the build
         # effect says this run should redden the build.
+        # The token must not outlive the job. On a GitHub-hosted runner the
+        # machine is destroyed anyway; on a self-hosted one it is not, and
+        # this is the difference between a token that lives for one job and
+        # one that waits around for the next.
+        - name: Take gh's credentials back off the runner
+          if: always()
+          shell: bash
+          run: |
+              set -uo pipefail
+              [ -n "${GH_CONFIG_DIR:-}" ] || exit 0
+              gh auth logout --hostname github.com >/dev/null 2>&1 || true
+              rm -rf "$GH_CONFIG_DIR"
+              echo "gh credentials removed from this runner."
+
         - name: Apply the build effect
           if: always() && steps.run.outputs.should-fail == 'true'
           shell: bash
