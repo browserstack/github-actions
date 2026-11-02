@@ -198,8 +198,17 @@ runs:
               fi
               # Already signed in is not a failure — a self-hosted runner may
               # have its own credentials, and overwriting them is not ours to do.
-              if gh auth status >/dev/null 2>&1; then
-                echo "gh is already signed in; leaving it alone."
+              #
+              # Checked with GH_TOKEN REMOVED, because this step has the token
+              # in its own environment and `gh auth status` reports that as
+              # being signed in. The first version of this check passed for
+              # that reason, skipped the login, and left the CLI — which does
+              # NOT get the token — still unauthenticated. The run then failed
+              # exactly as before (live run 41445565651). What matters here is
+              # whether a credential is STORED, not whether this shell happens
+              # to hold one.
+              if env -u GH_TOKEN -u GITHUB_TOKEN gh auth status >/dev/null 2>&1; then
+                echo "gh already has stored credentials on this runner; leaving them alone."
                 exit 0
               fi
 
