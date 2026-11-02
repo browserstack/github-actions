@@ -1309,3 +1309,50 @@ describe("renderComment does not let borrowed text forge a marker", () => {
 		assert.ok(body.includes("expected `a < b`, got `a > b` in <Component />"))
 	})
 })
+
+/**
+ * Found on a live run the moment every job started showing its answer.
+ *
+ * `test-pr`, proposing, is one of the verbs the CLI DOES write its closing
+ * words to the result file for. The proposal renders the job summary — which
+ * now carries that same text, caught off the output stream — and then appends
+ * the result file underneath it. The reader got the whole explanation twice.
+ */
+describe("renderProposalBody does not print the answer twice", () => {
+	const plan = "Here is exactly what needs to be applied to `tests/pricing.spec.js`:\n\n- fix the import"
+
+	test("a plan that repeats the summary's answer is not shown again", () => {
+		const summary = `## Test Companion — Succeeded\n\n${plan}\n\n[Full run](https://x)`
+		const body = renderProposalBody({ summary, plan })
+		assert.equal(body.split("fix the import").length - 1, 1, "the answer was printed twice")
+	})
+
+	test("the summary is still there in full", () => {
+		const summary = `## Test Companion — Succeeded\n\n${plan}\n\n[Full run](https://x)`
+		const body = renderProposalBody({ summary, plan })
+		assert.ok(body.includes("## Test Companion — Succeeded"))
+		assert.ok(body.includes("[Full run](https://x)"))
+	})
+
+	// generate is the case that must NOT change: its result file holds the
+	// case list, which is different text from the prose summary above it.
+	test("a plan that is different content is still appended", () => {
+		const summary = "## Test Companion — Succeeded\n\n11 test cases created, covering the gift card."
+		const casesList = "# Test Companion result — generate\n\n## T001 — Gift card partially covers order"
+		const body = renderProposalBody({ summary, plan: casesList })
+		assert.ok(body.includes("11 test cases created"))
+		assert.ok(body.includes("## T001 — Gift card partially covers order"))
+	})
+
+	test("whitespace differences do not defeat the check", () => {
+		const summary = `## Test Companion\n\n${plan}\n`
+		const body = renderProposalBody({ summary, plan: `  ${plan}  \n\n` })
+		assert.equal(body.split("fix the import").length - 1, 1)
+	})
+
+	test("with no plan at all the summary still stands alone", () => {
+		const body = renderProposalBody({ summary: "## Test Companion — Succeeded", plan: "" })
+		assert.ok(body.includes("## Test Companion — Succeeded"))
+		assert.match(body, /what this run would do/)
+	})
+})
