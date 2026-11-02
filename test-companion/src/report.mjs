@@ -51,7 +51,7 @@ function producedLines(summary, resultArtifact) {
 
 	const lines = [`**Test cases:** ${generated} generated, ${saved} saved to Test Management.`]
 	if (saved > 0 && summary.saved_to) {
-		lines.push(`They are in \`${summary.saved_to}\`.`)
+		lines.push(`They are in \`${inertMarkers(summary.saved_to)}\`.`)
 	}
 	if (saved < generated) {
 		lines.push(
@@ -107,7 +107,11 @@ function failureLines(failedTests) {
 
 	const lines = ["**Failed:**", ""]
 	for (const t of failures.slice(0, FAILURES_LISTED)) {
-		const where = t.file ? ` — \`${inertMarkers(t.file)}${t.line ? `:${t.line}` : ""}\`` : ""
+		// A number or nothing: `line` is borrowed from the same report as the
+		// rest and went in raw, which neutralising its two siblings had missed.
+		const n = Number(t.line)
+		const at = Number.isInteger(n) && n > 0 ? `:${n}` : ""
+		const where = t.file ? ` — \`${inertMarkers(t.file)}${at}\`` : ""
 		lines.push(`- ${inertMarkers(t.name)}${where}`)
 	}
 	if (failures.length > FAILURES_LISTED) {
@@ -179,7 +183,7 @@ export function renderJobSummary({
 	].filter(([, v]) => v)
 
 	lines.push("| | |", "|---|---|")
-	for (const [k, v] of rows) lines.push(`| ${k} | ${v} |`)
+	for (const [k, v] of rows) lines.push(`| ${k} | ${inertMarkers(v)} |`)
 	lines.push("")
 
 	// For `rca` and `verdict` this IS the report — they produce no artefact, only
@@ -201,7 +205,7 @@ export function renderJobSummary({
 	}
 
 	if (summary.error_type) {
-		lines.push(`**Why it stopped:** \`${summary.error_type}\``, "")
+		lines.push(`**Why it stopped:** \`${inertMarkers(summary.error_type)}\``, "")
 	}
 	if (Object.keys(summary).length === 0) {
 		// Being explicit beats an empty page: an absent report is itself a finding.
