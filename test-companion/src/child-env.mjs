@@ -36,6 +36,11 @@ export function childEnvFor(source) {
 		"RUNNER_OS",
 		"RUNNER_ARCH",
 		"RUNNER_TEMP",
+		// Where this job's gh credentials live. A PATH, not a secret — but
+		// without it the CLI's gh looks in the runner's shared config, finds
+		// nothing, and jobs that read a failed build fail with "not signed
+		// in". The token itself still never enters this environment.
+		"GH_CONFIG_DIR",
 	])
 	// The exception to the TC_ prefix below, and the reason this is an explicit
 	// list rather than a rule. The App's private key is TC_ACTION_APP_* — it
