@@ -646,6 +646,17 @@ export function renderProposalBody({ summary, plan, sizeNote } = {}) {
 	if (String(summary ?? "").trim()) parts.push(summary, "")
 
 	const body = String(plan ?? "").trim()
+	// The answer is now caught off the run's own output and rendered in the
+	// summary above, for every job. For the verbs whose result file holds that
+	// SAME closing text — `test-pr` proposing is one — appending it here
+	// printed the whole explanation twice (live run 41457337090). Compared on
+	// squashed whitespace, because the two copies travel by different routes
+	// and need not agree on line breaks.
+	const squash = (t) =>
+		String(t ?? "")
+			.replace(/\s+/g, " ")
+			.trim()
+	const alreadyAbove = body !== "" && squash(summary).includes(squash(body))
 	// Only `test-pr` writes a separate plan file. For every other job the
 	// proposal run is a PREVIEW run — it does the work and writes nothing —
 	// so its report above IS what is being approved. Saying "there is nothing
@@ -653,7 +664,7 @@ export function renderProposalBody({ summary, plan, sizeNote } = {}) {
 	const noPlan = String(summary ?? "").trim()
 		? "_The report above is what this run would do. Nothing has been written._"
 		: "_This run did not produce a plan — there is nothing here to approve. The run log will say why; re-run once that is fixed._"
-	parts.push(body || noPlan)
+	parts.push(alreadyAbove ? noPlan : body || noPlan)
 	return parts.join("\n")
 }
 
