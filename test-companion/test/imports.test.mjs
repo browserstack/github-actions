@@ -154,3 +154,27 @@ describe("main.mjs — the App private key does not outlive its use", () => {
 		)
 	})
 })
+
+/**
+ * Live run 41463749519. An approved `fix` broke in under a second, did no
+ * work, wrote nothing — and the result comment still carried the marker that
+ * says the plan was spent. Every later `go` on that commit was refused, a
+ * fresh proposal included, with no way out but a new commit.
+ *
+ * The decision lives in approvalWasSpent and is unit-tested there. What cannot
+ * be unit-tested is that main.mjs actually asks it, so it is pinned here.
+ */
+describe("main.mjs — a run that never ran does not spend the approval", () => {
+	test("the consumed marker is gated on the outcome", () => {
+		assert.match(
+			main,
+			/consumedMarker: approvalWasSpent\(outcome\) \? consumedMarker : ""/,
+			"an approval is spent whatever happened, so a broken run blocks the commit for good",
+		)
+	})
+
+	test("it is never passed unconditionally", () => {
+		const bare = /\{\s*\.\.\.view,\s*approvalNote,\s*consumedMarker\s*\}/
+		assert.ok(!bare.test(main), "the marker is attached without asking whether the run happened")
+	})
+})

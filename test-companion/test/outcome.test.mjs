@@ -1,6 +1,6 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
-import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail } from "../src/outcome.mjs"
+import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent } from "../src/outcome.mjs"
 
 describe("parseSummary", () => {
 	test("reads the CLI's key: value report", () => {
@@ -150,5 +150,55 @@ describe("resolveOutcome — an unbound event is skipped, not broken", () => {
 	test("a skipped outcome never reddens the step or the check", () => {
 		assert.equal(stepShouldFail(OUTCOMES.SKIPPED, "fail"), false)
 		assert.notEqual(checkConclusion(OUTCOMES.SKIPPED), "failure")
+	})
+})
+
+/**
+ * Approving a plan is spent by the run that carries it out — but only if a run
+ * actually happened.
+ *
+ * Found live: an approved `fix` died in under a second before doing any work
+ * (the dedupe claim had no credential, run 41463749519), and the result comment
+ * still carried the consumed marker. Every later `go` on that commit was then
+ * refused — "already been approved and run on this commit" — including after a
+ * fresh proposal was put up. The only way out was a new commit.
+ *
+ * The dedupe claim already has this property: it releases itself on a
+ * non-success outcome. An approval should behave the same way.
+ */
+describe("approvalWasSpent", () => {
+	test("a run that succeeded spends it", () => {
+		assert.equal(approvalWasSpent(OUTCOMES.SUCCEEDED), true)
+	})
+
+	// The run did the work it was approved for. Red tests are a result, not a
+	// failure to run — re-running would redo the work and charge for it again.
+	test("failing tests still spend it", () => {
+		assert.equal(approvalWasSpent(OUTCOMES.TESTS_FAILED), true)
+	})
+
+	// It ran, did part of the work, and may already have written some of it.
+	test("stopping at a limit spends it", () => {
+		assert.equal(approvalWasSpent(OUTCOMES.STOPPED_AT_LIMIT), true)
+	})
+
+	test("a run that broke does NOT spend it", () => {
+		assert.equal(approvalWasSpent(OUTCOMES.RUN_BROKE), false)
+	})
+
+	test("a run that could not start does NOT spend it", () => {
+		assert.equal(approvalWasSpent(OUTCOMES.COULD_NOT_RUN), false)
+	})
+
+	test("a skipped run does NOT spend it", () => {
+		assert.equal(approvalWasSpent(OUTCOMES.SKIPPED), false)
+	})
+
+	// Totality: a new outcome must be considered rather than silently spending
+	// an approval because it is not one of the two named failures.
+	test("every outcome has an answer", () => {
+		for (const o of Object.values(OUTCOMES)) {
+			assert.equal(typeof approvalWasSpent(o), "boolean", `${o} has no answer`)
+		}
 	})
 })
