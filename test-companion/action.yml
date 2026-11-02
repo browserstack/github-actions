@@ -168,6 +168,43 @@ runs:
               # on an interactive sign-in.
               timeout 120 tc auth login
 
+        # Jobs that read a failed build — rca, verdict, fix — fetch its logs
+        # with `gh`, and on a runner `gh` has no credentials. Three live runs
+        # on 2 Nov all got as far as finding the right build and then stopped
+        # with "The GitHub CLI is installed but not signed in… run `gh auth
+        # login` in your terminal". Nobody can follow that here: there is no
+        # terminal, no browser, and nobody watching.
+        #
+        # The token is already in this job for our own API calls, so sign gh
+        # in with it. Deliberately NOT exported into the environment the CLI
+        # inherits: childEnvFor keeps only an allowlist, and the agent's own
+        # shell commands must not be able to read the token out of env.
+        #
+        # This does put the token in gh's config, where `gh auth token` would
+        # print it. That is the same exposure the IDE already has, where the
+        # user's own gh is signed in — so this brings CI level with the
+        # editor rather than below it. The tighter fix (hand the token only
+        # to the gh process, and scrub it from agent shells) needs a brain
+        # change and a CLI release; this does not.
+        - name: Sign gh in, so a failed build can be read
+          shell: bash
+          env:
+              GH_TOKEN: ${{ inputs.github-token }}
+          run: |
+              set -euo pipefail
+              if [ -z "${GH_TOKEN:-}" ]; then
+                echo "::notice::No GitHub token, so jobs that read a failed build will not be able to fetch its logs."
+                exit 0
+              fi
+              # Already signed in is not a failure — a self-hosted runner may
+              # have its own credentials, and overwriting them is not ours to do.
+              if gh auth status >/dev/null 2>&1; then
+                echo "gh is already signed in; leaving it alone."
+                exit 0
+              fi
+              printf '%s' "$GH_TOKEN" | gh auth login --with-token
+              gh auth status 2>&1 | sed 's/^/  /'
+
         - name: Run
           id: run
           shell: bash
