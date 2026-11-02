@@ -234,6 +234,24 @@ runs:
               # reaches gh on stdin; it just must not also be in the env.
               if printf '%s' "$GH_TOKEN" | env -u GH_TOKEN -u GITHUB_TOKEN gh auth login --with-token; then
                 echo "gh signed in for this job."
+                # Let git use that credential too, for this host only.
+                #
+                # A live run's dedupe claim is a real `git push` to origin
+                # (FR-14). With `persist-credentials: false` in the workflow —
+                # which is the right setting, and what the starter ships —
+                # there is no credential for it, so a live `fix` or `generate`
+                # died in under a second at the claim, before doing any work
+                # (live run 41463749519). Preview never hit it, which is why
+                # this went unnoticed.
+                #
+                # No token is added to any environment variable: git asks gh,
+                # and gh reads the job-scoped config dir set above. Undone in
+                # the cleanup step, which matters on a self-hosted runner.
+                if env -u GH_TOKEN -u GITHUB_TOKEN gh auth setup-git --hostname github.com 2>/dev/null; then
+                  echo "git will use gh's credential for github.com."
+                else
+                  echo "::notice::Could not point git at gh's credential; a live run's dedupe claim may fail."
+                fi
               else
                 echo "::notice::Could not sign gh in. Jobs that read a failed build will not work in this run; everything else is unaffected."
               fi
@@ -300,6 +318,13 @@ runs:
           run: |
               set -uo pipefail
               [ -n "${GH_CONFIG_DIR:-}" ] || exit 0
+              # The credential helper first. It lives in the GLOBAL git config,
+              # which outlives the job on a self-hosted runner, and it points
+              # at the config dir removed below — leaving it would hand the
+              # next job a helper that answers nothing, and a git command that
+              # stops to ask for a password rather than failing.
+              git config --global --unset-all credential.https://github.com.helper 2>/dev/null || true
+              git config --global --unset-all credential.https://gist.github.com.helper 2>/dev/null || true
               gh auth logout --hostname github.com >/dev/null 2>&1 || true
               rm -rf "$GH_CONFIG_DIR"
               echo "gh credentials removed from this runner."
