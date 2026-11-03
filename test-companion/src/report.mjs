@@ -134,6 +134,7 @@ export function renderJobSummary({
 	answer,
 	askedBy,
 	askedAt,
+	approvedPlan,
 	workNote,
 	extraChecks = [],
 	warnings = [],
@@ -185,6 +186,11 @@ export function renderJobSummary({
 		// Which request this is the answer to. The comment is edited in place,
 		// so without this a reader cannot tell whose question it answers.
 		["Asked by", askedBy ? (askedAt ? `[@${askedBy}](${askedAt})` : `@${askedBy}`) : ""],
+		// WHICH plan this run carried out. With two plans waiting on one commit,
+		// "approved" on its own does not say which was approved — and after
+		// item 5 two CAN wait, because approving one no longer finishes off the
+		// other.
+		["Plan", approvedPlan?.url ? `[#${approvedPlan.id}](${approvedPlan.url})` : ""],
 	].filter(([, v]) => v)
 
 	lines.push("| | |", "|---|---|")
@@ -425,11 +431,14 @@ export function renderProposal(body, sha, requester, workflow) {
  * when the plan on this commit has not been used at all and the superseded
  * reading is the right one after all.
  */
-export function proposalAlreadyUsed(comments, sha, us) {
+export function proposalAlreadyUsed(comments, sha, us, workflow) {
 	const want = String(sha ?? "").trim()
-	const mine = (comments ?? []).filter((c) => isOurs(c, us))
-	if (mine.some((c) => (c.body ?? "").includes(proposalConsumedMarkerFor(want)))) return "approved"
-	if (mine.some((c) => (c.body ?? "").includes(proposalDroppedMarkerFor(want)))) return "dropped"
+	const job = String(workflow ?? "").trim()
+	// No job asked about means "any plan on this commit", which is what the
+	// caller wants when the reply named no job either.
+	const here = spentPlans(comments, us).filter((m) => m.sha === want && (!m.workflow || !job || m.workflow === job))
+	if (here.some((m) => m.kind === "consumed")) return "approved"
+	if (here.some((m) => m.kind === "dropped")) return "dropped"
 	return undefined
 }
 
@@ -443,25 +452,36 @@ export function proposalAlreadyUsed(comments, sha, us) {
  * Fails CLOSED on an unreadable timestamp — treated as expired, so the worst
  * case is a fresh proposal rather than approving one of unknown age.
  */
-export function findProposal(comments, sha, now = Date.now(), us) {
-	// `by=` is optional so proposals written before the requester was recorded
-	// stay approvable rather than becoming stuck.
+export function findProposal(comments, sha, now = Date.now(), us, opts = {}) {
 	// `by=` and `workflow=` are both optional, so proposals written before
 	// either was recorded stay approvable rather than becoming stuck.
 	const want = String(sha ?? "").trim()
 	// Spent, either way round: approved and run (M5), or dropped by `stop` or
 	// by the sweep. Checked before anything else, so neither a second `go` nor
 	// the sweep can act on a plan that is already finished with.
-	const spent = [proposalConsumedMarkerFor(want), proposalDroppedMarkerFor(want)]
-	if ((comments ?? []).some((c) => isOurs(c, us) && spent.some((m) => (c.body ?? "").includes(m)))) return undefined
+	//
+	// PER JOB, not per commit (STM-5434 demo feedback, item 5). A plan a
+	// marker does not name is still waiting, however many OTHER plans on this
+	// commit have been used up.
+	const spent = spentPlans(comments, us).filter((m) => m.sha === want)
+	if (spent.some((m) => !m.workflow)) return undefined
+	const spentJobs = new Set(spent.map((m) => m.workflow))
 
-	const ours = (comments ?? []).filter((c) => isOurs(c, us) && readMarker(c.body)?.sha === want)
+	let ours = (comments ?? []).filter((c) => isOurs(c, us) && readMarker(c.body)?.sha === want)
+	ours = ours.filter((c) => !spentJobs.has(readMarker(c.body)?.workflow ?? ""))
+	// `go #1234` names ONE plan. With two waiting there is otherwise nothing in
+	// what was typed that picks between them, and the newest wins by default —
+	// fine when there is one, a coin toss when there are two.
+	const named = String(opts?.id ?? "").trim()
+	if (named) ours = ours.filter((c) => String(c.id) === named)
 	if (ours.length === 0) return undefined
 	const newest = ours.reduce((a, b) => (a.id >= b.id ? a : b))
 	const age = now - Date.parse(newest.created_at ?? "")
 	const mark = readMarker(newest.body)
 	return {
 		id: newest.id,
+		// So the run's own comment can link the plan it carried out.
+		url: newest.html_url,
 		expired: !(age <= PROPOSAL_WINDOW_MS),
 		requester: mark?.requester,
 		// The job the person actually read and approved. Undefined on a
@@ -529,12 +549,48 @@ export function renderApprovedPlan(proposalBody, replyText) {
  * Separate from the dropped marker because they are different events and the
  * reply text differs, but both mean the same thing here — this plan is spent.
  */
-export function proposalConsumedMarkerFor(sha) {
-	return `<!-- test-companion-proposal-consumed sha=${String(sha ?? "")} -->`
+export function proposalConsumedMarkerFor(sha, workflow) {
+	return `<!-- test-companion-proposal-consumed sha=${String(sha ?? "")}${jobField(workflow)} -->`
 }
 
-export function proposalDroppedMarkerFor(sha) {
-	return `<!-- test-companion-proposal-dropped sha=${sha} -->`
+export function proposalDroppedMarkerFor(sha, workflow) {
+	return `<!-- test-companion-proposal-dropped sha=${String(sha ?? "")}${jobField(workflow)} -->`
+}
+
+/**
+ * The JOB travels with a spent plan too — STM-5434 demo feedback, item 5.
+ *
+ * Keyed on the commit alone, one approval finished off every plan on that
+ * commit: approving `fix` meant a waiting `generate` plan could not be
+ * approved at all until somebody pushed. Hit twice during testing.
+ */
+function jobField(workflow) {
+	const job = String(workflow ?? "").trim()
+	return job ? ` workflow=${job}` : ""
+}
+
+/**
+ * Every record in this thread of a plan being finished with, and what for.
+ *
+ * ONE pattern, matching both kinds, for the same reason MARKER is one pattern:
+ * the readers drifted twice when there were several.
+ *
+ * `workflow=` is absent on markers written before the job was recorded. Those
+ * mean the whole commit — which is what they meant when they were written.
+ * Reading them as "no particular job" would let an upgrade re-run work
+ * somebody had already approved, so they keep their old, wider meaning.
+ */
+const SPENT_MARKER = /<!-- test-companion-proposal-(consumed|dropped) sha=([^\s>]+)(?: workflow=([^\s>]+))? -->/g
+
+function spentPlans(comments, us) {
+	const out = []
+	for (const c of comments ?? []) {
+		if (!isOurs(c, us)) continue
+		for (const m of String(c.body ?? "").matchAll(SPENT_MARKER)) {
+			out.push({ kind: m[1], sha: m[2], workflow: m[3] })
+		}
+	}
+	return out
 }
 
 /**
@@ -548,10 +604,12 @@ export function proposalDroppedMarkerFor(sha) {
  * avoided by posting the tick at the end of a run rather than the start.
  */
 export function proposalNeedsDropping(comments, sha, now = Date.now(), us) {
-	const waiting = findProposal(comments, sha, now, us)
-	if (!waiting?.expired) return false
-	const dropped = proposalDroppedMarkerFor(sha)
-	return !(comments ?? []).some((c) => isOurs(c, us) && (c.body ?? "").includes(dropped))
+	// findProposal already leaves out anything dropped or approved, per job, so
+	// an expired plan coming back from it is by definition one nobody has
+	// finished with. The separate dropped-marker check this used to do was the
+	// same question asked twice, and the second asking was commit-wide — which
+	// is exactly what item 5 had to stop.
+	return Boolean(findProposal(comments, sha, now, us)?.expired)
 }
 
 /**

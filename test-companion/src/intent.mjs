@@ -84,6 +84,21 @@ const RECHECK = /\bre-?\s?check\b/i
 const GO = /\b(go|approved?)\b/i
 
 /**
+ * WHICH plan a reply is approving — STM-5434 demo feedback, item 5.
+ *
+ * `go #6580278184`, or the comment link GitHub gives you when you copy a
+ * comment's address. A bare `go` names nothing and the newest waiting plan
+ * wins, which is right when there is one and a coin toss when there are two.
+ *
+ * Six digits at least. A GitHub comment id is a ten-digit number; `#25` in a
+ * reply is somebody pointing at a pull request, and reading that as a plan id
+ * would find no plan and refuse an approval that was perfectly clear.
+ */
+const GO_TARGET = /#(?:issuecomment-)?(\d{6,})\b/
+
+const namedProposal = (text) => GO_TARGET.exec(text)?.[1]
+
+/**
  * Plain words to job names, most specific first.
  *
  * The names on the right are the CLI's, not the PRD's — `tc workflow run` only
@@ -111,7 +126,6 @@ const PHRASES = [
 
 /** The first candidate this repository has bound, or the first overall. */
 const pickBound = (candidates, workflows) => candidates.find((c) => (workflows ?? []).includes(c)) ?? candidates[0]
-
 
 /**
  * A job asked for by its own name — FR-34.
@@ -183,7 +197,7 @@ export function readIntent(instructions, { workflows = [], proposalWaiting = fal
 	// title" as a fresh request for `fix` and quietly dropped the approval
 	// (M4, review of #3101). Still after STOP: approving and cancelling in one
 	// breath has to cancel.
-	if (proposalWaiting && GO.test(text)) return { kind: INTENT.GO }
+	if (proposalWaiting && GO.test(text)) return { kind: INTENT.GO, proposalId: namedProposal(text) }
 
 	for (const [pattern, candidates] of PHRASES) {
 		if (pattern.test(text)) {
@@ -196,7 +210,7 @@ export function readIntent(instructions, { workflows = [], proposalWaiting = fal
 	if (named) return { kind: INTENT.WORKFLOW, workflow: named, preview }
 
 	// FR-43: a reply of "go", with or without edits to the case list.
-	if (GO.test(text)) return { kind: INTENT.GO }
+	if (GO.test(text)) return { kind: INTENT.GO, proposalId: namedProposal(text) }
 
 	// No job named, but a clear ask: run whatever the pipeline file binds to this
 	// event — the same thing an event-driven run does — and carry the preview
