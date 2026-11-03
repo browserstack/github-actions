@@ -1,6 +1,7 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { readIntent, INTENT } from "../src/intent.mjs"
+import { planRun } from "../src/plan-run.mjs"
 import {
 	proposalMarkerFor,
 	proposalConsumedMarkerFor,
@@ -165,5 +166,59 @@ describe("the result comment says which plan it carried out", () => {
 	test("a run nobody approved has no plan row", () => {
 		const body = renderJobSummary({ workflow: "fix", outcome: OUTCOMES.SUCCEEDED, summary: {}, runUrl: "https://run" })
 		assert.doesNotMatch(body, /\| Plan \|/)
+	})
+})
+
+describe("naming a plan does not need the mention", () => {
+	/**
+	 * FOUND ON A LIVE RUN, 3 November. `readIntent` and `findProposal` both
+	 * learned about `go #1234`, and the gate in plan-run.mjs that decides
+	 * whether an UNADDRESSED comment reaches us at all did not — it still
+	 * only accepted a bare `go`. So `go #1234` was dropped as "no
+	 * @test-companion mention" before the intent was ever read, and naming a
+	 * plan only worked if you also addressed the comment.
+	 *
+	 * Still narrow. `go` followed by a plan reference and nothing else is
+	 * unmistakably aimed at us; "Approved, but rename the login case" is still
+	 * an ordinary review comment and still needs the mention (M3, #3101).
+	 */
+	const comment = (body) => ({
+		action: "created",
+		issue: { number: 7, pull_request: {} },
+		comment: { body, user: { login: "an-sdet" } },
+	})
+
+	test("go #id is carried through unaddressed", () => {
+		const out = planRun({ eventName: "issue_comment", payload: comment("go #6599834707"), repo: "acme/shop" })
+		assert.equal(out.skip, undefined)
+		assert.equal(out.approvalOnly, true)
+	})
+
+	test("so is a pasted comment link", () => {
+		const body = "go https://github.com/acme/shop/pull/7#issuecomment-6599834707"
+		const out = planRun({ eventName: "issue_comment", payload: comment(body), repo: "acme/shop" })
+		assert.equal(out.skip, undefined)
+		assert.equal(out.approvalOnly, true)
+	})
+
+	test("a bare go still is", () => {
+		const out = planRun({ eventName: "issue_comment", payload: comment("go"), repo: "acme/shop" })
+		assert.equal(out.approvalOnly, true)
+	})
+
+	test("but approval with edits still needs the mention", () => {
+		const out = planRun({
+			eventName: "issue_comment",
+			payload: comment("Approved, but rename the login case"),
+			repo: "acme/shop",
+		})
+		assert.equal(out.skip?.reason, "not-addressed-to-us")
+	})
+
+	test("and a number that is not a plan reference does not open the gate", () => {
+		// "go #25" is somebody pointing at a pull request. It is a bare-ish go,
+		// so it is carried through — but as a BARE one, with no plan named.
+		const out = planRun({ eventName: "issue_comment", payload: comment("go and look at #25 too"), repo: "acme/shop" })
+		assert.equal(out.skip?.reason, "not-addressed-to-us")
 	})
 })
