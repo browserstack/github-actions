@@ -229,7 +229,19 @@ function fromComment(payload, inputs) {
 	// Edits alongside an approval are still supported — FR-43 invites them —
 	// but then the person has to address us, which is the difference between
 	// talking to Test Companion and talking about the change.
-	const approvalOnly = !addressed && /^\s*(go|approved?)\s*[.!]*\s*$/i.test(body)
+	//
+	// A PLAN REFERENCE is allowed after the word, and nothing else: `go #1234`
+	// or `go <comment link>`, which is how you say WHICH plan when two are
+	// waiting (STM-5434 demo feedback, item 5). Found on a live run — readIntent
+	// and findProposal had both learned about it and this gate had not, so the
+	// comment was dropped as "no @test-companion mention" before the intent was
+	// ever read, and naming a plan only worked if you also addressed us.
+	//
+	// Still narrow: six digits at least, and the reference must be the whole
+	// rest of the comment. "Approved, but rename the login case" is an ordinary
+	// review comment and still needs the mention, and so does "go and look at
+	// #25 too".
+	const approvalOnly = !addressed && /^\s*(go|approved?)(\s+\S*#(issuecomment-)?\d{6,})?\s*[.!]*\s*$/i.test(body)
 	if (!addressed && !approvalOnly) return skip("not-addressed-to-us")
 
 	// Everything after the mention is what the person actually asked for. The
