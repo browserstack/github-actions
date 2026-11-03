@@ -117,10 +117,14 @@ describe("stepShouldFail — FR-9 build effect", () => {
 		assert.equal(stepShouldFail("fail", OUTCOMES.SUCCEEDED), false)
 	})
 
-	// An unset or misspelled build effect must not silently redden builds.
-	test("anything unrecognised behaves as report", () => {
-		assert.equal(stepShouldFail(undefined, OUTCOMES.RUN_BROKE), false)
-		assert.equal(stepShouldFail("FAIL_HARD", OUTCOMES.RUN_BROKE), false)
+	// REVERSED by STM-5434 demo feedback, item 6. While `report` was the
+	// default, "a misconfiguration must never redden a build" was the safe
+	// direction. The default is now fail-on-break, so a typo landing you on a
+	// quieter setting than a fresh install is the silent pass item 6 is about.
+	// The whole rule lives in build-effect.test.mjs now; this is the hinge.
+	test("anything unrecognised behaves as the default", () => {
+		assert.equal(stepShouldFail(undefined, OUTCOMES.RUN_BROKE), true)
+		assert.equal(stepShouldFail("FAIL_HARD", OUTCOMES.RUN_BROKE), true)
 	})
 })
 
@@ -148,7 +152,9 @@ describe("resolveOutcome — an unbound event is skipped, not broken", () => {
 	})
 
 	test("a skipped outcome never reddens the step or the check", () => {
-		assert.equal(stepShouldFail(OUTCOMES.SKIPPED, "fail"), false)
+		// The arguments were the wrong way round here, which made this pass
+		// without ever asking the question. stepShouldFail(buildEffect, outcome).
+		assert.equal(stepShouldFail("fail", OUTCOMES.SKIPPED), false)
 		assert.notEqual(checkConclusion(OUTCOMES.SKIPPED), "failure")
 	})
 })

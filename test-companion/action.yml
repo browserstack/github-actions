@@ -57,10 +57,14 @@ inputs:
         required: false
     build-effect:
         description: >
-            Whether a bad outcome reddens THIS step: off, report or fail. The
-            Test Companion check always reports truthfully regardless.
+            Whether a bad outcome reddens THIS step. fail-on-break (the default)
+            reddens it when the run itself did not work — it broke, it could not
+            start, or it hit a limit — and leaves it green when the run worked
+            and the tests failed. report never reddens it. fail reddens it on
+            anything that is not a success, test failures included. The Test
+            Companion check always reports truthfully regardless.
         required: false
-        default: "report"
+        default: "fail-on-break"
     github-token:
         description: >
             Token used to post the check and the comment. Override only to post as a

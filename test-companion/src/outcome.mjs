@@ -128,23 +128,59 @@ export function checkConclusion(outcome) {
 	}
 }
 
+/** What a repository can ask a bad outcome to do to its build — FR-9. */
+export const BUILD_EFFECTS = Object.freeze({
+	/** Never red. The check still reports truthfully. */
+	REPORT: "report",
+	/** Red when the RUN broke. Green when the run worked and the tests did not. */
+	FAIL_ON_BREAK: "fail-on-break",
+	/** Red on anything that is not a success, test failures included. */
+	FAIL: "fail",
+})
+
+/**
+ * The run itself did not work: it crashed, it never started, or it hit a
+ * ceiling. Distinct from a test failure, which is a RESULT — the run did its
+ * job and the answer was no.
+ */
+const RUN_DID_NOT_WORK = new Set([OUTCOMES.RUN_BROKE, OUTCOMES.COULD_NOT_RUN, OUTCOMES.STOPPED_AT_LIMIT])
+
 /**
  * Whether the Action's own step goes red — FR-9.
  *
- * Only ever governs the step. The check above reports truthfully regardless, so
- * a repo choosing `report` sees a red check and a green build, deliberately.
+ * Only ever governs the step. The check reports truthfully regardless, so a
+ * repository choosing `report` sees a red check and a green build, deliberately.
  *
- * Anything unrecognised — unset, misspelled, a value from a newer config than
- * this Action understands — behaves as `report`. Reddening builds is the one
- * direction a misconfiguration must not fail in.
+ * THE DEFAULT CHANGED (STM-5434 demo feedback, item 6). It used to be `report`,
+ * so a run that broke passed silently unless somebody had opted in — which is
+ * not what anyone looking at a green tick would assume. The default is now
+ * `fail-on-break`: a run that did not work reddens the step, a run that worked
+ * and found failing tests does not. Making a test RESULT block the build is a
+ * larger decision than this one, and `fail` is still there for anyone who wants
+ * it.
+ *
+ * Anything unrecognised behaves as the DEFAULT, which reverses the old rule.
+ * That rule — "a misconfiguration must never redden a build" — made sense while
+ * `report` was the default. Now that it is not, a typo buying a quieter setting
+ * than a fresh install gets is exactly the silent pass item 6 is about. A
+ * misspelling leaves you where you would have been having said nothing.
+ *
+ * `off` is still honoured as a synonym for `report` and is no longer
+ * documented: it never did anything `report` did not, and a workflow already
+ * saying it must not start failing builds because we stopped advertising the
+ * word.
  */
 export function stepShouldFail(buildEffect, outcome) {
-	if (buildEffect !== "fail") return false
-	// A skipped run is not a bad outcome, it is no outcome. Reddening the step
-	// for it would fail every push in a repository that binds only pull
-	// requests — which is most of them.
-	if (outcome === OUTCOMES.SKIPPED) return false
-	return outcome !== OUTCOMES.SUCCEEDED
+	// Neither of these is a bad outcome. A skipped run is NO outcome, and
+	// reddening the step for one would fail every push in a repository that
+	// binds only pull requests — which is most of them.
+	if (outcome === OUTCOMES.SUCCEEDED || outcome === OUTCOMES.SKIPPED) return false
+	const effect = String(buildEffect ?? "")
+		.trim()
+		.toLowerCase()
+	if (effect === BUILD_EFFECTS.REPORT || effect === "off") return false
+	if (effect === BUILD_EFFECTS.FAIL) return true
+	return RUN_DID_NOT_WORK.has(outcome)
 }
 
 /**
