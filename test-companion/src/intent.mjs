@@ -90,6 +90,34 @@ const RECHECK = /\bre-?\s?check\b/i
 const GO = /\b(go|approved?)\b/i
 
 /**
+ * An approval and nothing else.
+ *
+ * ONE definition, exported, because three readers have to agree on it: this
+ * file (does the reply name a plan?), plan-run.mjs (may an UNADDRESSED comment
+ * reach us at all?) and report.mjs (did the approver edit the plan?). They did
+ * not agree, and each disagreement was a bug — the gate dropped `go #1234`
+ * before it was read, and hasApproverEdits called it an edit, which put the
+ * comment id into the plan the agent was handed as an instruction that wins.
+ */
+export const BARE_APPROVAL = /^\s*(?:go|approved?)\s*[.!]*\s*$/i
+
+/**
+ * An approval that names WHICH plan — `go #1234`, or `go <comment link>`.
+ *
+ * ANCHORED to the approval word and to the end of the comment. Matching a
+ * `#id` anywhere turned "go — and pull the steps from <url>#issuecomment-…"
+ * into an approval of a plan that does not exist, which was then refused
+ * (STM-5434 review, PR #3286).
+ *
+ * Six digits at least: a GitHub comment id is a ten-digit number, and `#25` is
+ * somebody pointing at a pull request.
+ */
+export const APPROVAL_WITH_PLAN = /^\s*(?:go|approved?)\s+\S*#(?:issuecomment-)?(\d{6,})\s*[.!]*\s*$/i
+
+/** Is this reply an approval and nothing else, with or without a plan named? */
+export const isApprovalOnly = (text) => BARE_APPROVAL.test(String(text ?? "")) || APPROVAL_WITH_PLAN.test(String(text ?? ""))
+
+/**
  * WHICH plan a reply is approving — STM-5434 demo feedback, item 5.
  *
  * `go #6580278184`, or the comment link GitHub gives you when you copy a
@@ -100,9 +128,7 @@ const GO = /\b(go|approved?)\b/i
  * reply is somebody pointing at a pull request, and reading that as a plan id
  * would find no plan and refuse an approval that was perfectly clear.
  */
-const GO_TARGET = /#(?:issuecomment-)?(\d{6,})\b/
-
-const namedProposal = (text) => GO_TARGET.exec(text)?.[1]
+const namedProposal = (text) => APPROVAL_WITH_PLAN.exec(String(text ?? ""))?.[1]
 
 /**
  * Plain words to job names, most specific first.

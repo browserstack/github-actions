@@ -78,9 +78,13 @@ describe("action.yml — git's credential helper is cleaned up", () => {
 
 	test("whatever sets the helper also unsets it", () => {
 		if (!/gh auth setup-git/.test(actionYml)) return
+		// `--unset` WITH A VALUE PATTERN, not `--unset-all`. The blanket form
+		// removed every helper for that URL, including ones the runner's owner
+		// set up before us, and ran even when our own setup-git had failed
+		// (STM-5434 review, PR #3286).
 		assert.match(
 			actionYml,
-			/--unset-all credential\.https:\/\/github\.com\.helper/,
+			/--unset credential\.https:\/\/github\.com\.helper '\^!\.\*gh auth git-credential'/,
 			"a self-hosted runner keeps a helper pointing at a deleted config dir",
 		)
 	})
@@ -96,5 +100,23 @@ describe("action.yml — git's credential helper is cleaned up", () => {
 		const login = actionYml.indexOf("gh auth login --with-token")
 		const setup = actionYml.indexOf("gh auth setup-git")
 		assert.ok(login !== -1 && setup > login, "setup-git runs before there is a credential to use")
+	})
+})
+
+/**
+ * STM-5434 review (kritansh20, PR #3286). The cleanup must not damage a
+ * self-hosted runner's own git configuration.
+ */
+describe("action.yml — the cleanup only removes what this job added", () => {
+	test("it never uses the blanket --unset-all on a credential helper", () => {
+		assert.doesNotMatch(
+			actionYml,
+			/--unset-all credential\./,
+			"that removes every helper for the host, including the runner owner's",
+		)
+	})
+
+	test("and it only runs when this job actually added one", () => {
+		assert.match(actionYml, /TC_ADDED_GIT_HELPER/, "a failed setup-git must not trigger a cleanup of somebody else's helper")
 	})
 })

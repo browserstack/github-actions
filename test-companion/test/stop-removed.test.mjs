@@ -49,8 +49,14 @@ describe("the starter workflow keeps the control lane for closed pull requests",
 	const starter = readFileSync(new URL("../starter-workflow.yml", import.meta.url), "utf8")
 	const group = starter.slice(starter.indexOf("concurrency:"), starter.indexOf("\njobs:"))
 
-	test("a stop comment no longer gets its own lane", () => {
-		assert.doesNotMatch(group, /comment\.body, 'stop'/)
+	/**
+	 * CHANGED by the review of #3286. Taking `stop` out of the lane put it in
+	 * the WORK group, which has `cancel-in-progress: false` and keeps only one
+	 * pending run — so a `stop` comment could evict a queued `go`, and all it
+	 * does now is reply. The lane is cheap; the eviction is not.
+	 */
+	test("a stop comment keeps its own lane, so it cannot evict a queued run", () => {
+		assert.match(group, /'stop'/)
 	})
 
 	/**

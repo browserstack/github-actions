@@ -1,3 +1,4 @@
+import { isApprovalOnly } from "./intent.mjs"
 /**
  * Turn a GitHub event into a `tc workflow run` invocation — STM-3663 FR-14.
  *
@@ -241,7 +242,7 @@ function fromComment(payload, inputs) {
 	// rest of the comment. "Approved, but rename the login case" is an ordinary
 	// review comment and still needs the mention, and so does "go and look at
 	// #25 too".
-	const approvalOnly = !addressed && /^\s*(go|approved?)(\s+\S*#(issuecomment-)?\d{6,})?\s*[.!]*\s*$/i.test(body)
+	const approvalOnly = !addressed && isApprovalOnly(body)
 	if (!addressed && !approvalOnly) return skip("not-addressed-to-us")
 
 	// Everything after the mention is what the person actually asked for. The
