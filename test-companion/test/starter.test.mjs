@@ -227,17 +227,20 @@ describe("the starter workflow points somewhere that exists", () => {
 /**
  * Review of PR #3101, blocker B2.
  *
- * `stop` and a closed pull request are CONTROL events: they exist to act on a
- * run that is already going. Sharing a concurrency group with that run, with
- * `cancel-in-progress: false`, meant they queued behind the very thing they
- * were sent to stop and only ran once it had finished on its own.
+ * A closed pull request is a CONTROL event: it exists to act on a run that is
+ * already going. Sharing a concurrency group with that run, with
+ * `cancel-in-progress: false`, meant it queued behind the very thing it was
+ * sent to end and only ran once that had finished on its own.
+ *
+ * `stop` used to be the other one. It was removed with the feature (STM-5434
+ * demo feedback, item 7); the lane stays for the closed pull request, which is
+ * FR-36 and did not go anywhere. See stop-removed.test.mjs.
  */
 describe("control events do not queue behind the run they act on", () => {
 	const starter = readFileSync(new URL("../starter-workflow.yml", import.meta.url), "utf8")
 	const group = starter.slice(starter.indexOf("concurrency:"), starter.indexOf("\njobs:"))
 
-	test("a stop comment and a closed pull request land in a separate group", () => {
-		assert.match(group, /contains\(github\.event\.comment\.body, 'stop'\)/)
+	test("a closed pull request lands in a separate group", () => {
 		assert.match(group, /github\.event\.action == 'closed'/)
 		assert.match(group, /-control/)
 	})

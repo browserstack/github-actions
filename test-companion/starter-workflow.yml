@@ -54,17 +54,15 @@ concurrency:
     # issue_comment carries the PR number as `issue.number`; everything else
     # falls back to the run id, which is unique, so those events never share a
     # group with each other.
-    # CONTROL EVENTS GET THEIR OWN GROUP. `stop` and a closed pull request
-    # exist to act on a run that is already going. Sharing the work group with
-    # it, and queueing rather than cancelling, meant they waited behind the
-    # very run they were sent to stop and only started once it had finished by
-    # itself — so `stop` did nothing, slowly.
+    # A CLOSED PULL REQUEST GETS ITS OWN GROUP. It exists to act on a run that
+    # is already going. Sharing the work group with that run, and queueing
+    # rather than cancelling, meant it waited behind the very run it was sent
+    # to end and only started once that had finished by itself.
     group: >-
         test-companion-${{ github.event.pull_request.number
         || github.event.issue.number
         || github.run_id }}${{
-        (github.event.action == 'closed'
-        || contains(github.event.comment.body, 'stop'))
+        github.event.action == 'closed'
         && '-control' || '' }}
     # Queue rather than cancel: a run already in flight has spent credits, and
     # the newer one waits its turn instead of superseding it. Control events
@@ -97,7 +95,7 @@ jobs:
             contents: write # branches and commits for fix / reconcile jobs
             pull-requests: write # the one comment, and opening a pull request
             checks: write # the "Test Companion" check
-            actions: write # reading the red run, and cancelling one on "stop"
+            actions: write # reading the red run, and cancelling one when a PR closes
         steps:
             # v4.4.0. Pinned to a commit because a tag can be repointed by
             # whoever owns it, and this step runs in YOUR job with YOUR token.

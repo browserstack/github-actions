@@ -21,7 +21,7 @@
 export const INTENT = Object.freeze({
 	/** Run a Test Companion job. `workflow` names it, or is null for "whatever is bound". */
 	WORKFLOW: "workflow",
-	/** Cancel the run in flight — FR-35. */
+	/** Asked us to stop. Nothing stops any more — item 7 — but the word is still answered. */
 	STOP: "stop",
 	/** Approve a waiting proposal, which starts the real run — FR-43. */
 	GO: "go",
@@ -50,13 +50,19 @@ const withoutQuotes = (text) =>
 const POLITENESS = /^(?:please\s+|pls\s+|can\s+you\s+|could\s+you\s+|kindly\s+)+/i
 
 /**
- * Cancel the run in flight — FR-35. Still checked before any job word, so
+ * Still checked before any job word, so
  * "stop, don't fix anything" cannot start a fix run.
  *
  * ANCHORED, because matching the word anywhere made "don't stop until the
  * tests pass" cancel the run. What the comment opens with is what it is
  * asking for; the same word later in a sentence is usually about something
  * else.
+ */
+/**
+ * STILL RECOGNISED, but it no longer does anything — STM-5434 demo feedback,
+ * item 7. Proposals already sitting in live threads tell people to say it, and
+ * answering those with "that did not name anything I can do" would be true and
+ * useless. main.mjs says what to do instead.
  */
 const STOP = /^stop\b/i
 
@@ -183,8 +189,8 @@ export function readIntent(instructions, { workflows = [], proposalWaiting = fal
 	const text = withoutQuotes(String(instructions ?? "")).trim()
 	if (!text) return { kind: INTENT.UNKNOWN }
 
-	// Before the job words: FR-35 gives stop its own 30-second deadline, and
-	// "stop, don't fix anything" must not start a fix run.
+	// Before the job words, so "stop, don't fix anything" cannot start a fix
+	// run. It no longer stops anything; it answers with what to use instead.
 	const asked = text.replace(POLITENESS, "")
 	if (STOP.test(asked)) return { kind: INTENT.STOP }
 	if (SETUP.test(asked)) return { kind: INTENT.SETUP }
@@ -239,5 +245,4 @@ export const CAPABILITIES = Object.freeze([
 	{ ask: "set up this repo", does: "open a pull request adding a settings file" },
 	{ ask: "preview", does: "do the run but write nothing — add it to any request above" },
 	{ ask: "re-check", does: "run it again on the latest commit" },
-	{ ask: "stop", does: "cancel the run in flight" },
 ])

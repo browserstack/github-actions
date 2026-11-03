@@ -73,7 +73,7 @@ export function signJwt({ appId, privateKey, now = Date.now() / 1000 }) {
  *   contents      — branches and commits for the fix and reconcile jobs
  *   pull_requests — the one comment, and opening a pull request
  *   checks        — the "Test Companion" check
- *   actions       — reading the red run, and cancelling one on "stop"
+ *   actions       — reading the red run, and cancelling one when a PR closes
  *
  * Returns undefined for a repository we cannot parse. Falling back to an
  * unscoped request would be the worst possible reading of a value we did not
