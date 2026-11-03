@@ -150,6 +150,15 @@ let headBeforeRun = ""
 let consumedMarker = ""
 
 /**
+ * The proposal this run is carrying out, so the report can link it.
+ *
+ * STM-5434 demo feedback, item 5: approving one job no longer finishes off the
+ * others on that commit, so two plans really can be waiting and "approved" on
+ * its own no longer says which one this is.
+ */
+let approvedPlan
+
+/**
  * Put the working tree on one commit — review of #3101, M8.
  *
  * Was two blocks doing the same job with different flags. One used
@@ -417,6 +426,7 @@ function finishSkipped(reason, detail) {
 		stopped: "Stopped, as asked.",
 		"not-bound": "That job is not bound to pull request comments in this repository.",
 		"nothing-to-approve": "Nothing is waiting for approval on this commit.",
+		"proposal-not-found": "That reply named a plan that is not waiting on this commit.",
 		"proposal-expired": "That proposal was more than a day old and has been dropped.",
 		proposed: "Proposed, and waiting for someone to reply go.",
 		"setup-requested": "Opened a pull request adding the settings file.",
@@ -592,7 +602,7 @@ async function main() {
 		// case 3's title" is an approval with an edit, not a request to run
 		// `fix` (M4, review of #3101).
 		const comments = flattenPages(gh(["api", `repos/${REPO}/issues/${plan.context.pr}/comments`, "--paginate", "--slurp"]))
-		const waiting = findProposal(comments, plan.context.sha, Date.now(), botLogin)
+		let waiting = findProposal(comments, plan.context.sha, Date.now(), botLogin)
 
 		const intent = readIntent(plan.context.instructions, {
 			workflows: (bindingsDoc?.bindings ?? []).filter((b) => b.enabled).map((b) => b.workflow),
@@ -607,12 +617,36 @@ async function main() {
 		// possible reading of "stop": the person asks for the run to end and a
 		// new one begins.
 		if (intent.kind === INTENT.STOP) {
-			stopRuns(plan, plan.commenter ?? "you")
+			// The waiting plan's JOB goes with the drop (item 5), or `stop` on
+			// one job would finish off every other plan on the commit too.
+			stopRuns(plan, plan.commenter ?? "you", waiting?.workflow)
 			finishSkipped("stopped")
 		}
 		if (intent.kind === INTENT.SETUP) {
 			openSetupPr(plan, configPath)
 			finishSkipped("setup-requested")
+		}
+
+		// `go #1234` names WHICH plan — STM-5434 demo feedback, item 5. Resolved
+		// here because the intent is what carries the number, and before
+		// anything reads `waiting`, because from this point on it IS the plan
+		// being approved.
+		//
+		// A number that matches nothing gets its own answer rather than the
+		// generic "nothing is waiting": the person was specific, and telling
+		// them the thread is empty when it is not would send them looking in
+		// the wrong place.
+		if (intent.kind === INTENT.GO && intent.proposalId) {
+			waiting = findProposal(comments, plan.context.sha, Date.now(), botLogin, { id: intent.proposalId })
+			if (!waiting) {
+				replyOnPr(
+					plan.context.pr,
+					`I have no plan \`#${intent.proposalId}\` still waiting on \`${String(plan.context.sha).slice(0, 7)}\`. ` +
+						`It may have been approved, dropped, or written against an earlier commit. ` +
+						`Reply **go** on its own to approve the most recent one.`,
+				)
+				finishSkipped("proposal-not-found")
+			}
 		}
 
 		// A named job narrows what the binding would otherwise choose. The event
@@ -647,7 +681,7 @@ async function main() {
 			// still in the thread and tells the person their branch moved on
 			// when it did not — seen on run 41067235005, where the commit was
 			// the same one the plan had just been approved and run against.
-			const used = proposalAlreadyUsed(comments, plan.context.sha, botLogin)
+			const used = proposalAlreadyUsed(comments, plan.context.sha, botLogin, plan.workflow)
 			if (used) {
 				replyOnPr(
 					plan.context.pr,
@@ -713,7 +747,11 @@ async function main() {
 				gh(["api", `repos/${REPO}/commits/${plan.context.sha}/check-runs?per_page=100`])?.check_runs,
 			)
 			if (pending) rememberCheck(plan.context.sha, pending)
-			consumedMarker = proposalConsumedMarkerFor(plan.context.sha)
+			// Named with the JOB it finished (item 5). Without that, approving
+			// `fix` made a waiting `generate` plan unapprovable until somebody
+			// pushed — hit twice while testing.
+			consumedMarker = proposalConsumedMarkerFor(plan.context.sha, plan.workflow)
+			approvedPlan = waiting?.url ? { id: waiting.id, url: waiting.url } : undefined
 
 			// FR-43: the run carries out the approved plan — the proposal as the
 			// approver left it, edits and all. Written to a file rather than
@@ -982,6 +1020,8 @@ async function main() {
 
 	const view = {
 		workflow: plan.workflow ?? summary.workflow,
+		// Which plan this run carried out — undefined on a run nobody approved.
+		approvedPlan,
 		workNote,
 		extraChecks,
 		warnings,
@@ -1292,7 +1332,7 @@ function cancelForClosedPr(payload) {
 	}
 }
 
-function stopRuns(plan, who) {
+function stopRuns(plan, who, workflow) {
 	const sha = plan.context?.sha
 	const pr = plan.context?.pr
 	const { found, cancelled, forbidden } = cancelRunsOn(sha)
@@ -1320,7 +1360,7 @@ function stopRuns(plan, who) {
 	// The check goes with it. Cancelling a run leaves its check in progress,
 	// and a check that never resolves blocks anyone who made it required.
 	dropProposalAndCheck(sha, `Stopped by @${who}.`)
-	replyOnPr(pr, `Stopped by @${who}.\n\n${proposalDroppedMarkerFor(sha)}`)
+	replyOnPr(pr, `Stopped by @${who}.\n\n${proposalDroppedMarkerFor(sha, workflow)}`)
 }
 
 /**
@@ -1435,6 +1475,10 @@ function sweepExpiredProposals() {
 		if (!sha || !pr?.number) continue
 		const comments = flattenPages(gh(["api", `repos/${REPO}/issues/${pr.number}/comments`, "--paginate", "--slurp"]))
 		if (!proposalNeedsDropping(comments, sha, Date.now(), botLogin)) continue
+		// The same question, asked again for the ANSWER rather than the yes/no:
+		// the dropped marker has to name the job, or dropping one stale plan
+		// would finish off every other plan on that commit (item 5).
+		const stale = findProposal(comments, sha, Date.now(), botLogin)
 
 		// Complete the check the PROPOSAL run left in progress, rather than
 		// adding a second one beside it. The sweep is a different process with
@@ -1449,7 +1493,7 @@ function sweepExpiredProposals() {
 		postCheck(OUTCOMES.COULD_NOT_RUN, { outcome: OUTCOMES.COULD_NOT_RUN, summary: {}, runUrl: RUN_URL }, sha)
 		replyOnPr(
 			pr.number,
-			`That proposal went a day without a reply, so I have dropped it. The check now says Action required — comment again and I will put up a fresh one.\n\n${proposalDroppedMarkerFor(sha)}`,
+			`That proposal went a day without a reply, so I have dropped it. The check now says Action required — comment again and I will put up a fresh one.\n\n${proposalDroppedMarkerFor(sha, stale?.workflow)}`,
 		)
 		notice(`Test Companion: dropped a stale proposal on #${pr.number}.`)
 	}
