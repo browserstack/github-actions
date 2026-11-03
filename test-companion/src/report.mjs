@@ -8,6 +8,17 @@
  * preinstalled on every runner and already how this product talks to GitHub.
  */
 import { CAPABILITIES } from "./intent.mjs"
+import { emojiFor } from "./outcome.mjs"
+
+/**
+ * The outcome with its mark in front — never instead of the words, so a reader
+ * with images off, or a screen reader, still gets the whole outcome. An
+ * outcome with no mark reads exactly as it did before.
+ */
+const withMark = (outcome) => {
+	const mark = emojiFor(outcome)
+	return mark ? `${mark} ${outcome}` : String(outcome ?? "")
+}
 
 /**
  * How a later run finds the comment it wrote earlier — FR-29 wants ONE comment,
@@ -140,7 +151,9 @@ export function renderJobSummary({
 	warnings = [],
 } = {}) {
 	const lines = []
-	lines.push(`## Test Companion — ${outcome}`)
+	// The mark goes in front of the words, never instead of them: a reader with
+	// images off, or a screen reader, still gets the whole outcome.
+	lines.push(`## Test Companion — ${withMark(outcome)}`)
 	lines.push("")
 
 	// FR-43: both asking and approving need write access, so one person doing
@@ -176,7 +189,7 @@ export function renderJobSummary({
 	const rows = [
 		["Job", workflow ?? summary.workflow],
 		["Trigger", summary.event],
-		["Outcome", outcome],
+		["Outcome", withMark(outcome)],
 		["Took", summary.duration],
 		// Credits, not dollars: it is the unit the bill and the pipeline file's
 		// own ceiling are written in, so a figure in dollars would not line up

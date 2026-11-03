@@ -1191,7 +1191,9 @@ describe("renderComment keeps the body postable", () => {
 	test("the table still renders above the cut answer", () => {
 		const body = renderComment(view("word ".repeat(40_000)))
 		assert.ok(body.includes("| Job | fix |"))
-		assert.ok(body.includes("Test Companion — Succeeded"))
+		// The heading carries a mark in front of the words now, so match the
+		// shape rather than the exact string — see outcome-emoji.test.mjs.
+		assert.match(body, /## Test Companion — .*Succeeded/u)
 	})
 
 	// Not the answer's fault. The listed failures are capped, but a test NAME
