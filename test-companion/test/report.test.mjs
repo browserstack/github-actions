@@ -248,7 +248,9 @@ describe("replying when we will not run — FR-33, FR-34", () => {
 
 	test("a request we cannot place gets the list of what we can do — FR-34", () => {
 		const body = renderUnknownRequest()
-		for (const phrase of ["test this PR", "explain this failure", "fix the failing tests", "stop"]) {
+		// `stop` left the list with the capability itself — STM-5434 demo
+		// feedback, item 7. See stop-removed.test.mjs.
+		for (const phrase of ["test this PR", "explain this failure", "fix the failing tests", "re-check"]) {
 			assert.ok(body.includes(phrase), `the list should offer "${phrase}"`)
 		}
 	})

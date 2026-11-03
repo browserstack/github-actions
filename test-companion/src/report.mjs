@@ -338,6 +338,25 @@ export function renderUnknownRequest() {
 	return [`I could not tell which job that was asking for, so nothing ran. Here is what I can do:`, "", ...lines].join("\n")
 }
 
+/**
+ * What to say to somebody who asked us to stop — STM-5434 demo feedback,
+ * item 7.
+ *
+ * `stop` used to cancel the run in flight and drop the waiting plan. Both are
+ * gone, so this answers both halves: GitHub cancels a run, and a plan nobody
+ * answers expires by itself. Saying only the first would leave someone
+ * wondering what became of the plan they were trying to drop.
+ */
+export function renderStopRemoved() {
+	return [
+		"`stop` is no longer something I do.",
+		"",
+		"To end a run that is going, use **Cancel workflow** on the run's own page — GitHub does that more reliably than I could.",
+		"",
+		"To get rid of a plan waiting for approval, just leave it. It expires on its own after 24 hours and the check resolves with it.",
+	].join("\n")
+}
+
 /** FR-44: a proposal nobody answers is dropped after 24 hours. */
 export const PROPOSAL_WINDOW_MS = 24 * 60 * 60 * 1000
 
@@ -395,8 +414,8 @@ const readMarker = (body) => {
 /**
  * The commit a check we already posted belongs to — review of #3101, B1.
  *
- * The "in progress" check goes up BEFORE the CLI runs, so a later `stop` has
- * something to cancel, and it is posted on the PULL REQUEST's head. Anything
+ * The "in progress" check goes up BEFORE the CLI runs, so the run can be
+ * cancelled while it is going, and it is posted on the PULL REQUEST's head. Anything
  * that finishes the run afterwards has to complete THAT check, on THAT
  * commit. Reaching for the event's own sha instead is wrong on a comment run,
  * where GITHUB_SHA is the default branch's commit: the second check lands on
@@ -412,7 +431,7 @@ export function renderProposal(body, sha, requester, workflow) {
 	return [
 		body,
 		"",
-		"Reply **go** to run this for real. Nothing is written until you do. To change the list first, reply **@test-companion go** with your edits; to drop it, say **stop**.",
+		"Reply **go** to run this for real. Nothing is written until you do. To change the list first, reply **@test-companion go** with your edits. Leave it and it expires on its own after a day.",
 		"",
 		proposalMarkerFor(sha, requester, workflow),
 	].join("\n")

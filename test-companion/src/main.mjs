@@ -38,6 +38,7 @@ import {
 	accessibilityFailsCheck,
 	renderApprovedPlan,
 	proposalDroppedMarkerFor,
+	renderStopRemoved,
 	proposalConsumedMarkerFor,
 	proposalAlreadyUsed,
 	proposalNeedsDropping,
@@ -423,7 +424,7 @@ function finishSkipped(reason, detail) {
 			"If this workflow has no `pull-requests: read` permission, add it.",
 		"not-authorized": "Only someone with write access to this repository can ask Test Companion for a run.",
 		"unmapped-request": "That comment did not name anything Test Companion can do; it was answered in the thread.",
-		stopped: "Stopped, as asked.",
+		stopped: "`stop` is no longer something Test Companion does; the reply says what to use instead.",
 		"not-bound": "That job is not bound to pull request comments in this repository.",
 		"nothing-to-approve": "Nothing is waiting for approval on this commit.",
 		"proposal-not-found": "That reply named a plan that is not waiting on this commit.",
@@ -434,12 +435,12 @@ function finishSkipped(reason, detail) {
 	const msg = human ?? `Nothing to do (${reason}).`
 	notice(`Test Companion: ${msg}`)
 	// B1 (review of #3101). The "in progress" check goes up before the CLI
-	// runs so a later `stop` has something to cancel. Skipping out from under
-	// it left "Test Companion" pending for ever — and `no-binding` is most
-	// events, so for most repositories that was most runs.
+	// runs, so the run is cancellable while it is going. Skipping out from
+	// under it left "Test Companion" pending for ever — and `no-binding` is
+	// most events, so for most repositories that was most runs.
 	//
-	// Completing it here rather than posting the check later keeps `stop`
-	// working. Nothing deliberately leaves a check pending through this
+	// Completing it here rather than posting the check later is what keeps
+	// that true. Nothing deliberately leaves a check pending through this
 	// function: the proposal path posts its own and exits directly.
 	for (const sha of checksMade.keys()) {
 		postCheck(OUTCOMES.SKIPPED, { outcome: "Skipped", summary: {}, runUrl: RUN_URL }, sha, [], "completed", msg)
@@ -613,13 +614,15 @@ async function main() {
 			replyOnPr(plan.context.pr, renderUnknownRequest())
 			finishSkipped("unmapped-request")
 		}
-		// Answered before anything starts. Falling through would be the worst
-		// possible reading of "stop": the person asks for the run to end and a
-		// new one begins.
+		// `stop` is gone — STM-5434 demo feedback, item 7. The word is still
+		// answered, because proposals already in live threads tell people to
+		// say it; it just says what to do instead and starts nothing.
+		//
+		// Still handled BEFORE the job words, for the reason it always was:
+		// falling through would be the worst possible reading of "stop", where
+		// the person asks for the run to end and a new one begins.
 		if (intent.kind === INTENT.STOP) {
-			// The waiting plan's JOB goes with the drop (item 5), or `stop` on
-			// one job would finish off every other plan on the commit too.
-			stopRuns(plan, plan.commenter ?? "you", waiting?.workflow)
+			replyOnPr(plan.context.pr, renderStopRemoved())
 			finishSkipped("stopped")
 		}
 		if (intent.kind === INTENT.SETUP) {
@@ -923,11 +926,11 @@ async function main() {
 		notice(`Nothing will be saved to ${plan.context.branch}: ${saving.why}.`)
 	}
 
-	// FR-35: the handle a later `stop` needs. Posted BEFORE the run, because a
-	// check written at the end cannot help cancel the run that is writing it —
-	// which is why `stop` found nothing to stop until now. It also makes FR-48's
-	// "the check shows while it runs" true for every run rather than only a
-	// proposal.
+	// The handle anything cancelling this run needs — a pull request closed
+	// without merging is the one left (FR-36). Posted BEFORE the run, because
+	// a check written at the end cannot help cancel the run that is writing
+	// it. It also makes FR-48's "the check shows while it runs" true for every
+	// run rather than only a proposal.
 	const checkSubject = checkSha(plan.context, {}, env.GITHUB_SHA)
 	if (checkSubject) {
 		postCheck(
@@ -1247,7 +1250,7 @@ function postCheck(outcome, view, sha, annotations = [], status = "completed", t
 		name: "Test Companion",
 		head_sha: sha,
 		status,
-		// Which run this check belongs to. FR-35's `stop` reads it back: the
+		// Which run this check belongs to. The closed-PR cancel reads it back: the
 		// check is posted on the PULL REQUEST's head commit, which is the one
 		// thing that reliably ties a run to the pull request it is about.
 		external_id: String(env.GITHUB_RUN_ID ?? ""),
@@ -1280,17 +1283,18 @@ function rememberCheck(sha, id) {
 }
 
 /**
- * End the runs in flight on this commit — FR-35.
+ * End the runs in flight on this commit — FR-36.
  *
- * The 30-second deadline in FR-35 is why this is a cancel call rather than a
- * flag the next run would notice: asking GitHub to cancel is the only thing
- * that stops work already underway.
+ * A cancel call rather than a flag the next run would notice: asking GitHub to
+ * cancel is the only thing that stops work already underway. The one caller
+ * left is a pull request closed without merging; `stop` was the other, and it
+ * was removed (item 7).
  */
 function cancelRunsOn(sha) {
 	// Our own check runs on this commit, NOT `actions/runs?head_sha=`. A run
 	// started by an issue_comment carries the DEFAULT BRANCH's sha, so that
-	// query matched nothing and neither `stop` nor a closed pull request ever
-	// cancelled anything (verified live, 2026-10-29).
+	// query matched nothing and a closed pull request never cancelled anything
+	// (verified live, 2026-10-29).
 	const checks = gh(["api", `repos/${REPO}/commits/${sha}/check-runs?per_page=100`])
 	const fromChecks = runIdsFromChecks(checks?.check_runs, { selfRunId: env.GITHUB_RUN_ID })
 	// Unioned with the old head_sha query, which is still right for a run whose
@@ -1330,51 +1334,6 @@ function cancelForClosedPr(payload) {
 	} else if (forbidden) {
 		warn("Could not stop the run for a closed pull request: this workflow needs `actions: write`.")
 	}
-}
-
-function stopRuns(plan, who, workflow) {
-	const sha = plan.context?.sha
-	const pr = plan.context?.pr
-	const { found, cancelled, forbidden } = cancelRunsOn(sha)
-
-	if (found === 0) {
-		replyOnPr(pr, "Nothing of mine is running on this commit, so there was nothing to stop.")
-		return
-	}
-
-	// FR-35: without the permission, say which one is missing rather than
-	// reporting a stop that did not happen.
-	if (cancelled === 0) {
-		replyOnPr(
-			pr,
-			forbidden
-				? "I could not stop that run — this workflow needs `actions: write` to cancel a run."
-				: "I could not stop that run. It may have finished already.",
-		)
-		return
-	}
-	// M5 (review of #3101). The proposal comment says "say **stop** to drop
-	// it", and stop cancelled runs without dropping anything — so a later `go`
-	// still ran the plan the person had just stopped.
-	//
-	// The check goes with it. Cancelling a run leaves its check in progress,
-	// and a check that never resolves blocks anyone who made it required.
-	dropProposalAndCheck(sha, `Stopped by @${who}.`)
-	replyOnPr(pr, `Stopped by @${who}.\n\n${proposalDroppedMarkerFor(sha, workflow)}`)
-}
-
-/**
- * Mark the plan on this commit as spent and finish its check.
- *
- * Shared by `stop` and the stale-proposal sweep, because leaving either half
- * undone is what M5 was about: a dropped plan that a later `go` still runs,
- * or a check nobody ever completes.
- */
-function dropProposalAndCheck(sha, title) {
-	if (!sha) return
-	const existing = inFlightCheckId(gh(["api", `repos/${REPO}/commits/${sha}/check-runs?per_page=100`])?.check_runs)
-	if (existing) rememberCheck(sha, existing)
-	postCheck(OUTCOMES.SKIPPED, { outcome: "Skipped", summary: {}, runUrl: RUN_URL }, sha, [], "completed", title)
 }
 
 /**

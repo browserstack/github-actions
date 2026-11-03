@@ -1,5 +1,8 @@
 /**
- * Which runs a "stop" should end — STM-5434 FR-35.
+ * Which runs a closed pull request should end — STM-5434 FR-36.
+ *
+ * Written for `stop`, which was removed (item 7). Closing a pull request
+ * without merging still cancels its run, and that is the same question.
  *
  * Pure, and separated from the `gh` calls in main.mjs for the usual reason: the
  * only other way to exercise it is to start a run, comment on it and watch, and
@@ -38,7 +41,7 @@ export function chooseRunsToCancel(runs, { selfRunId, headSha, workflowName } = 
 }
 
 /**
- * Our in-flight run ids, from the check runs on a commit — FR-35.
+ * Our in-flight run ids, from the check runs on a commit — FR-36.
  *
  * Replaces asking GitHub for `actions/runs?head_sha=<the pull request's head>`.
  * That query cannot work for this feature: a run started by an ISSUE_COMMENT
