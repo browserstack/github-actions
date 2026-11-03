@@ -230,6 +230,13 @@ runs:
               mkdir -p "$GH_CONFIG_DIR"
               chmod 700 "$GH_CONFIG_DIR"
               echo "GH_CONFIG_DIR=$GH_CONFIG_DIR" >> "$GITHUB_ENV"
+              # OURS, so the teardown knows it may delete it. The check above
+              # leaves a runner's own credentials alone — but a self-hosted
+              # runner can export GH_CONFIG_DIR machine-wide, and the teardown
+              # then saw a variable it had not set and removed somebody else's
+              # config (CodeRabbit, PR #3286). The sign-in respected them; the
+              # cleanup has to as well.
+              echo "TC_OWNS_GH_CONFIG_DIR=1" >> "$GITHUB_ENV"
               # GH_TOKEN REMOVED for the login itself. gh refuses to store a
               # credential while that variable is set — "The value of the
               # GH_TOKEN environment variable is being used for
@@ -334,13 +341,27 @@ runs:
               # Companion job on a self-hosted runner permanently broke that
               # runner's git auth (STM-5434 review, PR #3286). `--unset` with a
               # value pattern removes our entry and leaves the rest.
+              #
+              # BOTH entries, not just ours-looking-one. `gh auth setup-git`
+              # writes TWO values for each host: an EMPTY helper, which clears
+              # any general helper inherited from a broader scope, and then its
+              # own. Removing only the second left the empty one behind, so the
+              # runner's manager-core (or whatever it had) stayed disabled for
+              # github.com — the same breakage by a quieter route (CodeRabbit,
+              # PR #3286).
               if [ "${TC_ADDED_GIT_HELPER:-}" = "1" ]; then
-                git config --global --unset credential.https://github.com.helper '^!.*gh auth git-credential' 2>/dev/null || true
-                git config --global --unset credential.https://gist.github.com.helper '^!.*gh auth git-credential' 2>/dev/null || true
+                for host in github.com gist.github.com; do
+                  git config --global --unset "credential.https://$host.helper" '^!.*gh auth git-credential' 2>/dev/null || true
+                  git config --global --unset "credential.https://$host.helper" '^$' 2>/dev/null || true
+                done
               fi
-              gh auth logout --hostname github.com >/dev/null 2>&1 || true
-              rm -rf "$GH_CONFIG_DIR"
-              echo "gh credentials removed from this runner."
+              if [ "${TC_OWNS_GH_CONFIG_DIR:-}" = "1" ]; then
+                gh auth logout --hostname github.com >/dev/null 2>&1 || true
+                rm -rf "$GH_CONFIG_DIR"
+                echo "gh credentials removed from this runner."
+              else
+                echo "GH_CONFIG_DIR was not set by this job; leaving it alone."
+              fi
 
         # Separate from the run step so the report is attached even when the
         # build effect says this run should redden the build.

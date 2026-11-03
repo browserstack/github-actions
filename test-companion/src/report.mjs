@@ -280,9 +280,39 @@ function cutShortNote(runUrl) {
  * this comment to edit. Lose it and every run posts a new one (FR-29).
  */
 export function renderComment(args) {
-	const tail = `\n\n${COMMENT_MARKER}`
+	return renderWithin(args, COMMENT_LIMIT, `\n\n${COMMENT_MARKER}`)
+}
+
+/**
+ * GitHub's cap on a check run's `output.summary` — STM-5434, CodeRabbit on
+ * #3286.
+ *
+ * One short of the comment limit, and it bites harder: an over-long comment
+ * fails to post, which is visible, while an over-long summary 422s the check
+ * API. gh() turns that into a warning and returns null, so the "Running" check
+ * posted before the run is never completed and sits `in_progress` on the head
+ * commit for ever — blocking anyone who made it required.
+ */
+export const CHECK_SUMMARY_LIMIT = 65535
+
+/** The same report, cut to fit a check run's summary. */
+export function renderCheckSummary(args) {
+	return renderWithin(args, CHECK_SUMMARY_LIMIT, "")
+}
+
+/**
+ * Render the report so that it fits, cutting the ANSWER first.
+ *
+ * Was the body of renderComment. Pulled out because three sinks render the
+ * same view and only one of them was bounded: the comment, the check run's
+ * summary, and the proposal reply. The answer is the one field with no natural
+ * bound — `generate` describing thirty cases runs to tens of thousands of
+ * characters — so it is cut before anything else, and the table, the links and
+ * the marker survive.
+ */
+function renderWithin(args, limit, tail) {
 	const body = renderJobSummary(args)
-	if (body.length + tail.length <= COMMENT_LIMIT) return body + tail
+	if (body.length + tail.length <= limit) return body + tail
 
 	const note = cutShortNote(args?.runUrl)
 	const answer = inertMarkers(String(args?.answer ?? "").trim())
@@ -290,7 +320,7 @@ export function renderComment(args) {
 		// Measure the rest by rendering it with a one-character answer, so this
 		// stays exact if the layout around it ever changes.
 		const overhead = renderJobSummary({ ...args, answer: "x" }).length - 1
-		const room = COMMENT_LIMIT - overhead - tail.length - note.length
+		const room = limit - overhead - tail.length - note.length
 		if (room > 0) {
 			// Back up to a line break where there is one nearby: cutting inside
 			// a code fence leaves it unterminated and the rest of the comment
@@ -304,7 +334,7 @@ export function renderComment(args) {
 	// Over the limit with no answer at all — a run with thousands of failing
 	// tests does this. Trim the rendered body itself; the marker still goes on.
 	const rest = renderJobSummary({ ...args, answer: undefined })
-	return rest.slice(0, Math.max(0, COMMENT_LIMIT - tail.length - note.length)) + note + tail
+	return rest.slice(0, Math.max(0, limit - tail.length - note.length)) + note + tail
 }
 
 /**
