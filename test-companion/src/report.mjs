@@ -7,7 +7,7 @@
  * The GitHub calls themselves are a thin layer in main.mjs over `gh`, which is
  * preinstalled on every runner and already how this product talks to GitHub.
  */
-import { CAPABILITIES } from "./intent.mjs"
+import { CAPABILITIES, isApprovalOnly } from "./intent.mjs"
 import { emojiFor } from "./outcome.mjs"
 
 /**
@@ -161,6 +161,15 @@ export function renderJobSummary({
 	// able to see that no second pair of eyes was involved.
 	if (String(approvalNote ?? "").trim()) {
 		lines.push(`>${approvalNote}`)
+		lines.push("")
+	}
+
+	// The run could not plant its duplicate-protection flag and went ahead
+	// anyway. The CLI records it in the report as `dedupe:`; without this the
+	// only trace was the raw job log, and the comment — which is what the
+	// customer reads — said nothing (STM-5434 review, PR #3286).
+	if (String(summary.dedupe ?? "").trim()) {
+		lines.push(`> \u26a0\ufe0f Ran without duplicate protection: ${inertMarkers(summary.dedupe)}`)
 		lines.push("")
 	}
 
@@ -366,7 +375,7 @@ export function renderStopRemoved() {
 		"",
 		"To end a run that is going, use **Cancel workflow** on the run's own page — GitHub does that more reliably than I could.",
 		"",
-		"To get rid of a plan waiting for approval, just leave it. It expires on its own after 24 hours and the check resolves with it.",
+		"To get rid of a plan waiting for approval, just leave it. It stops being approvable after 24 hours, and a nightly sweep then closes it off — so the check can sit on **Action required** for up to another day before it resolves. If that check is required on your repository, merge is blocked until it does.",
 	].join("\n")
 }
 
@@ -444,7 +453,7 @@ export function renderProposal(body, sha, requester, workflow) {
 	return [
 		body,
 		"",
-		"Reply **go** to run this for real. Nothing is written until you do. To change the list first, reply **@test-companion go** with your edits. Leave it and it expires on its own after a day.",
+		"Reply **go** to run this for real. Nothing is written until you do. To change the list first, reply **@test-companion go** with your edits. Leave it and it stops being approvable after a day.",
 		"",
 		proposalMarkerFor(sha, requester, workflow),
 	].join("\n")
@@ -546,9 +555,11 @@ export function findProposal(comments, sha, now = Date.now(), us, opts = {}) {
 export function hasApproverEdits(replyText) {
 	const reply = String(replyText ?? "").trim()
 	if (!reply) return false
-	// A bare approval is not an edit. Presenting "go" as one would have the run
-	// looking for an instruction nobody gave.
-	return !/^(go|approved?)[\s.!]*$/i.test(reply)
+	// A bare approval is not an edit, and neither is one that names WHICH plan
+	// — `go #1234`. Presenting either as an edit would have the run looking for
+	// an instruction nobody gave, and renderApprovedPlan would hand the agent
+	// the comment id itself under "these win" (STM-5434 review, PR #3286).
+	return !isApprovalOnly(reply)
 }
 
 export function renderApprovedPlan(proposalBody, replyText) {

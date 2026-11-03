@@ -154,6 +154,23 @@ export function emojiFor(outcome) {
 	return OUTCOME_MARKS[outcome] ?? ""
 }
 
+/**
+ * A workflow annotation, because that is where somebody looking at a newly-red
+ * build will be.
+ */
+const warnedBuildEffects = new Set()
+function warnUnrecognisedBuildEffect(value) {
+	// Once per distinct value, not once per process: a run only ever sees one
+	// setting, so this is "once" in practice, and it stays observable when
+	// several are exercised in the same process.
+	if (warnedBuildEffects.has(value)) return
+	warnedBuildEffects.add(value)
+	const known = Object.values(BUILD_EFFECTS).join(", ")
+	process.stdout.write(
+		`::warning::Test Companion: build-effect "${value}" is not one of ${known}, so the default (${BUILD_EFFECTS.FAIL_ON_BREAK}) applies and a run that breaks will redden this step.\n`,
+	)
+}
+
 /** What a repository can ask a bad outcome to do to its build — FR-9. */
 export const BUILD_EFFECTS = Object.freeze({
 	/** Never red. The check still reports truthfully. */
@@ -206,6 +223,13 @@ export function stepShouldFail(buildEffect, outcome) {
 		.toLowerCase()
 	if (effect === BUILD_EFFECTS.REPORT || effect === "off") return false
 	if (effect === BUILD_EFFECTS.FAIL) return true
+	// Anything else is the default, which now reddens — so say which value we
+	// did not recognise, or the reddening has no explanation anywhere
+	// (STM-5434 review, PR #3286). `build-effect: none` and `warn` are the
+	// likely spellings somebody reaches for.
+	if (effect !== "" && effect !== BUILD_EFFECTS.FAIL_ON_BREAK) {
+		warnUnrecognisedBuildEffect(effect)
+	}
 	return RUN_DID_NOT_WORK.has(outcome)
 }
 

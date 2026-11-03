@@ -252,6 +252,7 @@ runs:
                 # and gh reads the job-scoped config dir set above. Undone in
                 # the cleanup step, which matters on a self-hosted runner.
                 if env -u GH_TOKEN -u GITHUB_TOKEN gh auth setup-git --hostname github.com 2>/dev/null; then
+                echo "TC_ADDED_GIT_HELPER=1" >> "$GITHUB_ENV"
                   echo "git will use gh's credential for github.com."
                 else
                   echo "::notice::Could not point git at gh's credential; a live run's dedupe claim may fail."
@@ -310,8 +311,6 @@ runs:
               path: ${{ steps.run.outputs.result-file }}
               if-no-files-found: ignore
 
-        # Separate from the run step so the report is attached even when the build
-        # effect says this run should redden the build.
         # The token must not outlive the job. On a GitHub-hosted runner the
         # machine is destroyed anyway; on a self-hosted one it is not, and
         # this is the difference between a token that lives for one job and
@@ -327,12 +326,24 @@ runs:
               # at the config dir removed below — leaving it would hand the
               # next job a helper that answers nothing, and a git command that
               # stops to ask for a password rather than failing.
-              git config --global --unset-all credential.https://github.com.helper 2>/dev/null || true
-              git config --global --unset-all credential.https://gist.github.com.helper 2>/dev/null || true
+              #
+              # ONLY THE ONE WE ADDED. `--unset-all` removed EVERY helper for
+              # that URL, including ones the runner's owner set up long before
+              # us — manager-core, a PAT helper — and it ran even when our own
+              # setup-git had failed and we had added nothing. The first Test
+              # Companion job on a self-hosted runner permanently broke that
+              # runner's git auth (STM-5434 review, PR #3286). `--unset` with a
+              # value pattern removes our entry and leaves the rest.
+              if [ "${TC_ADDED_GIT_HELPER:-}" = "1" ]; then
+                git config --global --unset credential.https://github.com.helper '^!.*gh auth git-credential' 2>/dev/null || true
+                git config --global --unset credential.https://gist.github.com.helper '^!.*gh auth git-credential' 2>/dev/null || true
+              fi
               gh auth logout --hostname github.com >/dev/null 2>&1 || true
               rm -rf "$GH_CONFIG_DIR"
               echo "gh credentials removed from this runner."
 
+        # Separate from the run step so the report is attached even when the
+        # build effect says this run should redden the build.
         - name: Apply the build effect
           if: always() && steps.run.outputs.should-fail == 'true'
           shell: bash

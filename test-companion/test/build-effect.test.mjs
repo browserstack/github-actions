@@ -105,3 +105,28 @@ describe("the input documents what it does", () => {
 		assert.match(input, /fail/)
 	})
 })
+
+describe("an unrecognised value explains the reddening it causes", () => {
+	/**
+	 * STM-5434 review (kritansh20, PR #3286). Reversing the fail-closed rule
+	 * means `build-effect: none` / `warn` / `false` starts reddening builds.
+	 * That is the right default, but it should say why.
+	 */
+	test("it warns, naming the value and the default", () => {
+		const said = []
+		const real = process.stdout.write.bind(process.stdout)
+		process.stdout.write = (c, ...rest) => {
+			said.push(String(c))
+			return real(c, ...rest)
+		}
+		try {
+			stepShouldFail("none", OUTCOMES.RUN_BROKE)
+		} finally {
+			process.stdout.write = real
+		}
+		const warning = said.find((l) => l.includes("::warning::"))
+		assert.ok(warning, `expected a workflow warning, got: ${said.join("")}`)
+		assert.match(warning, /none/)
+		assert.match(warning, /fail-on-break/)
+	})
+})

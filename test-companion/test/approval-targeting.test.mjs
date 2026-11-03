@@ -3,6 +3,8 @@ import assert from "node:assert/strict"
 import { readIntent, INTENT } from "../src/intent.mjs"
 import { planRun } from "../src/plan-run.mjs"
 import {
+	hasApproverEdits,
+	renderApprovedPlan,
 	proposalMarkerFor,
 	proposalConsumedMarkerFor,
 	proposalDroppedMarkerFor,
@@ -60,7 +62,10 @@ describe("go can name the plan it answers", () => {
 	})
 
 	test("the intent carries the id a reply named", () => {
-		const got = readIntent("@test-companion go #6580278184", { proposalWaiting: true })
+		// What readIntent actually receives: plan-run.mjs strips the mention
+		// before this, so the pattern is anchored to the approval word and not
+		// to the start of the raw comment.
+		const got = readIntent("go #6580278184", { proposalWaiting: true })
 		assert.equal(got.kind, INTENT.GO)
 		assert.equal(got.proposalId, "6580278184")
 	})
@@ -220,5 +225,65 @@ describe("naming a plan does not need the mention", () => {
 		// so it is carried through — but as a BARE one, with no plan named.
 		const out = planRun({ eventName: "issue_comment", payload: comment("go and look at #25 too"), repo: "acme/shop" })
 		assert.equal(out.skip?.reason, "not-addressed-to-us")
+	})
+})
+
+describe("naming a plan is not editing it", () => {
+	/**
+	 * STM-5434 review (kritansh20, PR #3286). `hasApproverEdits("go #1234")`
+	 * was true, because the bare-approval pattern allowed no plan reference.
+	 * That is not just a wrong line in the report: renderApprovedPlan uses the
+	 * same answer to append "# Changes the approver made … these win" to the
+	 * plan the agent is handed. So the feature added by item 5 injected its own
+	 * comment id into the plan as an authoritative instruction.
+	 */
+	test("go #id is a bare approval", () => {
+		assert.equal(hasApproverEdits("go #6600030205"), false)
+		assert.equal(hasApproverEdits("approved #6600030205"), false)
+		assert.equal(hasApproverEdits("go https://github.com/o/r/pull/1#issuecomment-6600030205"), false)
+	})
+
+	test("so the plan the agent gets is just the plan", () => {
+		const plan = renderApprovedPlan("do the thing", "go #6600030205")
+		assert.doesNotMatch(plan, /Changes the approver made/)
+		assert.doesNotMatch(plan, /6600030205/)
+	})
+
+	test("a real edit is still an edit, and still wins", () => {
+		assert.equal(hasApproverEdits("go, and also cover the empty cart"), true)
+		const plan = renderApprovedPlan("do the thing", "go, and also cover the empty cart")
+		assert.match(plan, /Changes the approver made/)
+		assert.match(plan, /empty cart/)
+	})
+
+	test("a bare go is still bare", () => {
+		assert.equal(hasApproverEdits("go"), false)
+		assert.equal(hasApproverEdits("Approved."), false)
+	})
+})
+
+describe("a plan reference has to sit next to the approval", () => {
+	/**
+	 * STM-5434 review. GO_TARGET matched a `#id` anywhere in the comment, so
+	 * "@test-companion go — and pull the steps from <url>#issuecomment-…"
+	 * became an approval of a plan that does not exist, and was refused.
+	 */
+	test("a link quoted later in the sentence is not a plan reference", () => {
+		const got = readIntent(
+			"@test-companion go — and pull the steps from https://github.com/o/r/pull/9#issuecomment-2345678901",
+			{
+				proposalWaiting: true,
+			},
+		)
+		assert.equal(got.kind, INTENT.GO)
+		assert.equal(got.proposalId, undefined)
+	})
+
+	test("one that does sit next to it still counts", () => {
+		assert.equal(readIntent("go #6600030205", { proposalWaiting: true }).proposalId, "6600030205")
+		assert.equal(
+			readIntent("approved https://github.com/o/r/pull/1#issuecomment-6600030205", { proposalWaiting: true }).proposalId,
+			"6600030205",
+		)
 	})
 })

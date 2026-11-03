@@ -1330,6 +1330,21 @@ function cancelForClosedPr(payload) {
 	if (!sha) return
 	const { cancelled, forbidden } = cancelRunsOn(sha)
 	if (cancelled > 0) {
+		// Cancelling leaves the run's check in progress, and a check that never
+		// resolves blocks anyone who made it required — the #3101 B1 failure.
+		// `stopRuns` used to complete it and went with `stop`; nothing replaced
+		// it, so a pull request closed mid-run kept a pending check that came
+		// back if it was reopened (STM-5434 review, PR #3286).
+		const existing = inFlightCheckId(gh(["api", `repos/${REPO}/commits/${sha}/check-runs?per_page=100`])?.check_runs)
+		if (existing) rememberCheck(sha, existing)
+		postCheck(
+			OUTCOMES.SKIPPED,
+			{ outcome: "Skipped", summary: {}, runUrl: RUN_URL },
+			sha,
+			[],
+			"completed",
+			"The pull request was closed.",
+		)
 		notice(`Test Companion: stopped ${cancelled} run(s) — the pull request was closed without merging.`)
 	} else if (forbidden) {
 		warn("Could not stop the run for a closed pull request: this workflow needs `actions: write`.")
@@ -1438,6 +1453,16 @@ function sweepExpiredProposals() {
 		// the dropped marker has to name the job, or dropping one stale plan
 		// would finish off every other plan on that commit (item 5).
 		const stale = findProposal(comments, sha, Date.now(), botLogin)
+		// A proposal written before the job was recorded has no workflow, and a
+		// marker with no workflow means the WHOLE COMMIT under the legacy rule
+		// in SPENT_MARKER — so sweeping one old plan would kill every current
+		// one beside it, which is the thing item 5 set out to stop. Leave it;
+		// it is already expired, so it cannot be approved either way
+		// (STM-5434 review, PR #3286).
+		if (!stale?.workflow) {
+			notice(`Test Companion: left an untagged stale proposal on #${pr.number} rather than sweeping the whole commit.`)
+			continue
+		}
 
 		// Complete the check the PROPOSAL run left in progress, rather than
 		// adding a second one beside it. The sweep is a different process with
@@ -1452,7 +1477,7 @@ function sweepExpiredProposals() {
 		postCheck(OUTCOMES.COULD_NOT_RUN, { outcome: OUTCOMES.COULD_NOT_RUN, summary: {}, runUrl: RUN_URL }, sha)
 		replyOnPr(
 			pr.number,
-			`That proposal went a day without a reply, so I have dropped it. The check now says Action required — comment again and I will put up a fresh one.\n\n${proposalDroppedMarkerFor(sha, stale?.workflow)}`,
+			`That proposal went unanswered, so I have dropped it. The check now says Action required — comment again and I will put up a fresh one.\n\n${proposalDroppedMarkerFor(sha, stale?.workflow)}`,
 		)
 		notice(`Test Companion: dropped a stale proposal on #${pr.number}.`)
 	}
