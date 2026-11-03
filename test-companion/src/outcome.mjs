@@ -128,6 +128,32 @@ export function checkConclusion(outcome) {
 	}
 }
 
+/**
+ * One mark per outcome, so the heading reads at a glance.
+ *
+ * "## Test Companion — Run broke" and "## Test Companion — Succeeded" look the
+ * same in a crowded pull request thread, and the one that needs attention is
+ * the one that blends in.
+ *
+ * Deliberately the four GitHub itself uses for the same ideas — a tick for
+ * done, a cross for a failing test, a warning for "somebody has to look" —
+ * rather than anything decorative. An outcome this Action has never heard of,
+ * which a newer CLI could report, gets no mark rather than a crash: losing the
+ * mark is cosmetic, losing the report is not.
+ */
+const OUTCOME_MARKS = Object.freeze({
+	[OUTCOMES.SUCCEEDED]: "✅",
+	[OUTCOMES.TESTS_FAILED]: "❌",
+	[OUTCOMES.RUN_BROKE]: "💥",
+	[OUTCOMES.STOPPED_AT_LIMIT]: "🛑",
+	[OUTCOMES.COULD_NOT_RUN]: "⚠️",
+	[OUTCOMES.SKIPPED]: "⏭️",
+})
+
+export function emojiFor(outcome) {
+	return OUTCOME_MARKS[outcome] ?? ""
+}
+
 /** What a repository can ask a bad outcome to do to its build — FR-9. */
 export const BUILD_EFFECTS = Object.freeze({
 	/** Never red. The check still reports truthfully. */
