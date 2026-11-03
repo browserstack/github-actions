@@ -84,7 +84,7 @@ describe("action.yml — git's credential helper is cleaned up", () => {
 		// (STM-5434 review, PR #3286).
 		assert.match(
 			actionYml,
-			/--unset credential\.https:\/\/github\.com\.helper '\^!\.\*gh auth git-credential'/,
+			/--unset "credential:\/\/\$host\.helper"|--unset "credential\.https:\/\/\$host\.helper"/,
 			"a self-hosted runner keeps a helper pointing at a deleted config dir",
 		)
 	})
@@ -118,5 +118,22 @@ describe("action.yml — the cleanup only removes what this job added", () => {
 
 	test("and it only runs when this job actually added one", () => {
 		assert.match(actionYml, /TC_ADDED_GIT_HELPER/, "a failed setup-git must not trigger a cleanup of somebody else's helper")
+	})
+})
+
+/**
+ * CodeRabbit, PR #3286. `gh auth setup-git` writes TWO values per host: an
+ * empty helper that clears any general helper inherited from a broader scope,
+ * and then its own. Removing only the second leaves the runner's own helper
+ * disabled for that host.
+ */
+describe("action.yml — the cleanup removes both of setup-git's entries", () => {
+	test("the empty helper is unset too", () => {
+		assert.match(actionYml, /--unset "credential[^"]*\.helper" '\^\$'/, "an empty helper keeps a general one disabled")
+	})
+
+	test("and the config dir is only deleted when this job created it", () => {
+		assert.match(actionYml, /TC_OWNS_GH_CONFIG_DIR/)
+		assert.match(actionYml, /leaving it alone/, "a runner that exports GH_CONFIG_DIR itself must keep its own credentials")
 	})
 })

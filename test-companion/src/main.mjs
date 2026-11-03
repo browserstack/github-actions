@@ -26,6 +26,7 @@ import { appCredentials, signJwt, installationTokenRequest } from "./app-auth.mj
 import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent } from "./outcome.mjs"
 import {
 	renderJobSummary,
+	renderCheckSummary,
 	renderComment,
 	chooseCommentAction,
 	checkSha,
@@ -1081,7 +1082,10 @@ async function main() {
 		replyOnPr(
 			plan.context.pr,
 			renderProposal(
-				renderProposalBody({ summary: renderJobSummary(view), plan: planBody, sizeNote }),
+				// The same cap, for the same reason: this body is a comment, and
+				// an over-long one does not truncate — it fails to post, taking
+				// the whole proposal with it.
+				renderProposalBody({ summary: renderCheckSummary(view), plan: planBody, sizeNote }),
 				sha,
 				plan.commenter,
 				// FR-43: record WHICH job this proposal is for, so approving it
@@ -1122,6 +1126,9 @@ async function main() {
 	// Mark the plan spent only if a run actually happened. A run that broke
 	// before doing anything used to spend it anyway, which left the commit
 	// permanently unapprovable — see approvalWasSpent (live run 41463749519).
+	// On the PROPOSAL, before the comment: the proposal outlives every later
+	// run, and the shared comment does not.
+	if (approvalWasSpent(outcome)) markPlanSpent(approvedPlan?.id, consumedMarker)
 	if (plan.context.pr)
 		postComment(plan.context.pr, {
 			...view,
@@ -1257,7 +1264,13 @@ function postCheck(outcome, view, sha, annotations = [], status = "completed", t
 		details_url: RUN_URL,
 		output: {
 			title: waiting ? (title ?? "Waiting for approval") : outcome,
-			summary: renderJobSummary(view),
+			// CAPPED. GitHub rejects a summary over 65,535 characters with a
+			// 422, gh() turns that into a warning and returns null, and the
+			// "Running" check posted before the run is then never completed —
+			// it sits in_progress on the head commit for ever, blocking anyone
+			// who made it required. The comment was capped and this was not
+			// (CodeRabbit, PR #3286).
+			summary: renderCheckSummary(view),
 			...(annotations.length ? { annotations } : {}),
 		},
 	}
@@ -1543,6 +1556,31 @@ function replyOnPr(pr, body) {
 }
 
 /** FR-29: one comment, edited in place. */
+/**
+ * Mark the approved plan spent, ON THE PROPOSAL ITSELF.
+ *
+ * The marker used to go only into the shared result comment, which every later
+ * run REPLACES — `postComment` PATCHes the whole body. So the moment any other
+ * run posted, the record that a plan had been approved was gone, `findProposal`
+ * offered it as waiting again, and a bare `go` re-ran a `--yolo` job. Observed
+ * on the live test pull request: two plans approved on one commit and not one
+ * consumed marker left in the comment (CodeRabbit, PR #3286).
+ *
+ * A proposal comment is written once and never rewritten, so the marker lasts
+ * there. spentPlans reads every comment of ours, so it finds it either way.
+ *
+ * Best effort: failing to mark it is bad, but it must not take down a run that
+ * has already done its work. The run reports what it did; the worst case is
+ * the old behaviour.
+ */
+function markPlanSpent(planId, marker) {
+	if (!planId || !marker) return
+	const current = gh(["api", `repos/${REPO}/issues/comments/${planId}`])
+	const body = String(current?.body ?? "")
+	if (!body || body.includes(marker)) return
+	gh(["api", `repos/${REPO}/issues/comments/${planId}`, "--method", "PATCH", "--input", "-"], { body: `${body}\n\n${marker}` })
+}
+
 function postComment(pr, view) {
 	// `--slurp` matters: without it `gh --paginate` prints ONE JSON ARRAY PER
 	// PAGE, so the output of a pull request with more than 30 comments is

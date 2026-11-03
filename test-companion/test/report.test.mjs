@@ -4,6 +4,8 @@ import { OUTCOMES } from "../src/outcome.mjs"
 import {
 	renderJobSummary,
 	renderComment,
+	renderCheckSummary,
+	CHECK_SUMMARY_LIMIT,
 	chooseCommentAction,
 	checkSha,
 	checkSubjectFor,
@@ -1396,5 +1398,43 @@ describe("the report says which request it is answering", () => {
 	test("a run nobody asked for gets no such row", () => {
 		const body = renderJobSummary(view({ summary: { workflow: "generate", event: "pr_opened" } }))
 		assert.ok(!body.includes("Asked by"), "an unasked run claims someone asked for it")
+	})
+})
+
+/**
+ * CodeRabbit, PR #3286. `view` feeds three sinks and only the comment was
+ * bounded. A check run's `output.summary` over 65,535 characters is a 422;
+ * gh() turns that into a warning and returns null, so the "Running" check
+ * posted before the run is never completed and sits in_progress for ever.
+ */
+describe("renderCheckSummary — bounded like the comment", () => {
+	const view = (answer) => ({
+		workflow: "fix",
+		outcome: OUTCOMES.SUCCEEDED,
+		summary: {},
+		runUrl: "https://github.com/o/r/actions/runs/1",
+		answer,
+	})
+
+	test("a huge answer is cut to fit a check summary", () => {
+		const body = renderCheckSummary(view("word ".repeat(40_000)))
+		assert.ok(body.length <= CHECK_SUMMARY_LIMIT, `summary was ${body.length}`)
+	})
+
+	test("it says it was cut and where the rest is", () => {
+		const body = renderCheckSummary(view("word ".repeat(40_000)))
+		assert.match(body, /cut short/i)
+		assert.ok(body.includes("https://github.com/o/r/actions/runs/1"))
+	})
+
+	test("the table survives the cut", () => {
+		const body = renderCheckSummary(view("word ".repeat(40_000)))
+		assert.ok(body.includes("| Job | fix |"))
+	})
+
+	test("an ordinary report is untouched, and carries no comment marker", () => {
+		const body = renderCheckSummary(view("short"))
+		assert.ok(body.includes("short"))
+		assert.ok(!body.includes(COMMENT_MARKER), "the marker belongs to the comment, not the check")
 	})
 })

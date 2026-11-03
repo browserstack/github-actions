@@ -63,8 +63,7 @@ concurrency:
         || github.event.issue.number
         || github.run_id }}${{
         (github.event.action == 'closed'
-        || startsWith(github.event.comment.body, 'stop')
-        || contains(github.event.comment.body, '@test-companion stop'))
+        || contains(github.event.comment.body, 'stop'))
         && '-control' || '' }}
     # Queue rather than cancel: a run already in flight has spent credits, and
     # the newer one waits its turn instead of superseding it. Control events
