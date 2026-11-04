@@ -84,7 +84,7 @@ describe("every src module is reachable", () => {
 /**
  * Found by a live run, run 41048725625. Asking "@test-companion explain why
  * the contract check is failing" worked: the Action found the red build and
- * passed it to the CLI. Replying "go" to the proposal it put up did NOT —
+ * passed it to the CLI. Replying "go" to the proposal it put up did NOT
  * the CLI was spawned with no build at all and died with
  * `rca requires --context build=<url|number>`.
  *
@@ -119,8 +119,6 @@ describe("main.mjs — the failing build is resolved after the workflow is final
 })
 
 /**
- * Review of PR #3101, blocker B3.
- *
  * The App's private key arrives in the environment and stays there. Anything
  * spawned afterwards inherits it — and the agent runs with --yolo, so "what
  * gets spawned afterwards" includes programs it chose.
@@ -145,7 +143,7 @@ describe("main.mjs — the App private key does not outlive its use", () => {
 		// its own commands.
 		//
 		// Anchored on the CALL. The spawn itself moved into answer.mjs when the
-		// Action started reading the agent's output (STM-5434), and anchoring on
+		// Action started reading the agent's output, and anchoring on
 		// `spawn(` would now find that module's own line, which says nothing
 		// about the order things happen here.
 		assert.ok(
@@ -156,10 +154,10 @@ describe("main.mjs — the App private key does not outlive its use", () => {
 })
 
 /**
- * Live run 41463749519. An approved `fix` broke in under a second, did no
- * work, wrote nothing — and the result comment still carried the marker that
- * says the plan was spent. Every later `go` on that commit was refused, a
- * fresh proposal included, with no way out but a new commit.
+ * An approved `fix` that breaks in under a second does no work and writes
+ * nothing, so the result comment must not carry the marker saying the plan
+ * was spent — otherwise every later `go` on that commit is refused, a fresh
+ * proposal included, with no way out but a new commit.
  *
  * The decision lives in approvalWasSpent and is unit-tested there. What cannot
  * be unit-tested is that main.mjs actually asks it, so it is pinned here.

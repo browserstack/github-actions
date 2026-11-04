@@ -5,7 +5,7 @@ import { readIntent, INTENT, CAPABILITIES } from "../src/intent.mjs"
 import { renderProposal, renderStopRemoved, renderUnknownRequest } from "../src/report.mjs"
 
 /**
- * `stop` is gone — STM-5434 demo feedback, item 7.
+ * `stop` is gone.
  *
  * It did two things: cancelled a run in flight, and dropped a plan waiting for
  * approval. Neither survives. GitHub's own cancel button ends a run, and a plan
@@ -50,7 +50,7 @@ describe("the starter workflow keeps the control lane for closed pull requests",
 	const group = starter.slice(starter.indexOf("concurrency:"), starter.indexOf("\njobs:"))
 
 	/**
-	 * CHANGED by the review of #3286. Taking `stop` out of the lane put it in
+	 * Taking `stop` out of its own lane would put it in
 	 * the WORK group, which has `cancel-in-progress: false` and keeps only one
 	 * pending run — so a `stop` comment could evict a queued `go`, and all it
 	 * does now is reply. The lane is cheap; the eviction is not.
@@ -62,9 +62,9 @@ describe("the starter workflow keeps the control lane for closed pull requests",
 	/**
 	 * The feedback said the `-control` suffix "exists only so a stop comment
 	 * lands in a separate lane". It does not: a CLOSED pull request is a
-	 * control event too, and cancelling its run is FR-36, which stays. Removing
+	 * control event too, and cancelling its run is, which stays. Removing
 	 * the suffix outright would put that cancel back in the queue behind the
-	 * very run it is sent to end — blocker B2, reintroduced.
+	 * very run it is sent to end.
 	 */
 	test("a closed pull request still gets one", () => {
 		assert.match(group, /github\.event\.action == 'closed'/)

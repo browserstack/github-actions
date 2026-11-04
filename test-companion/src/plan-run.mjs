@@ -1,24 +1,19 @@
 import { isApprovalOnly } from "./intent.mjs"
 /**
- * Turn a GitHub event into a `tc workflow run` invocation — STM-3663 FR-14.
+ * Turn a GitHub event into a `tc workflow run` invocation.
  *
- * This is the Action's main job, and the one place a mistake is expensive: the
- * CLI deliberately refuses to look at GITHUB_* variables itself (there is a test
- * pinning that, so the same CLI behaves identically on Jenkins), so every piece
- * of context it gets comes from here.
+ * The CLI deliberately refuses to read GITHUB_* variables itself, so that the
+ * same CLI behaves identically on Jenkins. Every piece of context it gets
+ * comes from here.
  *
- * Kept pure — payload in, plan out, no I/O — because the only other way to test
- * this is to push a commit and wait for a runner, which is a several-minute loop
- * per attempt. Everything decidable without a network lives here.
+ * Pure — payload in, plan out, no I/O — because the only other way to test it
+ * is to push a commit and wait for a runner.
  *
- * ── The event vocabulary is a public contract ────────────────────────────────
- * `--event` is free text to the CLI; it is matched against whatever the customer
- * wrote in their pipeline file's `on:` field. So the names below ARE the API.
- * Changing one later silently stops matching every pipeline file that used it —
- * no error, the binding just never fires. Add names; do not rename them.
- *
- * `pr_merged`, `schedule` and `build_failed` already appear in the shipped CLI's
- * tests and in the published CI guide, so those three are fixed by precedent.
+ * ── The event vocabulary is a public contract ───────────────────────────────
+ * `--event` is free text to the CLI, matched against whatever the customer
+ * wrote in their pipeline file's `on:` field. The names below ARE the API:
+ * renaming one silently stops matching every pipeline that used it, with no
+ * error — the binding just never fires. Add names; do not rename them.
  */
 
 /** Every event name a pipeline file may bind to. */
@@ -65,42 +60,39 @@ const ALLOWED_CONTEXT_KEYS = new Set([
 	"task",
 	"instructions",
 	"actor",
-	// FR-37: the ticket this change is for, found in the branch, title or body.
+	// the ticket this change is for, found in the branch, title or body.
 	"ticket",
-	// FR-43: the approved plan this run must carry out, written by the Action.
+	// the approved plan this run must carry out, written by the Action.
 	"plan_file",
-	// FR-44: how large the change is, when it is too big to cover in one go.
+	// how large the change is, when it is too big to cover in one go.
 	"focus",
-	// FR-43: this run is the gate's planning pass — plan, do not write.
+	// this run is the gate's planning pass — plan, do not write.
 	"propose_only",
 ])
 
 /**
- * `--context` is a comma-separated `k=v` list, so a value containing `,` or `=`
- * can append keys of its own — a comment reading
- * "@test-companion go,sha=deadbeef" would otherwise redirect the run at another
- * commit. Comments and pull request titles are attacker-controlled on a public
- * repo, so the separators are removed rather than escaped: keeping the prose
- * readable matters more than keeping its punctuation.
+ * `--context` is a comma-separated `k=v` list, so a value containing `,` or
+ * `=` can append keys of its own — "@test-companion go,sha=deadbeef" would
+ * redirect the run at another commit. Comments and titles are
+ * attacker-controlled on a public repo, so the separators are removed rather
+ * than escaped: readable prose matters more than its punctuation.
+ *
+ * `"` is here because pflag parses a multi-pair --context value as CSV, which
+ * rejects a bare quote — a PR titled `Fix "Pay now" button` failed flag
+ * parsing outright. contextArgs below is the real fix; this is the belt.
  */
-// `,` and `=` are the CLI's own separators. `"` is here because pflag parses a
-// multi-pair --context value with encoding/csv, which rejects a bare quote in an
-// unquoted field — a PR titled `Fix "Pay now" button` then failed flag parsing
-// and the run reported "Could not run". contextArgs below is the real fix; this
-// is the belt to its braces.
 const stripSeparators = (v) => String(v).replace(/[,="]/g, " ").replace(/\s+/g, " ").trim()
 
 /**
  * Fill a comment-triggered plan in with the pull request's own head commit.
  *
- * `issue_comment` carries the issue number and nothing about the code: no sha,
- * no branch, and `GITHUB_SHA` is the DEFAULT BRANCH tip for that event. So a
- * run asked for on PR #42 read main, and its check landed on main's latest
- * commit rather than the pull request's (review finding, PR #3030).
+ * `issue_comment` carries the issue number and nothing about the code: no
+ * sha, no branch, and `GITHUB_SHA` is the DEFAULT BRANCH tip for that event.
+ * Without this the run reads main and its check lands on main's latest
+ * commit.
  *
- * Fails CLOSED. A head repository that is missing, or not ours, is treated as a
- * fork and skipped — a comment is an untrusted trigger, and the whole point of
- * the fork rule is that a stranger's branch never runs with our credentials.
+ * Fails CLOSED. A head repository that is missing, or not ours, is treated as
+ * a fork and skipped — a comment is an untrusted trigger.
  *
  * `pr` is the API's pull request object; `repo` is "owner/name" for this
  * repository. A plan that already names a commit is returned untouched.
@@ -148,8 +140,8 @@ function cleanContext(pairs) {
  * Decide what, if anything, this event should run.
  *
  * Returns either `{skip: {reason}}` — a clean no-op the step reports and passes
- * — or `{event?, workflow?, preview?, context}`. A manual run carries NO event,
- * which is how the CLI is told to ignore the pipeline bindings (FR-12).
+ * or `{event?, workflow?, preview?, context}`. A manual run carries NO event,
+ * which is how the CLI is told to ignore the pipeline bindings.
  */
 export function planRun({ eventName, payload = {}, inputs = {}, repo, sha, ref } = {}) {
 	const built = route({ eventName, payload, inputs, repo, sha, ref })
@@ -205,7 +197,7 @@ function route({ eventName, payload, inputs, repo, sha, ref }) {
 }
 
 function fromComment(payload, inputs) {
-	// FR-33: an edit must not start a run, or correcting a typo in an old comment
+	// an edit must not start a run, or correcting a typo in an old comment
 	// re-runs the job.
 	if (payload.action !== "created") return skip("comment-edited", payload.action)
 	// GitHub delivers pull request comments as issue_comment; only the presence
@@ -215,33 +207,19 @@ function fromComment(payload, inputs) {
 	const body = payload.comment?.body ?? ""
 	const addressed = body.toLowerCase().includes(MENTION)
 
-	// FR-43: a waiting proposal says "Reply go to run this for real", and a
-	// person does exactly that — with no mention. The PRD's own user story has
-	// the SDET replying "go". Requiring the mention everywhere meant the
-	// proposal was instructing an action that could not work (found by the
-	// first approved run).
+	// A bare approval needs no mention: the proposal says "Reply go to run
+	// this for real", and people do exactly that.
 	//
-	// EXACTLY the approval and nothing else. Opening with the word was not
-	// narrow enough: "Approved, but rename the login case" is an ordinary
-	// review comment on any pull request, and it started a live write run with
-	// "but rename the login case" carried in as approver edits that win
-	// (M3, review of #3101).
+	// EXACTLY the approval and nothing else. Merely opening with the word is
+	// too wide — "Approved, but rename the login case" is an ordinary review
+	// comment, and it would start a live write run with the rest carried in
+	// as approver edits. Edits alongside an approval are still supported, but
+	// then the person has to address us.
 	//
-	// Edits alongside an approval are still supported — FR-43 invites them —
-	// but then the person has to address us, which is the difference between
-	// talking to Test Companion and talking about the change.
-	//
-	// A PLAN REFERENCE is allowed after the word, and nothing else: `go #1234`
-	// or `go <comment link>`, which is how you say WHICH plan when two are
-	// waiting (STM-5434 demo feedback, item 5). Found on a live run — readIntent
-	// and findProposal had both learned about it and this gate had not, so the
-	// comment was dropped as "no @test-companion mention" before the intent was
-	// ever read, and naming a plan only worked if you also addressed us.
-	//
-	// Still narrow: six digits at least, and the reference must be the whole
-	// rest of the comment. "Approved, but rename the login case" is an ordinary
-	// review comment and still needs the mention, and so does "go and look at
-	// #25 too".
+	// A plan reference may follow the word and nothing else: `go #<id>` or
+	// `go <comment link>`, which is how you say WHICH plan when two are
+	// waiting. Six digits at least, and it must be the whole rest of the
+	// comment, so "go and look at #25 too" still needs the mention.
 	const approvalOnly = !addressed && isApprovalOnly(body)
 	if (!addressed && !approvalOnly) return skip("not-addressed-to-us")
 
@@ -272,23 +250,20 @@ function fromComment(payload, inputs) {
 function fromPullRequest(payload, repo) {
 	const p = payload.pull_request ?? {}
 
-	// FR-3: a fork's workflow gets a read-only token and no secrets, so a run
-	// would fail partway with a confusing permissions error. Refuse up front.
+	// A fork's workflow gets a read-only token and no secrets, so a run would
+	// fail partway with a confusing permissions error. Refuse up front.
 	//
-	// Fails CLOSED, and that matters most for `pull_request_target`, which is
-	// routed here too: that trigger runs in the BASE repository's context WITH
-	// secrets even for a fork's pull request, so this check is the only thing in
-	// front of it — unlike `pull_request`, the no-credentials skip never fires.
+	// Fails CLOSED, which matters most for `pull_request_target`: that trigger
+	// runs in the BASE repository's context WITH secrets even for a fork's
+	// pull request, so this check is the only thing in front of it.
 	//
-	// GitHub sets `head.repo` to null when the fork has been DELETED. The
-	// previous form required a truthy full_name before it would refuse, so a
-	// deleted fork sailed through: open a pull request from a fork, delete the
-	// fork, and the run executed attacker-authored code with our credentials
-	// and --yolo. fromWorkflowRun below already guards its own privileged
-	// trigger this way; this one did not.
+	// GitHub sets `head.repo` to null when the fork has been DELETED, so a
+	// missing repo must refuse too — otherwise opening a pull request from a
+	// fork and then deleting it runs attacker-authored code with our
+	// credentials and --yolo.
 	//
-	// Compared case-insensitively, as workflow_run already does, because GitHub
-	// treats repository names that way.
+	// Compared case-insensitively, because GitHub treats repository names
+	// that way.
 	const head = p.head?.repo?.full_name
 	if (!repo || !head || head.toLowerCase() !== repo.toLowerCase()) {
 		return skip("fork", head ?? "unknown-origin")
@@ -308,7 +283,7 @@ function fromPullRequest(payload, repo) {
 		}
 	}
 
-	// FR-36: a draft never starts a run by itself. A comment still can, which is
+	// a draft never starts a run by itself. A comment still can, which is
 	// why this sits here rather than in the comment path.
 	if (p.draft) return skip("draft")
 
@@ -325,7 +300,7 @@ function fromPullRequest(payload, repo) {
 		// commit-scoped prompt — "the change in PR #N, commit SHA … covering only
 		// what that change touches" — ONLY when no subject is given. Sending the
 		// title made `generate` write cases for the title rather than the diff,
-		// which is the opposite of FR-15.
+		// which is the opposite of.
 		context: { sha: p.head?.sha, branch: p.head?.ref, pr: String(p.number) },
 	}
 }
@@ -346,7 +321,7 @@ function fromWorkflowRun(payload, inputs, repo) {
 		return skip("fork", head ?? "unknown-origin")
 	}
 
-	// FR-21: never explain our own red run, or a failing Test Companion check
+	// never explain our own red run, or a failing Test Companion check
 	// triggers a run to explain the failing Test Companion check, forever.
 	const self = inputs["self-workflow-name"]
 	if (self && run.name === self) return skip("own-run", run.name)
@@ -370,7 +345,7 @@ function fromManual(inputs, sha, ref) {
 	if (!workflow) return skip("no-workflow-named", "workflow_dispatch needs a `workflow` input")
 	return {
 		// Deliberately no event: that is how the CLI is told to ignore the
-		// pipeline bindings and run exactly what was asked for (FR-12).
+		// pipeline bindings and run exactly what was asked for.
 		workflow,
 		preview: String(inputs.preview ?? "") === "true",
 		context: { sha, branch: branchFromRef(ref) },

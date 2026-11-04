@@ -1,5 +1,5 @@
 /**
- * The Action's entry point — STM-3663 Release 2.
+ * The Action's entry point.
  *
  * Deliberately thin. Every decision worth testing lives in plan-run.mjs,
  * outcome.mjs and report.mjs, which are pure and run under `node --test` in
@@ -76,14 +76,14 @@ const RUN_URL = `${env.GITHUB_SERVER_URL ?? "https://github.com"}/${REPO}/action
 // RUNNER_TEMP, not the system temp dir: GitHub clears RUNNER_TEMP per job, while
 // /tmp survives on a self-hosted or reused runner. With fixed names in a shared
 // /tmp, `existsSync(RESULT_FILE)` could find an EARLIER job's file and this run
-// would report, and upload, test cases it never produced. Falls back to tmpdir()
+// would report, and upload, test cases it never produced. Falls back to tmpdir
 // so the Action still runs outside a GitHub runner.
 const REPORT_DIR = env.RUNNER_TEMP || tmpdir()
 const SUMMARY_FILE = join(REPORT_DIR, "test-companion-report.md")
 // What the run PRODUCED, as opposed to how it went. Kept separate because the
 // two have separate readers: a CI step branches on the summary, a person reads
 // the result. For a preview run — which refuses to save by design — this file
-// is the only place the generated cases survive (FR-20).
+// is the only place the generated cases survive.
 const RESULT_FILE = join(REPORT_DIR, "test-companion-result.md")
 
 // The artifact the result is uploaded under, named here so the report can
@@ -108,7 +108,7 @@ function ghRaw(args, body) {
 function gh(args, body) {
 	const r = ghRaw(args, body)
 	if (r.status !== 0) {
-		// A missing permission is a normal, documented outcome (FR-4): skip that
+		// A missing permission is a normal, documented outcome: skip that
 		// write, name it, carry on. It is never a reason to fail the run.
 		warn(`GitHub API call failed (${args[1] ?? args[0]}): ${(r.stderr ?? "").trim().split("\n")[0]}`)
 		return null
@@ -121,27 +121,25 @@ function gh(args, body) {
 }
 
 /**
- * Sign in as the Test Companion GitHub App, when it is installed — Release 4.
+ * Sign in as the Test Companion GitHub App, when it is installed.
  *
- * Buys exactly three things: the comment and the tick come from "Test
- * Companion" rather than github-actions[bot], the workflow needs no
- * permissions block because the installation token carries the App's own, and
- * an admin can roll the setup out across an organisation at once.
+ * The comment and the tick then come from "Test Companion" rather than
+ * github-actions[bot], and the workflow needs no permissions block because
+ * the installation token carries the App's own.
  *
- * It does not run anything (Decision 0). The run still happens on the
- * customer's machine with their BrowserStack credentials.
+ * It does not run anything — the run still happens on the customer's machine
+ * with their BrowserStack credentials.
  *
- * Every failure here falls back to the workflow token rather than stopping. A
- * repository without the App installed is the normal case, not an error, and
- * FR-4 says the run finishes either way.
+ * Every failure here falls back to the workflow token rather than stopping.
+ * A repository without the App installed is the normal case, not an error.
  */
 /**
- * The login this Action's comments appear under — review of #3101, M2.
+ * The login this Action's comments appear under.
  *
  * `github-actions[bot]` with the workflow token; `<app-slug>[bot]` when the
- * App is installed, discovered from the installation lookup below. Used to
- * tell OUR comments from any other bot's, because "any bot" let another App
- * post a proposal marker that a maintainer's `go` would then run live.
+ * App is installed. Used to tell OUR comments from any other bot's — "any
+ * bot" would let another App post a proposal marker that a maintainer's `go`
+ * then runs live.
  */
 let botLogin = "github-actions[bot]"
 
@@ -154,23 +152,21 @@ let consumedMarker = ""
 /**
  * The proposal this run is carrying out, so the report can link it.
  *
- * STM-5434 demo feedback, item 5: approving one job no longer finishes off the
+ * : approving one job no longer finishes off the
  * others on that commit, so two plans really can be waiting and "approved" on
  * its own no longer says which one this is.
  */
 let approvedPlan
 
 /**
- * Put the working tree on one commit — review of #3101, M8.
+ * Put the working tree on one commit.
  *
- * Was two blocks doing the same job with different flags. One used
- * `--depth 1`, which SHALLOWS a clone the starter deliberately made with
- * `fetch-depth: 0`, so anything that looks at history afterwards sees one
- * commit. The other checked its fetch but ignored whether the checkout
- * worked, and carried on as if it had.
+ * Never `--depth 1`: that SHALLOWS a clone the starter deliberately made with
+ * `fetch-depth: 0`, so anything looking at history afterwards sees one
+ * commit. The checkout's own result is checked, not just the fetch's.
  *
- * The URL is explicit and carries its own credential, because the starter now
- * sets `persist-credentials: false` (M1) — the workflow token must not sit in
+ * The URL is explicit and carries its own credential, because the starter
+ * sets `persist-credentials: false` — the workflow token must not sit in
  * `.git/config` where a shell command the agent chose can read it.
  */
 function fetchAndCheckout(sha, branch) {
@@ -184,7 +180,7 @@ function fetchAndCheckout(sha, branch) {
 function appInstallationToken() {
 	const creds = appCredentials(env)
 	if (!creds) return undefined
-	// B3 (review of #3101). `creds` holds its own copy, so the key can leave
+	// B3. `creds` holds its own copy, so the key can leave
 	// the environment the moment it has been read. Everything this process
 	// starts from here on inherits that environment — including the agent,
 	// which runs with --yolo and chooses its own commands — and a signing key
@@ -218,7 +214,7 @@ function appInstallationToken() {
 	try {
 		const installation = JSON.parse(found.stdout)
 		installationId = installation?.id
-		// M2 (review of #3101): what WE post as. An App comments as
+		// M2: what WE post as. An App comments as
 		// `<slug>[bot]`, and knowing that is what lets us tell our own
 		// proposal from another App's.
 		if (installation?.app_slug) botLogin = `${installation.app_slug}[bot]`
@@ -227,7 +223,7 @@ function appInstallationToken() {
 	}
 	if (!installationId) return undefined
 
-	// FR-4: "for that repo only". A token minted with no body carries every
+	// "for that repo only". A token minted with no body carries every
 	// permission the installation holds across every repository it covers — a
 	// run in one repository would hold write access to all of an organisation's.
 	const scope = installationTokenRequest(REPO)
@@ -245,7 +241,7 @@ function appInstallationToken() {
 
 	// An installation granted fewer permissions than we ask for refuses the
 	// whole request, so the second attempt drops the permission list and keeps
-	// the repository scope — which is the half FR-4 actually requires. Better a
+	// the repository scope — which is the half actually requires. Better a
 	// token scoped to one repository than a fall back to the workflow token.
 	let minted = mint(scope)
 	if (minted.status !== 0) {
@@ -264,26 +260,26 @@ function appInstallationToken() {
 	}
 	if (!token) return undefined
 
-	// FR-3: credentials are masked in the log. Before the token is used for
+	// credentials are masked in the log. Before the token is used for
 	// anything, so there is no window where it could be echoed unmasked.
 	console.log(`::add-mask::${token}`)
 	return token
 }
 
 /**
- * The settings file as it stands on the DEFAULT BRANCH — FR-7.
+ * The settings file as it stands on the DEFAULT BRANCH, not the checked-out
+ * tree.
  *
- * Not the checked-out tree. Read from the branch under test, a pull request can
- * rewrite the rules for its own run and be obeyed — switch itself from preview
- * to live, delete its own spending limit, point its writes elsewhere. Reading
- * from the default branch means an edit counts only once someone merges it.
+ * Read from the branch under test, a pull request could rewrite the rules for
+ * its own run — switch itself from preview to live, delete its spending
+ * limit, point its writes elsewhere.
  *
- * Returns the local path the content was written to, or undefined when there is
- * no settings file there. Fails SAFE: a fetch that errors for any reason is
- * treated as "no settings", which is a clean skip (FR-13) rather than a run
- * governed by whatever happens to be checked out.
+ * Returns the local path the content was written to, or undefined when there
+ * is no settings file there. Fails SAFE: a fetch that errors is treated as
+ * "no settings", a clean skip rather than a run governed by whatever happens
+ * to be checked out.
  *
- * `--raw` because this is a YAML file, not the JSON envelope gh() parses.
+ * `--raw` because this is YAML, not the JSON envelope gh parses.
  */
 function fetchSettings(path, ref) {
 	const r = spawnSync(
@@ -296,7 +292,7 @@ function fetchSettings(path, ref) {
 	)
 	if (r.status !== 0) {
 		const first = (r.stderr ?? "").trim().split("\n")[0]
-		// A 404 is the ordinary "this repo has no settings file yet" case (FR-13).
+		// A 404 is the ordinary "this repo has no settings file yet" case.
 		// Anything else is worth saying out loud, because the run is about to skip.
 		if (!/404|Not Found/i.test(first)) warn(`Could not read ${path} from ${ref}: ${first}`)
 		return undefined
@@ -307,7 +303,7 @@ function fetchSettings(path, ref) {
 }
 
 /**
- * Whether `login` may ask Test Companion for a run — FR-33.
+ * Whether `login` may ask Test Companion for a run.
  *
  * admin, maintain and write can; triage and read cannot. Any failure to get a
  * clear answer counts as "no".
@@ -319,7 +315,7 @@ function hasWriteAccess(login) {
 }
 
 /**
- * Is `login` on `team` in this repository's organisation? — FR-33.
+ * Is `login` on `team` in this repository's organisation?
  *
  * Tri-state on purpose: undefined means we could not find out (no token for
  * the organisation, API down, rate limited), which mayAsk treats as a no.
@@ -395,7 +391,7 @@ function readEventUncached() {
 	}
 }
 
-/** Nothing to do. Report it plainly and let the step pass — FR-3, FR-13. */
+/** Nothing to do. Report it plainly and let the step pass. */
 function finishSkipped(reason, detail) {
 	const human = {
 		"not-a-pull-request": "That comment was on an issue, not a pull request.",
@@ -415,7 +411,7 @@ function finishSkipped(reason, detail) {
 		"no-workflow-named": "A manual run needs a `workflow` input naming the job.",
 		"no-credentials": "Skipped: BrowserStack credentials are not available to this run.",
 		"no-binding": "Nothing in testcompanion-pipeline.yml is bound to this event, so there was nothing to run.",
-		// FR-4: name the permission and the line to add. The commonest cause by
+		// name the permission and the line to add. The commonest cause by
 		// far is a workflow without `pull-requests: read` — the lookup 403s, the
 		// head commit is unknown, and the run fails closed. Said plainly here
 		// because "nothing safe to run against" sends a reader looking at their
@@ -435,7 +431,7 @@ function finishSkipped(reason, detail) {
 	}[reason]
 	const msg = human ?? `Nothing to do (${reason}).`
 	notice(`Test Companion: ${msg}`)
-	// B1 (review of #3101). The "in progress" check goes up before the CLI
+	// B1. The "in progress" check goes up before the CLI
 	// runs, so the run is cancellable while it is going. Skipping out from
 	// under it left "Test Companion" pending for ever — and `no-binding` is
 	// most events, so for most repositories that was most runs.
@@ -453,7 +449,7 @@ function finishSkipped(reason, detail) {
 }
 
 /**
- * FR-13: no settings file means a clean pass and the file they need.
+ * no settings file means a clean pass and the file they need.
  *
  * Checked before anything else that could cost money or time. Left to the CLI
  * this is a red build reading `open testcompanion-pipeline.yml: no such file or
@@ -477,7 +473,7 @@ async function main() {
 		notice("Test Companion: acting as the GitHub App.")
 	}
 
-	// FR-3: a run without credentials does nothing, says so, and passes. This is
+	// a run without credentials does nothing, says so, and passes. This is
 	// the normal shape of a fork pull request, not an error.
 	if (!env.BROWSERSTACK_USERNAME || !env.BROWSERSTACK_ACCESS_KEY) {
 		finishSkipped("no-credentials")
@@ -486,15 +482,15 @@ async function main() {
 	// Before the plan, so a repository with no pipeline file gets the starter
 	// rather than whatever the planner happens to say about this event.
 	const configPath = pipelineConfigPath(env.TC_ACTION_CONFIG, env)
-	// FR-7: from the default branch, never from the branch under test.
+	// from the default branch, never from the branch under test.
 	// May be undefined — a repository with no settings file is a normal, and
-	// very common, first run (FR-13). It is NOT an early exit any more: a
+	// very common, first run. It is NOT an early exit any more: a
 	// comment asking us to add that file is the one thing worth doing in a
 	// repository that has none, and the exit used to sit in front of it.
 	// Nothing below costs money before the settings check further down.
 	const settingsFile = fetchSettings(configPath, settingsRef(readEvent(), env))
 
-	// FR-44: before anything else this run does, clear out proposals that ran
+	// before anything else this run does, clear out proposals that ran
 	// out of time, so none of them leaves a check stuck on "in progress".
 	if (settingsFile && env.GITHUB_EVENT_NAME === "schedule") sweepExpiredProposals()
 
@@ -511,26 +507,25 @@ async function main() {
 		},
 	})
 	if (plan.skip) {
-		// FR-36: closing a pull request without merging stops whatever it started.
+		// closing a pull request without merging stops whatever it started.
 		if (plan.skip.reason === "closed-unmerged") cancelForClosedPr(readEvent())
 		finishSkipped(plan.skip.reason, plan.skip.detail)
 	}
 
-	// FR-33: only someone who can write to the repository may ask for a run by
-	// commenting. On a public repository anyone can comment, and a run executes
-	// an agent with --yolo against the customer's own machine and credentials,
-	// so this gate is the whole access-control story for the comment trigger.
+	// Only someone who can write to the repository may ask for a run by
+	// commenting. On a public repository anyone can comment, and a run runs an
+	// agent with --yolo against the customer's own machine and credentials.
 	//
-	// Fails CLOSED: if the permission lookup itself fails — no token, API down,
-	// rate limited — the run does not start. An unanswerable "may they?" is a no.
-	// Keyed on the TRIGGER, not only on a flag the planner sets. A planner change
-	// that forgets the flag would otherwise delete this gate silently, and the
-	// failure would be invisible: runs would simply start working for people who
-	// should not be able to start them.
-	// A comment names an issue, not a commit. Look the pull request up so the
-	// run works on ITS head rather than the default branch, and so the check
-	// lands on that commit. Fails closed on a fork, like every other untrusted
-	// trigger (review finding, PR #3030).
+	// Fails CLOSED: if the permission lookup itself fails — no token, API
+	// down, rate limited — the run does not start.
+	//
+	// Keyed on the TRIGGER, not only on a flag the planner sets. A planner
+	// change that forgot the flag would delete this gate silently, and runs
+	// would simply start working for people who cannot start them.
+	//
+	// A comment names an issue, not a commit, so look the pull request up:
+	// the run works on ITS head and the check lands on that commit. Fails
+	// closed on a fork, like every other untrusted trigger.
 	let pull
 	if (!plan.context?.sha && plan.context?.pr) {
 		pull = gh(["api", `repos/${REPO}/pulls/${plan.context.pr}`])
@@ -543,7 +538,7 @@ async function main() {
 		}
 	}
 
-	// FR-37: the ticket this change is for, so the run tests against what the
+	// the ticket this change is for, so the run tests against what the
 	// ticket asks for and not only what the diff does. The pull request object
 	// is already in hand for a comment event; for a pull_request event it is on
 	// the payload.
@@ -555,13 +550,13 @@ async function main() {
 	})
 	if (ticket && plan.context) plan.context.ticket = ticket
 
-	// Read once, before the access check: FR-33's team narrowing lives in the
-	// same document as FR-43's approval gate.
+	// Read once, before the access check: team narrowing lives in the
+	// same document as approval gate.
 	const bindingsDoc = settingsFile && plan.event ? readBindings(settingsFile, plan.event, plan.context?.branch) : undefined
 	const askTeam = bindingsDoc?.settings?.ask_team
 
 	// Only issue_comment. `pull_request_review_comment` was listed here too,
-	// but route() has no case for it, so such an event skips as
+	// but route has no case for it, so such an event skips as
 	// "unsupported-event" long before this line — and the starter does not
 	// subscribe to it either.
 	// Jobs that understand --propose-only and --plan-file. For anything else
@@ -572,7 +567,7 @@ async function main() {
 	const COMMENT_TRIGGERS = new Set(["issue_comment"])
 	if (COMMENT_TRIGGERS.has(env.GITHUB_EVENT_NAME) || plan.requiresWriteAccess) {
 		const who = plan.commenter ?? readEvent().comment?.user?.login
-		// FR-33: write access is the floor, and the pipeline file may narrow it
+		// write access is the floor, and the pipeline file may narrow it
 		// to a team. It may never widen it — see mayAsk.
 		const allowed = mayAsk({
 			hasWriteAccess: hasWriteAccess(who),
@@ -580,29 +575,29 @@ async function main() {
 			inTeam: askTeam ? isOnTeam(who, askTeam) : undefined,
 		})
 		if (!allowed) {
-			// FR-33 wants a one-line reply, not a line in a log the person who
+			//  wants a one-line reply, not a line in a log the person who
 			// asked will never open.
 			//
 			// Unless they never addressed us. An unaddressed comment reaches
 			// here only because it was a bare "go", and answering a bystander's
 			// one-word comment with a public refusal is noise in someone else's
-			// conversation (M3, review of #3101).
+			// conversation.
 			if (!plan.approvalOnly) replyOnPr(plan.context?.pr, renderNotAuthorized(who ?? "there", askTeam))
 			finishSkipped("not-authorized", who)
 		}
 	}
 
-	// FR-34: work out what the comment actually asked for, here, before the CLI
+	// work out what the comment actually asked for, here, before the CLI
 	// is spawned — a request we cannot place has to cost nothing.
 	let proposing = false
 	let approvalNote = ""
 	if (plan.event === TC_EVENTS.PR_COMMENT) {
-		// FR-34: pass what this repository has actually bound, so a job can be
+		// pass what this repository has actually bound, so a job can be
 		// asked for by name and not only by the phrases written into PHRASES.
 		// Fetched BEFORE the intent is read, because what a reply means depends
 		// on whether we asked a question: with a plan waiting, "go, and fix
 		// case 3's title" is an approval with an edit, not a request to run
-		// `fix` (M4, review of #3101).
+		// `fix`.
 		const comments = flattenPages(gh(["api", `repos/${REPO}/issues/${plan.context.pr}/comments`, "--paginate", "--slurp"]))
 		let waiting = findProposal(comments, plan.context.sha, Date.now(), botLogin)
 
@@ -615,9 +610,9 @@ async function main() {
 			replyOnPr(plan.context.pr, renderUnknownRequest())
 			finishSkipped("unmapped-request")
 		}
-		// `stop` is gone — STM-5434 demo feedback, item 7. The word is still
-		// answered, because proposals already in live threads tell people to
-		// say it; it just says what to do instead and starts nothing.
+		// `stop` is gone. The word is still answered, because proposals already
+		// in live threads tell people to say it; it just says what to do
+		// instead and starts nothing.
 		//
 		// Still handled BEFORE the job words, for the reason it always was:
 		// falling through would be the worst possible reading of "stop", where
@@ -631,8 +626,8 @@ async function main() {
 			finishSkipped("setup-requested")
 		}
 
-		// `go #1234` names WHICH plan — STM-5434 demo feedback, item 5. Resolved
-		// here because the intent is what carries the number, and before
+		// `go #<id>` names WHICH plan. Resolved here because the intent is
+		// what carries the number, and before
 		// anything reads `waiting`, because from this point on it IS the plan
 		// being approved.
 		//
@@ -661,7 +656,7 @@ async function main() {
 		const bindings = bindingsDoc
 		const binding = pickBinding(bindings, intent.workflow)
 
-		// FR-34 asks for any BOUND workflow. Saying so now beats a preview run,
+		//  asks for any BOUND workflow. Saying so now beats a preview run,
 		// a proposal, a "go", and only then "no binding for pr_comment".
 		if (intent.workflow && bindings && !binding) {
 			replyOnPr(
@@ -678,7 +673,7 @@ async function main() {
 		// Unless a plan we put up has been left behind by a newer commit. Then
 		// they were talking to us, they used a word we accept, and telling them
 		// "no @test-companion mention" is both wrong and unhelpful — the reason
-		// is sitting in the comment history (FR-44).
+		// is sitting in the comment history.
 		if (plan.approvalOnly && !waiting) {
 			// Already approved, or already stopped. Checked BEFORE the
 			// superseded reading, which otherwise reaches for any older plan
@@ -726,7 +721,7 @@ async function main() {
 			finishSkipped("nothing-to-approve")
 		}
 		if (gate.action === GATE.EXPIRED) {
-			// FR-44: dropped after 24 hours. Enforced on the approving side, so a
+			// dropped after 24 hours. Enforced on the approving side, so a
 			// stale proposal cannot be approved however long it sits there.
 			replyOnPr(
 				plan.context.pr,
@@ -738,7 +733,7 @@ async function main() {
 		if (gate.approvedProposal) {
 			// Pin the run to the job that was actually proposed and read. The
 			// GO intent names no workflow, so without this the CLI resolved one
-			// from the event alone — whichever binding came first in the file —
+			// from the event alone — whichever binding came first in the file
 			// and a `fix` proposal could run something else, live, with --yolo.
 			if (waiting?.workflow) plan.workflow = waiting.workflow
 
@@ -751,13 +746,13 @@ async function main() {
 				gh(["api", `repos/${REPO}/commits/${plan.context.sha}/check-runs?per_page=100`])?.check_runs,
 			)
 			if (pending) rememberCheck(plan.context.sha, pending)
-			// Named with the JOB it finished (item 5). Without that, approving
-			// `fix` made a waiting `generate` plan unapprovable until somebody
-			// pushed — hit twice while testing.
+			// Named with the JOB it finished. Without that, approving `fix`
+			// leaves a waiting `generate` plan unapprovable until somebody
+			// pushes.
 			consumedMarker = proposalConsumedMarkerFor(plan.context.sha, plan.workflow)
 			approvedPlan = waiting?.url ? { id: waiting.id, url: waiting.url } : undefined
 
-			// FR-43: the run carries out the approved plan — the proposal as the
+			// the run carries out the approved plan — the proposal as the
 			// approver left it, edits and all. Written to a file rather than
 			// squeezed onto a command line: a case list is prose, and --context
 			// strips the punctuation it is written with.
@@ -783,7 +778,7 @@ async function main() {
 				notice(`Test Companion:${approvalNote}`)
 			}
 		} else {
-			// FR-44: too big to cover in one go — say so to the run, which then
+			// too big to cover in one go — say so to the run, which then
 			// covers what matters and lists what it left out.
 			const size = describeChangeSize(pull)
 			if (size.large) {
@@ -792,7 +787,7 @@ async function main() {
 		}
 
 		proposing = gate.action === GATE.PROPOSE
-		// FR-43: a planning pass has to KNOW it is one. Without this it attempts
+		// a planning pass has to KNOW it is one. Without this it attempts
 		// the work, is refused by preview, and reports "Could not run" after
 		// spending real credits — observed on the first live run.
 		// Only `test-pr` has --propose-only and --plan-file; sending either to
@@ -807,16 +802,13 @@ async function main() {
 		// THIS RUNS LAST, and it has to.
 		//
 		// `rca`, `fix` and `verdict` need to know WHICH build failed. A
-		// build_failed trigger is handed the run; a COMMENT is not, so these
-		// three used to fail on the first comment with "Could not run" — while
-		// we advertise all three by name.
+		// build_failed trigger is handed the run; a comment is not.
 		//
 		// Last, because the workflow is not final until the approval handling
 		// above has run: "go" names no job, so the job comes from the proposal
-		// being approved. With this block higher up, asking for an rca worked
-		// and APPROVING it did not — the CLI was spawned with no build and
-		// refused it with `rca requires --context build=<url|number>`. Live run
-		// 41048725625.
+		// being approved. Higher up, asking for an rca would work and
+		// APPROVING it would not — the CLI gets spawned with no build and
+		// refuses with `rca requires --context build=<url|number>`.
 		//
 		// The newest red run on this commit is what a person means by "the
 		// failure". Only looked up when the job needs it and the caller has
@@ -840,7 +832,7 @@ async function main() {
 		}
 	}
 
-	// FR-13: no settings file means a clean pass and the file they need. Checked
+	// no settings file means a clean pass and the file they need. Checked
 	// before anything that costs money or time — the comment handling above
 	// spends only API calls, and "set up this repo" has to be reachable from here.
 	if (!settingsFile) {
@@ -857,41 +849,26 @@ async function main() {
 	if (plan.workflow) args.push(plan.workflow)
 	if (plan.event) args.push("--event", plan.event)
 	// One flag per pair. A single joined value is parsed by pflag with
-	// encoding/csv, where one double quote anywhere — `Fix "Pay now" button` —
+	// encoding/csv, where one double quote anywhere — `Fix "Pay now" button`
 	// fails the whole flag and the run reports "Could not run".
 	args.push(...contextArgs(plan.context))
 	if (plan.preview) args.push("--preview")
-	// The fetched copy, not whatever the checkout holds — FR-7.
+	// The fetched copy, not whatever the checkout holds.
 	args.push("--config", settingsFile)
 	args.push("--json", "--yolo", "--summary-file", SUMMARY_FILE, "--result-file", RESULT_FILE)
 
-	// The run must happen on the commit it is about. On an `issue_comment`
-	// event GitHub checks out the DEFAULT branch — a live run on 2026-10-27
-	// wrote eight tests for a pull request branch into a checkout of the
-	// default one. The starter workflow cannot be amended once customers have
-	// merged it, so the Action puts itself on the right commit.
-	//
-	// Read-only with respect to the remote, and advisory: see the checkout
-	// below, which says what happens when it cannot be done.
-	// Every arm fails CLOSED, and each is read from the world rather than
-	// asserted. An earlier draft hard-coded sameRepo on the reasoning that
-	// plan-run.mjs already skips forks — true today, and exactly the shape
-	// that goes quietly wrong when the code around it moves. The same
-	// fail-open bug had already appeared once in this Action, on
-	// `pull_request_target` with a deleted fork.
 	// Put the tree on the commit under review, when nothing else already has.
 	//
-	// Where a comment names an issue, the block above already fetched the head
-	// sha and detached onto it. A pull_request event is different: GitHub
-	// checks out the MERGE commit, and nothing corrects that — so without this
-	// a synchronize-triggered run reads, and would push, merged content rather
-	// than the branch.
+	// An `issue_comment` event checks out the DEFAULT branch, and a
+	// `pull_request` event checks out the MERGE commit. Neither is the commit
+	// the run is about, and the starter workflow cannot be amended once
+	// customers have merged it, so the Action corrects its own checkout.
 	//
-	// No --depth. On a repository cloned with fetch-depth 0 a shallow fetch
-	// makes a COMPLETE clone shallow, taking history away from the agent and
-	// from tc's dedupe claim.
+	// No --depth: on a clone made with fetch-depth 0 a shallow fetch makes a
+	// COMPLETE clone shallow, taking history away from the agent and from
+	// tc's dedupe claim.
 	//
-	// Advisory: a checkout we cannot do is reported and the run continues
+	// Advisory. A checkout we cannot do is reported and the run continues
 	// against whatever is here, because a proposal built from the diff is
 	// still worth having. shouldPushWork re-checks before anything is pushed.
 	if (
@@ -928,9 +905,9 @@ async function main() {
 	}
 
 	// The handle anything cancelling this run needs — a pull request closed
-	// without merging is the one left (FR-36). Posted BEFORE the run, because
+	// without merging is the one left. Posted BEFORE the run, because
 	// a check written at the end cannot help cancel the run that is writing
-	// it. It also makes FR-48's "the check shows while it runs" true for every
+	// it. It also makes "the check shows while it runs" true for every
 	// run rather than only a proposal.
 	const checkSubject = checkSha(plan.context, {}, env.GITHUB_SHA)
 	if (checkSubject) {
@@ -962,7 +939,7 @@ async function main() {
 	// The run executes shell commands the model chooses; anything in this
 	// environment is readable by them. Stripped rather than trusted, because the
 	// product only scrubs these on BrowserStack-hosted runs, not a customer's
-	// own machine (FR-3).
+	// own machine.
 	const run = await runCapturingAnswer("tc", args, childEnvFor(env))
 	const exitCode = run.status ?? 1
 
@@ -1000,7 +977,7 @@ async function main() {
 		}
 	}
 
-	// FR-42: a configured write that could not happen is said out loud, naming
+	// a configured write that could not happen is said out loud, naming
 	// what is missing — a silent skip reads as "there was nothing to write".
 	const warnings = []
 	const testsRepo = bindingsDoc?.settings?.tests_repo
@@ -1010,13 +987,13 @@ async function main() {
 		if (!access.ok) warnings.push(access.message)
 	}
 
-	// FR-45: silent unless the settings asked for them.
+	// silent unless the settings asked for them.
 	const extraChecks = renderExtraChecks(summary, {
 		wcag: bindingsDoc?.settings?.wcag,
 		visual: bindingsDoc?.settings?.visual,
 	})
 
-	// FR-43: the approved work must outlive the runner. Until this existed
+	// the approved work must outlive the runner. Until this existed
 	// nothing carried it off the machine — the CLI opens a pull request only
 	// for `automate` and `fix`, so an approved `test-pr` run wrote eight
 	// passing tests and lost all eight.
@@ -1032,7 +1009,7 @@ async function main() {
 		outcome,
 		summary,
 		runUrl: RUN_URL,
-		// FR-2: two runs a week apart on the same pinned version must report the
+		// two runs a week apart on the same pinned version must report the
 		// same CLI version, which means showing it.
 		cliVersion: summary.cli_version || env.TC_ACTION_CLI_VERSION,
 		resultArtifact: hasResult ? RESULT_ARTIFACT : undefined,
@@ -1042,29 +1019,26 @@ async function main() {
 		askedBy: plan.commenter,
 		askedAt: plan.askedAt,
 		// `rca` and `verdict` leave no artefact — their result file holds the
-		// agent's own closing words, and that IS what was asked for. Without
-		// this the comment was a table saying "Succeeded" with no answer in it
-		// (live run 41049398591). ANSWER_JOBS mirrors the CLI's own list in
-		// cli/pkg/cli/commands/narrative.go; a job missing there writes nothing
-		// to the file, so a mismatch shows up as an empty answer, never as
-		// someone else's output.
-		// STM-5434: the agent's closing words, for EVERY job. They were always
-		// in the output stream (run_render.go emits an `answer` event whatever
-		// the verb); the Action inherited stdout and so never read them, and
-		// `fix` posted a "Succeeded" table with its diagnosis nowhere in sight.
-		// The result file stays as the fallback for the two verbs the CLI does
-		// write it for, so a stream we fail to parse cannot lose what worked.
-		// It stays gated on ANSWER_JOBS: for `generate` that file holds test
-		// cases, not prose, and dumping those here would be someone else's output.
+		// agent's closing words, and that IS what was asked for. Without this
+		// the comment is a table saying "Succeeded" with no answer in it.
+		//
+		// The closing words are read from the output stream for EVERY job, so
+		// `fix` does not post a "Succeeded" table with its diagnosis nowhere
+		// in sight. The result file stays as the fallback for the two verbs
+		// the CLI writes it for, so a stream we fail to parse cannot lose
+		// what worked.
+		//
+		// Still gated on ANSWER_JOBS: for `generate` that file holds test
+		// cases, not prose.
 		answer: run.answer || (hasResult && ANSWER_JOBS.has(plan.workflow ?? summary.workflow) ? readResult() : undefined),
 		failedTests,
 	}
-	// FR-43: a held request posts what it WOULD do and ends. The run that
+	// a held request posts what it WOULD do and ends. The run that
 	// produced this was a preview run, so nothing has been written.
 	if (proposing) {
 		const sha = checkSha(plan.context, summary, env.GITHUB_SHA)
 		addToJobSummary(renderJobSummary(view))
-		// FR-44: say when the change is too big to test in one go, so the
+		// say when the change is too big to test in one go, so the
 		// reviewer can narrow the list before approving rather than after.
 		const size = describeChangeSize(pull)
 		const sizeNote = size.large
@@ -1088,12 +1062,12 @@ async function main() {
 				renderProposalBody({ summary: renderCheckSummary(view), plan: planBody, sizeNote }),
 				sha,
 				plan.commenter,
-				// FR-43: record WHICH job this proposal is for, so approving it
+				// record WHICH job this proposal is for, so approving it
 				// cannot run a different one.
 				plan.workflow ?? summary.workflow,
 			),
 		)
-		// FR-44: the check shows in progress while the proposal waits.
+		// the check shows in progress while the proposal waits.
 		postCheck(outcome, view, sha, [], "in_progress")
 		setOutput("outcome", "Proposed")
 		setOutput("should-fail", "false")
@@ -1106,14 +1080,14 @@ async function main() {
 	setOutput("outcome", outcome)
 	setOutput("should-fail", String(stepShouldFail(env.TC_ACTION_BUILD_EFFECT, outcome)))
 
-	// FR-28: each failing test on the line it is declared on, so a reviewer sees
+	// each failing test on the line it is declared on, so a reviewer sees
 	// it in the files-changed view instead of having to open the run's logs.
-	// Empty whenever the reporter printed no locator, which is every mocha run —
+	// Empty whenever the reporter printed no locator, which is every mocha run
 	// those failures are named in the report instead.
 	const annotations = buildAnnotations(failedTests)
-	// FR-45: accessibility may turn the check red, but ONLY when the settings
+	// accessibility may turn the check red, but ONLY when the settings
 	// say so and only for violations this change introduced. The step's own
-	// result is untouched — that follows the build effect (FR-9).
+	// result is untouched — that follows the build effect.
 	const checkOutcome =
 		outcome === OUTCOMES.SUCCEEDED &&
 		accessibilityFailsCheck(summary, {
@@ -1142,22 +1116,20 @@ async function main() {
 }
 
 /**
- * Commit what the run wrote, onto the pull request's own branch — FR-42's
- * "tests go in the pull request's own repository" applied to the run that
- * produced them.
+ * Commit what the run wrote, onto the pull request's own branch.
  *
  * A commit on the branch rather than a second pull request: someone who asked
  * for tests on their change wants them on their change, not in a review queue
  * behind it.
  *
  * Returns the line for the comment, or undefined when there was nothing to
- * save. Never throws and never fails the run — the report is the product here,
- * and a failed push that takes the whole run down loses the report too.
+ * save. Never throws and never fails the run — a failed push that takes the
+ * whole run down loses the report too.
  */
 function saveWork(saving, plan) {
 	if (!saving.ok) return undefined
 	const branch = plan.context.branch
-	// M7 (review of #3101). We push HEAD, so a commit the AGENT made rides
+	// M7. We push HEAD, so a commit the AGENT made rides
 	// along unfiltered — source, lockfiles, `.github/` — and a workflow-file
 	// change fails the whole push with an error nobody can read. Our own
 	// commit happens below, after this check, so a HEAD that moved during the
@@ -1191,12 +1163,12 @@ function saveWork(saving, plan) {
 		].join(" ")
 	}
 	// `-c core.quotePath=false` stops git octal-escaping non-ASCII bytes, so a
-	// path like café.spec.ts arrives as itself. unquote() decodes the escapes
+	// path like café.spec.ts arrives as itself. unquote decodes the escapes
 	// anyway, but not producing them is the better half of the fix.
 	// `-uall` so a NEW DIRECTORY arrives as its files. Without it git reports
 	// `?? tests/`, splitPushable sees one path with one segment, and
 	// `git add tests/` commits `tests/.env` and `tests/run.log` along with the
-	// spec (M6, review of #3101).
+	// spec.
 	const status = git(["-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all"])
 	if (!status.ok) return undefined
 	const { push, skip } = splitPushable(changedPaths(status.raw))
@@ -1249,7 +1221,7 @@ function saveWork(saving, plan) {
 	return renderPushNote({ branch, sha: git(["rev-parse", "HEAD"]).out, files: push, skipped: skip })
 }
 
-/** FR-48: one check, never neutral. FR-28: each failing test on its own line. */
+/** one check, never neutral.: each failing test on its own line. */
 function postCheck(outcome, view, sha, annotations = [], status = "completed", title = undefined) {
 	if (!sha) return
 	const waiting = status === "in_progress"
@@ -1265,11 +1237,11 @@ function postCheck(outcome, view, sha, annotations = [], status = "completed", t
 		output: {
 			title: waiting ? (title ?? "Waiting for approval") : outcome,
 			// CAPPED. GitHub rejects a summary over 65,535 characters with a
-			// 422, gh() turns that into a warning and returns null, and the
-			// "Running" check posted before the run is then never completed —
+			// 422, gh turns that into a warning and returns null, and the
+			// "Running" check posted before the run is then never completed
 			// it sits in_progress on the head commit for ever, blocking anyone
 			// who made it required. The comment was capped and this was not
-			// (CodeRabbit, PR #3286).
+			//
 			summary: renderCheckSummary(view),
 			...(annotations.length ? { annotations } : {}),
 		},
@@ -1281,7 +1253,7 @@ function postCheck(outcome, view, sha, annotations = [], status = "completed", t
 	// adding another. A run posts up to three times — in progress, the result,
 	// and the catch-all on a crash — so posting every time left two or three
 	// checks of the same name, and a proposal's in-progress one pending
-	// forever. FR-48 asks for one.
+	// forever. asks for one.
 	const { method, path } = checkRequestFor(sha, checksMade)
 	const res = gh(["api", `repos/${REPO}/${path}`, "--method", method, "--input", "-"], payload)
 	if (res?.id) checksMade.set(sha, res.id)
@@ -1296,7 +1268,7 @@ function rememberCheck(sha, id) {
 }
 
 /**
- * End the runs in flight on this commit — FR-36.
+ * End the runs in flight on this commit.
  *
  * A cancel call rather than a flag the next run would notice: asking GitHub to
  * cancel is the only thing that stops work already underway. The one caller
@@ -1332,11 +1304,11 @@ function cancelRunsOn(sha) {
 }
 
 /**
- * FR-36: a pull request closed without merging stops its run.
+ * A pull request closed without merging stops its run.
  *
- * Without the permission to cancel, FR-36 says the run finishes and the comment
- * says it ran on a closed pull request — so this warns and lets it be, rather
- * than failing anything.
+ * Without the permission to cancel, the run finishes anyway and the comment
+ * says it ran on a closed pull request — so this warns and lets it be,
+ * rather than failing anything.
  */
 function cancelForClosedPr(payload) {
 	const sha = payload?.pull_request?.head?.sha
@@ -1344,10 +1316,10 @@ function cancelForClosedPr(payload) {
 	const { cancelled, forbidden } = cancelRunsOn(sha)
 	if (cancelled > 0) {
 		// Cancelling leaves the run's check in progress, and a check that never
-		// resolves blocks anyone who made it required — the #3101 B1 failure.
+		// resolves blocks anyone who made it required — the B1 failure.
 		// `stopRuns` used to complete it and went with `stop`; nothing replaced
 		// it, so a pull request closed mid-run kept a pending check that came
-		// back if it was reopened (STM-5434 review, PR #3286).
+		// back if it was reopened.
 		const existing = inFlightCheckId(gh(["api", `repos/${REPO}/commits/${sha}/check-runs?per_page=100`])?.check_runs)
 		if (existing) rememberCheck(sha, existing)
 		postCheck(
@@ -1365,7 +1337,7 @@ function cancelForClosedPr(payload) {
 }
 
 /**
- * Which test framework the checked-out repository uses — FR-13.
+ * Which test framework the checked-out repository uses.
  *
  * Two levels deep and skipping node_modules and dotted directories: deep
  * enough for the common `e2e/playwright.config.ts` layout, shallow enough not
@@ -1402,7 +1374,7 @@ function scanForFramework() {
 }
 
 /**
- * Open the pull request that adds the settings file — FR-13.
+ * Open the pull request that adds the settings file.
  *
  * A pull request rather than a direct commit, deliberately: the settings decide
  * what Test Companion is allowed to do, so they go in the way every other
@@ -1445,13 +1417,11 @@ function openSetupPr(plan, configPath) {
 }
 
 /**
- * Drop proposals nobody answered — FR-44.
+ * Drop proposals nobody answered.
  *
- * This is what makes FR-44's in-progress check safe to post at all. A proposal
- * that is never replied to would otherwise leave that check unresolved for the
- * life of the pull request, and anyone who made "Test Companion" a required
- * check is then blocked by a check that never arrives — the same failure
- * Release 2 avoided by posting the tick at the END of a run.
+ * This is what makes the in-progress check safe to post at all. A proposal
+ * never replied to would otherwise leave that check unresolved for the life
+ * of the pull request, blocking anyone who made "Test Companion" required.
  *
  * Runs on the nightly schedule, alongside whatever else is bound to it.
  */
@@ -1471,7 +1441,7 @@ function sweepExpiredProposals() {
 		// in SPENT_MARKER — so sweeping one old plan would kill every current
 		// one beside it, which is the thing item 5 set out to stop. Leave it;
 		// it is already expired, so it cannot be approved either way
-		// (STM-5434 review, PR #3286).
+		//
 		if (!stale?.workflow) {
 			notice(`Test Companion: left an untagged stale proposal on #${pr.number} rather than sweeping the whole commit.`)
 			continue
@@ -1485,7 +1455,7 @@ function sweepExpiredProposals() {
 		const existing = inFlightCheckId(gh(["api", `repos/${REPO}/commits/${sha}/check-runs?per_page=100`])?.check_runs)
 		if (existing) rememberCheck(sha, existing)
 
-		// "Action required", per FR-44 — checkConclusion already maps Could not run
+		// "Action required", by design — checkConclusion already maps Could not run
 		// to exactly that, and never to neutral, which branch protection reads as a pass.
 		postCheck(OUTCOMES.COULD_NOT_RUN, { outcome: OUTCOMES.COULD_NOT_RUN, summary: {}, runUrl: RUN_URL }, sha)
 		replyOnPr(
@@ -1497,7 +1467,7 @@ function sweepExpiredProposals() {
 }
 
 /**
- * What the pipeline file binds to this event, with every value resolved — FR-43.
+ * What the pipeline file binds to this event, with every value resolved.
  *
  * Asks the CLI rather than parsing the YAML here: one parser, one schema, one
  * place for it to drift. Returns undefined when the read fails, which
@@ -1545,7 +1515,7 @@ function pickBinding(doc, workflow) {
 }
 
 /**
- * A plain reply in the thread — FR-33, FR-34.
+ * A plain reply in the thread.
  *
  * Deliberately NOT the tracked run comment: it carries no COMMENT_MARKER, so a
  * later run neither overwrites a refusal nor adopts one as the place it reports.
@@ -1555,23 +1525,17 @@ function replyOnPr(pr, body) {
 	gh(["api", `repos/${REPO}/issues/${pr}/comments`, "--method", "POST", "--input", "-"], { body })
 }
 
-/** FR-29: one comment, edited in place. */
 /**
  * Mark the approved plan spent, ON THE PROPOSAL ITSELF.
  *
- * The marker used to go only into the shared result comment, which every later
- * run REPLACES — `postComment` PATCHes the whole body. So the moment any other
- * run posted, the record that a plan had been approved was gone, `findProposal`
- * offered it as waiting again, and a bare `go` re-ran a `--yolo` job. Observed
- * on the live test pull request: two plans approved on one commit and not one
- * consumed marker left in the comment (CodeRabbit, PR #3286).
+ * Put in the shared result comment it would not survive: every later run
+ * REPLACES that body, so the record of an approval disappears, `findProposal`
+ * offers the plan as waiting again, and a bare `go` re-runs a `--yolo` job.
+ * A proposal comment is written once and never rewritten, so the marker
+ * lasts there.
  *
- * A proposal comment is written once and never rewritten, so the marker lasts
- * there. spentPlans reads every comment of ours, so it finds it either way.
- *
- * Best effort: failing to mark it is bad, but it must not take down a run that
- * has already done its work. The run reports what it did; the worst case is
- * the old behaviour.
+ * Best effort: failing to mark it must not take down a run that has already
+ * done its work.
  */
 function markPlanSpent(planId, marker) {
 	if (!planId || !marker) return
@@ -1584,12 +1548,12 @@ function markPlanSpent(planId, marker) {
 function postComment(pr, view) {
 	// `--slurp` matters: without it `gh --paginate` prints ONE JSON ARRAY PER
 	// PAGE, so the output of a pull request with more than 30 comments is
-	// `[...][...]`, JSON.parse throws, gh() returns null and `existing` becomes
+	// `[...][...]`, JSON.parse throws, gh returns null and `existing` becomes
 	// []. Every run then posted a NEW comment instead of editing its own, which
-	// is the single-comment guarantee in FR-29 (review finding, PR #3030).
+	// is the single-comment guarantee in (review finding, ).
 	const existing = flattenPages(gh(["api", `repos/${REPO}/issues/${pr}/comments`, "--paginate", "--slurp"]))
 	const choice = chooseCommentAction(existing, botLogin)
-	// M5 (review of #3101): an approved proposal must stop looking like one.
+	// M5: an approved proposal must stop looking like one.
 	// Without this a second `go` reran the job, and a day later the sweep told
 	// the person their approved plan had gone unanswered.
 	const body = { body: renderComment(view) + (view.consumedMarker ? `\n${view.consumedMarker}` : "") }
@@ -1600,15 +1564,14 @@ function postComment(pr, view) {
 	}
 }
 
-// Spec section "The package itself crashes after the job finishes": the
-// customer gets no tick and no comment, which is WORSE than a red tick —
-// anyone who made the check required is blocked by a check that never arrives,
-// with nothing on the pull request saying why.
+// A crash after the job finishes would leave no tick and no comment, which
+// is worse than a red tick: anyone who made the check required is blocked by
+// a check that never arrives, with nothing on the pull request saying why.
 //
-// finishSkipped and the normal path both exit(0) from inside main, so reaching
-// the catch at all means something unexpected threw. Report it as "Could not
-// run", which is precisely what happened, and still exit 0 so the build-effect
-// step is what decides whether the build goes red.
+// finishSkipped and the normal path both exit(0) from inside main, so
+// reaching this catch means something unexpected threw. Report it as "Could
+// not run" and still exit 0, so the build-effect step decides whether the
+// build goes red.
 try {
 	await main()
 } catch (e) {

@@ -16,14 +16,13 @@ import {
 import { OUTCOMES } from "../src/outcome.mjs"
 
 /**
- * "go" should say which request it is answering — STM-5434 demo feedback,
- * item 5.
+ * "go" should say which request it is answering.
  *
  * Two problems, one cause: the approval machinery was keyed on the COMMIT and
  * nothing else. With two plans waiting there was nothing in what you typed to
  * pick one, and the record of which plans had been used could not tell two
  * jobs apart — so approving one blocked approving any other on that commit
- * until somebody pushed. Hit twice during testing.
+ * until somebody pushed.
  */
 
 const US = "test-companion[bot]"
@@ -177,15 +176,15 @@ describe("the result comment says which plan it carried out", () => {
 describe("naming a plan does not need the mention", () => {
 	/**
 	 * FOUND ON A LIVE RUN, 3 November. `readIntent` and `findProposal` both
-	 * learned about `go #1234`, and the gate in plan-run.mjs that decides
+	 * learned about `go `, and the gate in plan-run.mjs that decides
 	 * whether an UNADDRESSED comment reaches us at all did not — it still
-	 * only accepted a bare `go`. So `go #1234` was dropped as "no
+	 * only accepted a bare `go`. So `go ` was dropped as "no
 	 * @test-companion mention" before the intent was ever read, and naming a
 	 * plan only worked if you also addressed the comment.
 	 *
 	 * Still narrow. `go` followed by a plan reference and nothing else is
 	 * unmistakably aimed at us; "Approved, but rename the login case" is still
-	 * an ordinary review comment and still needs the mention (M3, #3101).
+	 * an ordinary review comment and still needs the mention (M3, ).
 	 */
 	const comment = (body) => ({
 		action: "created",
@@ -230,7 +229,7 @@ describe("naming a plan does not need the mention", () => {
 
 describe("naming a plan is not editing it", () => {
 	/**
-	 * STM-5434 review (kritansh20, PR #3286). `hasApproverEdits("go #1234")`
+	 *  (kritansh20, ). `hasApproverEdits("go ")`
 	 * was true, because the bare-approval pattern allowed no plan reference.
 	 * That is not just a wrong line in the report: renderApprovedPlan uses the
 	 * same answer to append "# Changes the approver made … these win" to the
@@ -264,7 +263,7 @@ describe("naming a plan is not editing it", () => {
 
 describe("a plan reference has to sit next to the approval", () => {
 	/**
-	 * STM-5434 review. GO_TARGET matched a `#id` anywhere in the comment, so
+	 * . GO_TARGET matched a `#id` anywhere in the comment, so
 	 * "@test-companion go — and pull the steps from <url>#issuecomment-…"
 	 * became an approval of a plan that does not exist, and was refused.
 	 */

@@ -41,14 +41,14 @@ const base = {
 	runUrl: "https://github.com/acme/shop/actions/runs/99",
 }
 
-describe("renderJobSummary — FR-27", () => {
+describe("renderJobSummary", () => {
 	test("leads with what happened", () => {
 		const md = renderJobSummary(base)
 		assert.match(md, /Succeeded/)
 		assert.match(md, /generate/)
 	})
 
-	// FR-8: a preview run must be marked as one wherever it reports, or a reader
+	// a preview run must be marked as one wherever it reports, or a reader
 	// sees a clean result and assumes the work landed.
 	test("marks a preview run, and scopes the claim to Test Companion's own writes", () => {
 		const md = renderJobSummary(base)
@@ -57,7 +57,7 @@ describe("renderJobSummary — FR-27", () => {
 		// It must NOT claim nothing at all was written. Preview deliberately
 		// allows `execute_command`, since that is how tests run, so a shell
 		// command the agent chose can still edit a file or push. The old wording
-		// promised a guarantee the gate does not give (review finding, #3030).
+		// promised a guarantee the gate does not give (review finding, ).
 		assert.doesNotMatch(md, /\bnothing was written\b/i)
 		assert.match(md, /[Ss]hell commands.*not covered/i)
 	})
@@ -67,7 +67,7 @@ describe("renderJobSummary — FR-27", () => {
 		assert.doesNotMatch(md, /Preview —/i)
 	})
 
-	// Every run leaves a readable result, including the ones that went wrong —
+	// Every run leaves a readable result, including the ones that went wrong
 	// a run with no report at all is exactly when the reader needs the page most.
 	test("still renders when the CLI left no report", () => {
 		const md = renderJobSummary({ ...base, outcome: OUTCOMES.COULD_NOT_RUN, summary: {} })
@@ -80,7 +80,7 @@ describe("renderJobSummary — FR-27", () => {
 	})
 })
 
-describe("renderComment — FR-29", () => {
+describe("renderComment", () => {
 	// The marker is how the next run finds this comment instead of adding a
 	// second one. It must be in every comment we ever write.
 	test("always carries the marker that makes it findable", () => {
@@ -93,7 +93,7 @@ describe("renderComment — FR-29", () => {
 	})
 })
 
-describe("chooseCommentAction — FR-29", () => {
+describe("chooseCommentAction", () => {
 	const ours = { id: 7, body: `hello ${COMMENT_MARKER}`, user: { type: "Bot", login: US } }
 	const theirs = { id: 8, body: "looks good", user: { type: "User" } }
 
@@ -139,7 +139,7 @@ describe("which commit the check lands on", () => {
 	})
 })
 
-describe("what the run cost and produced — FR-27", () => {
+describe("what the run cost and produced", () => {
 	// A report that says a run "Succeeded" and nothing else leaves the two
 	// questions a reviewer actually has unanswered: what did it cost me, and
 	// where did its work go.
@@ -199,7 +199,7 @@ describe("what the run cost and produced — FR-27", () => {
 	})
 })
 
-describe("naming what failed — FR-28", () => {
+describe("naming what failed", () => {
 	// "Tests failed" with no names makes the reviewer open the run and read the
 	// logs, which is the thing a pull request report exists to avoid.
 	test("lists the failing tests by name", () => {
@@ -236,21 +236,21 @@ describe("naming what failed — FR-28", () => {
 	})
 })
 
-describe("replying when we will not run — FR-33, FR-34", () => {
+describe("replying when we will not run", () => {
 	/**
 	 * Both of these used to go only to the job summary. The person who commented
 	 * never opens the run's logs, so from where they sat Test Companion simply
 	 * ignored them.
 	 */
-	test("someone without write access is told so, and who can ask — FR-33", () => {
+	test("someone without write access is told so, and who can ask", () => {
 		const body = renderNotAuthorized("octocat")
 		assert.match(body, /@octocat/)
 		assert.match(body, /write access/i)
 	})
 
-	test("a request we cannot place gets the list of what we can do — FR-34", () => {
+	test("a request we cannot place gets the list of what we can do", () => {
 		const body = renderUnknownRequest()
-		// `stop` left the list with the capability itself — STM-5434 demo
+		// `stop` left the list with the capability itself demo
 		// feedback, item 7. See stop-removed.test.mjs.
 		for (const phrase of ["test this PR", "explain this failure", "fix the failing tests", "re-check"]) {
 			assert.ok(body.includes(phrase), `the list should offer "${phrase}"`)
@@ -274,7 +274,7 @@ describe("replying when we will not run — FR-33, FR-34", () => {
 	})
 })
 
-describe("the waiting proposal — FR-43, FR-44", () => {
+describe("the waiting proposal", () => {
 	const SHA = "abc123"
 	const marker = proposalMarkerFor(SHA)
 	const hoursAgo = (h) => new Date(Date.now() - h * 3600_000).toISOString()
@@ -291,7 +291,7 @@ describe("the waiting proposal — FR-43, FR-44", () => {
 	})
 
 	/**
-	 * FR-44: "New commits while waiting SHALL replace the proposal." Keying the
+	 * "New commits while waiting SHALL replace the proposal." Keying the
 	 * marker to the commit is what makes that true without any sweeping — a
 	 * proposal simply stops being found once the branch moves, so "go" on a
 	 * stale proposal cannot approve work nobody reviewed.
@@ -311,11 +311,11 @@ describe("the waiting proposal — FR-43, FR-44", () => {
 		assert.equal(findProposal([proposal({ id: 10 }), proposal({ id: 12 })], SHA, undefined, US)?.id, 12)
 	})
 
-	test("a proposal inside the window has not expired — FR-44", () => {
+	test("a proposal inside the window has not expired", () => {
 		assert.equal(findProposal([proposal({ created_at: hoursAgo(23) })], SHA, undefined, US)?.expired, false)
 	})
 
-	test("after 24 hours it has — FR-44", () => {
+	test("after 24 hours it has", () => {
 		assert.equal(findProposal([proposal({ created_at: hoursAgo(25) })], SHA, undefined, US)?.expired, true)
 	})
 
@@ -338,7 +338,7 @@ describe("the waiting proposal — FR-43, FR-44", () => {
 	})
 })
 
-describe("dropping a proposal nobody answered — FR-44", () => {
+describe("dropping a proposal nobody answered", () => {
 	const SHA = "abc123"
 	const hoursAgo = (h) => new Date(Date.now() - h * 3600_000).toISOString()
 	const proposal = (h) => ({
@@ -353,7 +353,7 @@ describe("dropping a proposal nobody answered — FR-44", () => {
 	 * Without this sweep, a proposal nobody replies to leaves the check on
 	 * "in progress" forever — and anyone who made it a required check is blocked
 	 * by a check that never resolves. That is the exact failure Release 2 avoided
-	 * by posting the tick at the end, so FR-44's in-progress check may only exist
+	 * by posting the tick at the end, so in-progress check may only exist
 	 * if something is guaranteed to end it.
 	 */
 	test("an expired proposal needs dropping", () => {
@@ -379,7 +379,7 @@ describe("dropping a proposal nobody answered — FR-44", () => {
 	})
 })
 
-describe("reading a paginated gh response — FR-29", () => {
+describe("reading a paginated gh response", () => {
 	/**
 	 * `gh api --paginate --slurp` returns an ARRAY OF PAGES, not a flat array of
 	 * items — and it wraps even when there is only one page. Verified against
@@ -388,7 +388,7 @@ describe("reading a paginated gh response — FR-29", () => {
 	 * This matters because chooseCommentAction filters on `c.user.type`. Handed
 	 * an array of arrays it matches nothing, returns "create" every time, and
 	 * every run posts a NEW comment — which is exactly the single-comment
-	 * guarantee FR-29 asks for, broken in the fix that was meant to protect it.
+	 * guarantee asks for, broken in the fix that was meant to protect it.
 	 */
 	test("pages are flattened into items", () => {
 		const pages = [[{ id: 1 }, { id: 2 }], [{ id: 3 }]]
@@ -399,7 +399,7 @@ describe("reading a paginated gh response — FR-29", () => {
 		assert.deepEqual(flattenPages([[{ id: 1 }]]), [{ id: 1 }])
 	})
 
-	// Defensive: objects are not arrays, so flat() leaves an already-flat list
+	// Defensive: objects are not arrays, so flat leaves an already-flat list
 	// alone. That keeps this correct if gh ever changes its mind.
 	test("an already-flat list is unchanged", () => {
 		assert.deepEqual(flattenPages([{ id: 1 }]), [{ id: 1 }])
@@ -418,7 +418,7 @@ describe("reading a paginated gh response — FR-29", () => {
 	})
 })
 
-describe("who asked for a proposal — FR-43", () => {
+describe("who asked for a proposal", () => {
 	const SHA = "abc123"
 	const bot = (body, over = {}) => ({
 		id: 10,
@@ -450,7 +450,7 @@ describe("who asked for a proposal — FR-43", () => {
 	})
 })
 
-describe("self-approval is visible in the report — FR-43", () => {
+describe("self-approval is visible in the report", () => {
 	test("the note appears where a reviewer reads the result", () => {
 		const body = renderJobSummary({
 			outcome: OUTCOMES.SUCCEEDED,
@@ -466,7 +466,7 @@ describe("self-approval is visible in the report — FR-43", () => {
 	})
 })
 
-describe("the refusal names the team when one is set — FR-33", () => {
+describe("the refusal names the team when one is set", () => {
 	test("without a team, it names write access", () => {
 		assert.match(renderNotAuthorized("octocat"), /write access/i)
 	})
@@ -478,7 +478,7 @@ describe("the refusal names the team when one is set — FR-33", () => {
 	})
 })
 
-describe("accessibility and visual lines — FR-45", () => {
+describe("accessibility and visual lines", () => {
 	test("silent when the settings did not ask", () => {
 		assert.deepEqual(renderExtraChecks({ accessibility_new: "3" }, {}), [])
 	})
@@ -490,7 +490,7 @@ describe("accessibility and visual lines — FR-45", () => {
 		assert.match(lines[0], /3/)
 	})
 
-	// FR-45: "N changes awaiting review" with a Percy link.
+	// "N changes awaiting review" with a Percy link.
 	test("the visual line reports what is waiting, with its link", () => {
 		const lines = renderExtraChecks({ visual_changes: "4", visual_url: "https://percy.io/x" }, { visual: true })
 		assert.match(lines[0], /4 changes awaiting review/)
@@ -504,7 +504,7 @@ describe("accessibility and visual lines — FR-45", () => {
 	})
 })
 
-describe("when accessibility may fail the check — FR-45", () => {
+describe("when accessibility may fail the check", () => {
 	// "SHALL fail the check only when the file says so, and by default only
 	// violations this change introduced count."
 	test("never by default, however many violations there are", () => {
@@ -554,7 +554,7 @@ describe("the report carries the extra lines and warnings", () => {
 	})
 })
 
-describe("the approved plan handed to the run — FR-43", () => {
+describe("the approved plan handed to the run", () => {
 	const SHA = "abc123"
 
 	test("findProposal returns the body, because the run has to read it", () => {
@@ -575,8 +575,8 @@ describe("the approved plan handed to the run — FR-43", () => {
 	})
 
 	/**
-	 * FR-43 allows "go" with or without edits. A bare "go" must not leave the
-	 * run looking for instructions that were never given.
+	 * "go" may carry edits or none. A bare "go" must not leave the run
+	 * looking for instructions that were never given.
 	 */
 	test("a bare approval carries no edits", () => {
 		const plan = renderApprovedPlan("- case one", "go")
@@ -592,7 +592,7 @@ describe("the approved plan handed to the run — FR-43", () => {
 	})
 })
 
-describe("telling an edited approval from a bare one — FR-43", () => {
+describe("telling an edited approval from a bare one", () => {
 	test("a bare go carries no edits", () => {
 		for (const bare of ["go", "GO", "go.", "approved", "approve!"]) {
 			assert.equal(hasApproverEdits(bare), false, `"${bare}" is a bare approval`)
@@ -610,7 +610,7 @@ describe("telling an edited approval from a bare one — FR-43", () => {
 	})
 })
 
-describe("the proposal carries the plan — FR-38, FR-43", () => {
+describe("the proposal carries the plan", () => {
 	/**
 	 * The first live run posted a proposal containing only a report header. The
 	 * agent had designed nine test cases and verified them; none of it reached
@@ -647,7 +647,7 @@ describe("the proposal carries the plan — FR-38, FR-43", () => {
 	})
 })
 
-describe("renderJobSummary — the saved work (FR-43)", () => {
+describe("renderJobSummary — the saved work", () => {
 	test("shows what was committed to the branch", () => {
 		const out = renderJobSummary({
 			outcome: "Succeeded",
@@ -662,12 +662,12 @@ describe("renderJobSummary — the saved work (FR-43)", () => {
 	})
 })
 
-describe("findSupersededProposal — telling a stale plan from silence (FR-44)", () => {
+describe("findSupersededProposal — telling a stale plan from silence", () => {
 	/**
 	 * Defect found live on 2026-10-29. Someone replied "go" after the branch
 	 * had moved on, and was told:
 	 *
-	 *   "No @test-companion mention, so nothing was asked of Test Companion."
+	 *  "No @test-companion mention, so nothing was asked of Test Companion."
 	 *
 	 * Wrong twice. They DID give a valid approval word, and the real reason is
 	 * that their plan was for an earlier commit. The guard that drops
@@ -714,17 +714,17 @@ describe("findSupersededProposal — telling a stale plan from silence (FR-44)",
 	})
 })
 
-describe("the proposal marker carries the JOB, not just the commit (FR-43)", () => {
+describe("the proposal marker carries the JOB, not just the commit", () => {
 	/**
-	 * Reported in review of PR #3101. The marker recorded the commit and the
-	 * requester and nothing else. On the GO path `intent.workflow` is
+	 * The marker used to record the commit and the requester and nothing
+	 * else. On the GO path `intent.workflow` is
 	 * undefined, so `plan.workflow` was never set and the CLI resolved the
 	 * binding itself from `--event pr_comment` — MatchEvent(...)[0], whichever
 	 * is first in the file.
 	 *
 	 * So on a repository with two pr_comment bindings: ask for `fix`, read a
 	 * proposal for `fix`, reply `go`, and something else runs live with
-	 * --yolo. FR-43 is "what you saw is what runs"; nothing carried the job
+	 * yolo. is "what you saw is what runs"; nothing carried the job
 	 * across.
 	 */
 	test("the marker records the workflow", () => {
@@ -760,7 +760,7 @@ describe("the proposal marker carries the JOB, not just the commit (FR-43)", () 
 	})
 })
 
-describe("checkRequestFor — one check per commit, not three (FR-48)", () => {
+describe("checkRequestFor — one check per commit, not three", () => {
 	test("the first check on a commit is created", () => {
 		assert.deepEqual(checkRequestFor("abc", new Map()), { method: "POST", path: "check-runs" })
 	})
@@ -793,7 +793,7 @@ describe("the two marker readers must not drift apart", () => {
 	 * you are told "No @test-companion mention" again.
 	 *
 	 * The old tests missed it because the superseded block hand-wrote its
-	 * fixture while the new marker tests only ever fed proposalMarkerFor()
+	 * fixture while the new marker tests only ever fed proposalMarkerFor
 	 * output to findProposal. Nothing crossed the two. These do.
 	 */
 	const bot = (body, id = 1) => ({ user: { type: "Bot", login: US }, id, body: `a plan\n\n${body}` })
@@ -923,11 +923,9 @@ describe("renderJobSummary — the answer is the report, for jobs that only answ
 })
 
 /**
- * Semgrep flagged `new RegExp(shaPattern)` as a possible ReDoS (finding 9 on
- * browserstack/github-actions#91). Both callers already escaped, so the
- * finding was a false positive — but it was only false because every caller
- * remembered. These pin that it is now the helper's job, which is what makes
- * the answer stay true.
+ * Building `new RegExp(shaPattern)` was safe only because every caller
+ * remembered to escape. These pin that the escaping is now the helper's job,
+ * which is what makes the answer stay true.
  */
 describe("a proposal marker search is built from literals, never from raw input", () => {
 	test("a sha with regex metacharacters matches itself and nothing else", () => {
@@ -956,16 +954,14 @@ describe("a proposal marker search is built from literals, never from raw input"
 })
 
 /**
- * Review of PR #3101, blocker B1.
- *
  * The "in progress" check is posted BEFORE the CLI runs, so a later `stop`
  * has something to cancel. Two paths then left it pending forever:
  *
  *  - a skip after the check was posted (no binding, which is most events)
- *    exited without completing it;
+ *  exited without completing it;
  *  - a crash posted its check against GITHUB_SHA, which on a comment run is
- *    the DEFAULT BRANCH's commit — so the crash check landed on main and the
- *    pull request's check stayed stuck.
+ *  the DEFAULT BRANCH's commit — so the crash check landed on main and the
+ *  pull request's check stayed stuck.
  *
  * Both need the same thing: the commit we already posted on.
  */
@@ -994,10 +990,8 @@ describe("the commit a pending check belongs to", () => {
 })
 
 /**
- * Review of PR #3101, M2. The worst of the set.
- *
  * "Any bot is us" was the whole identity check. Another App installed on the
- * repository — or `github-actions[bot]` driven by any other workflow in it —
+ * repository — or `github-actions[bot]` driven by any other workflow in it
  * could post a comment carrying our proposal marker for the head sha. A
  * maintainer's `go` then handed that body to a live `--yolo` run as the
  * approved plan. The attacker needs no write access; they need a workflow,
@@ -1050,16 +1044,14 @@ describe("only OUR OWN comments count as ours", () => {
 })
 
 /**
- * Review of PR #3101, M5.
- *
  * Approving a proposal left no trace that it had been approved. Three things
  * followed from that one gap:
  *
  *  - a second `go` found the same proposal and ran the job again;
  *  - the proposal's in-progress check was never adopted, so it stayed pending
- *    beside the real run's check;
+ *  beside the real run's check;
  *  - a day later the sweep said "that proposal went a day without a reply"
- *    about a proposal that had been approved and had already run.
+ *  about a proposal that had been approved and had already run.
  *
  * And `stop` had the same gap from the other side: the comment told people
  * "say stop to drop it", and stop cancelled runs without dropping anything.
@@ -1099,8 +1091,6 @@ describe("a proposal that has been used up is not waiting any more", () => {
 })
 
 /**
- * Found by the live run that verified M5 (run 41067235005).
- *
  * The consumed marker worked — a second `go` did not rerun the job. But the
  * REPLY was wrong: it said "that plan was for an earlier commit", because
  * with nothing waiting the code reaches for a superseded proposal, and an
@@ -1145,7 +1135,7 @@ describe("a plan that was already used says so, rather than blaming the commit",
 })
 
 /**
- * STM-5434: now that EVERY job's answer reaches the comment, the comment can
+ * : now that EVERY job's answer reaches the comment, the comment can
  * be too big to post.
  *
  * GitHub refuses a body over 65,536 characters outright — the call fails and
@@ -1402,9 +1392,9 @@ describe("the report says which request it is answering", () => {
 })
 
 /**
- * CodeRabbit, PR #3286. `view` feeds three sinks and only the comment was
+ * `view` feeds three sinks and only the comment was
  * bounded. A check run's `output.summary` over 65,535 characters is a 422;
- * gh() turns that into a warning and returns null, so the "Running" check
+ * gh turns that into a warning and returns null, so the "Running" check
  * posted before the run is never completed and sits in_progress for ever.
  */
 describe("renderCheckSummary — bounded like the comment", () => {

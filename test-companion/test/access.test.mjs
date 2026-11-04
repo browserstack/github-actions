@@ -2,7 +2,7 @@ import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { mayAsk } from "../src/access.mjs"
 
-describe("mayAsk — FR-33", () => {
+describe("mayAsk", () => {
 	test("write access is enough when no team is named", () => {
 		assert.equal(mayAsk({ hasWriteAccess: true }), true)
 	})
@@ -12,7 +12,7 @@ describe("mayAsk — FR-33", () => {
 	})
 
 	/**
-	 * FR-33: the pipeline file "MAY narrow this to a named team and SHALL NOT
+	 * the pipeline file "MAY narrow this to a named team and SHALL NOT
 	 * widen it". Being on the team is never a way IN for someone who cannot
 	 * write to the repository — a run executes an agent with --yolo against the
 	 * customer's own machine and credentials.
@@ -44,7 +44,7 @@ describe("mayAsk — FR-33", () => {
 
 import { describeTestRepoAccess } from "../src/access.mjs"
 
-describe("describeTestRepoAccess — FR-42", () => {
+describe("describeTestRepoAccess", () => {
 	test("no separate repository means this one, which always works", () => {
 		assert.equal(describeTestRepoAccess({ thisRepo: "acme/shop" }).ok, true)
 		assert.equal(describeTestRepoAccess({ testsRepo: "acme/shop", thisRepo: "acme/shop" }).ok, true)
@@ -55,8 +55,8 @@ describe("describeTestRepoAccess — FR-42", () => {
 	})
 
 	/**
-	 * FR-42: "without either, the run SHALL write nothing there and the summary
-	 * SHALL say which is missing." Naming what is missing is the requirement —
+	 * "without either, the run SHALL write nothing there and the summary
+	 * SHALL say which is missing." Naming what is missing is the requirement
 	 * a bare "permission denied" halfway through a run leaves someone guessing
 	 * between the App and a token.
 	 */

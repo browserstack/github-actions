@@ -1,16 +1,13 @@
 /**
- * Should this request run, or wait for someone to approve it? — STM-5434 FR-43.
+ * Should this request run, or wait for someone to approve it?
  *
- * The flagship interaction in the PRD: a developer asks, Test Companion says
- * what it plans to do, an SDET replies "go", and only then does anything get
- * written.
+ * A developer asks, Test Companion says what it plans to do, a reviewer
+ * replies "go", and only then is anything written.
  *
- * The mechanism is deliberately boring. A held request is run in PREVIEW and
- * its report becomes the proposal. Preview has been enforced in the agent's
- * tool dispatch since Release 1, so FR-43's "nothing SHALL be written before
- * go" is a property of how the run executes rather than a promise made in a
- * prompt. The alternative — a separate "propose only" mode in the brain —
- * would be a second thing to keep honest.
+ * The mechanism is deliberately boring: a held request runs in PREVIEW and
+ * its report becomes the proposal. Preview is enforced in the agent's tool
+ * dispatch, so "nothing is written before go" is a property of how the run
+ * executes rather than a promise made in a prompt.
  *
  * Pure, so every branch is testable without a runner.
  */
@@ -20,11 +17,11 @@ import { INTENT } from "./intent.mjs"
 export const GATE = Object.freeze({
 	/** Run it. `preview` says whether for real. */
 	RUN: "run",
-	/** Run it in preview and post the report as a proposal, then end — FR-43. */
+	/** Run it in preview and post the report as a proposal, then end. */
 	PROPOSE: "propose",
 	/** A "go" arrived with no proposal waiting. */
 	NOTHING_TO_APPROVE: "nothing-to-approve",
-	/** A "go" arrived on a proposal older than the FR-44 window. */
+	/** A "go" arrived on a proposal older than the window. */
 	EXPIRED: "expired",
 })
 
@@ -33,10 +30,9 @@ const STRAIGHT_THROUGH = "straight-through"
 /**
  * `approval` is the RESOLVED value from `tc workflow bindings --json`.
  *
- * Anything else — an unvalidated value, or a bindings read that failed and left
- * it undefined — holds for review. Fails closed, matching ResolvedApproval on
- * the Go side: the cost of a needless proposal is one comment, and the cost of
- * the other mistake is an unreviewed run that writes.
+ * Anything else — unvalidated, or a bindings read that failed — holds for
+ * review. Fails closed: a needless proposal costs one comment, the other
+ * mistake is an unreviewed run that writes.
  */
 export function decideGate({ intent, approval, proposal, actor, workflow } = {}) {
 	if (intent?.kind === INTENT.GO) {
@@ -60,17 +56,14 @@ export function decideGate({ intent, approval, proposal, actor, workflow } = {})
 	// would be asking permission to write nothing.
 	if (intent?.preview) return { action: GATE.RUN, preview: true }
 
-	// The same reasoning, for a job that CANNOT write. `rca` and `verdict`
-	// produce an explanation and nothing else, so there is nothing for a
-	// reviewer to approve — and the proposal they got was literally empty,
-	// because only `test-pr` writes a plan to review. Asking "why did this
-	// fail?" cost two comments and answered on the second.
+	// The same reasoning for a job that CANNOT write. `rca` and `verdict`
+	// produce an explanation and nothing else, so there is nothing to approve
+	// and the proposal would be empty.
 	//
 	// PREVIEW, not just unheld. Skipping the hold is only safe because the run
 	// cannot write, and that has to be made true rather than assumed: these
-	// jobs analyse, but they run with --yolo and a shell, and a binding set to
-	// `mode: live` would otherwise give an unapproved run write tools.
-	// Preview costs nothing here — an explanation is prose either way.
+	// jobs run with --yolo and a shell, and a binding set to `mode: live`
+	// would otherwise hand an unapproved run write tools.
 	if (ANSWER_JOBS.has(workflow)) return { action: GATE.RUN, preview: true }
 
 	if (approval === STRAIGHT_THROUGH) return { action: GATE.RUN, preview: false }
@@ -82,29 +75,25 @@ export function decideGate({ intent, approval, proposal, actor, workflow } = {})
 /**
  * Jobs that produce an explanation and no artefact.
  *
- * One list, used for three things: the gate below, whether the Action shows
- * the answer in the comment, and — mirrored in
- * cli/pkg/cli/commands/narrative.go — whether the CLI writes the answer to
- * the result file at all.
+ * Used by the gate above and by whether the Action shows the answer in the
+ * comment. Mirrored on the CLI side, which decides whether to write the
+ * answer to the result file at all.
  */
 export const ANSWER_JOBS = new Set(["rca", "verdict"])
 
-/** FR-44's thresholds, both marked ASSUMPTION in the PRD. */
+/** Where a change stops being reviewable in one go. Both are assumptions. */
 const MANY_FILES = 20
 const MANY_LINES = 1000
 
 /**
- * Is this change too big to test in one go? — FR-44.
+ * Is this change too big to test in one go?
  *
  * An unreadable pull request is NOT large. Getting that backwards would tell
  * every reviewer their change is too big whenever the API call failed.
  *
- * NOT YET: FR-44 goes on to say the run should propose a FOCUSED set and list
- * what it left out. Choosing which part of a thirty-file change to test is the
- * agent's judgement, and there is no input for handing it that instruction
- * today, so this reports the size and lets the reviewer narrow the proposal
- * before approving it. Passing a context key nothing reads would look finished
- * and do nothing.
+ * Reports the size only. Choosing which part of a thirty-file change to test
+ * is the agent's judgement, and there is no input for handing it that
+ * instruction, so the reviewer narrows the proposal before approving it.
  */
 export function describeChangeSize(pr) {
 	const files = Number(pr?.changed_files ?? 0)

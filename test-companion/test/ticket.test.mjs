@@ -2,7 +2,7 @@ import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { findTicket } from "../src/ticket.mjs"
 
-describe("findTicket — FR-37", () => {
+describe("findTicket", () => {
 	test("from the branch, which is where it usually is", () => {
 		assert.equal(findTicket({ branch: "feat/SHOP-221-add-discount-code" }), "SHOP-221")
 	})
@@ -61,7 +61,7 @@ describe("findTicket — FR-37", () => {
 
 	// The lookbehind makes the match start at the X, so this reads as the
 	// project XSHOP — which is a perfectly good key — rather than quietly
-	// slicing SHOP-221 out of the middle of a word.
+	// slicing out of the middle of a word.
 	test("a longer project key is read whole, not sliced", () => {
 		assert.equal(findTicket({ title: "XSHOP-221" }), "XSHOP-221")
 	})

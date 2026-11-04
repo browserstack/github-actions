@@ -10,7 +10,7 @@ const inProgress = (id, over = {}) => ({
 	...over,
 })
 
-describe("chooseRunsToCancel — FR-35", () => {
+describe("chooseRunsToCancel", () => {
 	test("cancels a run in flight on the same commit", () => {
 		assert.deepEqual(chooseRunsToCancel([inProgress(1)], { selfRunId: "99", headSha: "abc123" }), [1])
 	})
@@ -63,7 +63,7 @@ describe("chooseRunsToCancel — FR-35", () => {
 	})
 })
 
-describe("runIdsFromChecks — finding OUR in-flight runs on a commit (FR-35)", () => {
+describe("runIdsFromChecks — finding OUR in-flight runs on a commit", () => {
 	/**
 	 * The defect this replaces. cancelRunsOn asked GitHub for
 	 * `actions/runs?head_sha=<the pull request's head>`, but a run started by
@@ -75,7 +75,7 @@ describe("runIdsFromChecks — finding OUR in-flight runs on a commit (FR-35)", 
 	 * A run's own `pull_requests` field is NOT the answer: for an
 	 * issue_comment run it reports the pull request whose HEAD is the
 	 * checked-out branch, which is a different pull request entirely. Observed:
-	 * a run for PR #22 reporting number 18.
+	 * a run for reporting number 18.
 	 *
 	 * So the handle is our own check run. It is posted on the pull request's
 	 * head commit, it carries the run id in external_id, and nobody else

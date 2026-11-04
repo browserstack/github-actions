@@ -8,13 +8,13 @@ const go = { kind: INTENT.GO }
 const fresh = { id: 7, expired: false }
 const stale = { id: 7, expired: true }
 
-describe("decideGate — FR-43", () => {
+describe("decideGate", () => {
 	test("straight-through just runs", () => {
 		assert.equal(decideGate({ intent: asking, approval: "straight-through" }).action, GATE.RUN)
 	})
 
 	/**
-	 * FR-43: "the run SHALL post its proposal and end. Nothing SHALL be written
+	 * "the run SHALL post its proposal and end. Nothing SHALL be written
 	 * before 'go'." The proposal run is a PREVIEW run — preview is already
 	 * enforced in tool dispatch as of Release 1, so "nothing is written" is a
 	 * property of the run rather than a promise in a prompt.
@@ -33,7 +33,7 @@ describe("decideGate — FR-43", () => {
 		assert.equal(d.preview, false, "approving is the whole point; it must not stay a preview")
 	})
 
-	test('"go" on a proposal older than a day does not run it — FR-44', () => {
+	test('"go" on a proposal older than a day does not run it', () => {
 		assert.equal(decideGate({ intent: go, approval: "review-before-run", proposal: stale }).action, GATE.EXPIRED)
 	})
 
@@ -67,10 +67,10 @@ describe("decideGate — FR-43", () => {
 	})
 })
 
-describe("decideGate — who approved it — FR-43", () => {
+describe("decideGate — who approved it", () => {
 	/**
 	 * Both the asker and the approver need write access, so this is not a
-	 * privilege boundary — it is a workflow-integrity signal. FR-43's user story
+	 * privilege boundary — it is a workflow-integrity signal. user story
 	 * has an SDET approving a developer's request; the normative text only says
 	 * "someone who can ask". So self-approval is allowed and REPORTED, rather
 	 * than silently permitted or blocked outright (blocking would strand a solo
@@ -108,8 +108,8 @@ describe("decideGate — who approved it — FR-43", () => {
 	})
 })
 
-describe("a very large change — FR-44", () => {
-	// FR-44's thresholds, marked ASSUMPTION in the PRD: more than 20 files or
+describe("a very large change", () => {
+	//  thresholds, marked ASSUMPTION in the PRD: more than 20 files or
 	// more than 1,000 changed lines.
 	test("an ordinary change is not large", () => {
 		assert.equal(describeChangeSize({ changed_files: 3, additions: 40, deletions: 10 }).large, false)

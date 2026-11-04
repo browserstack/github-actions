@@ -1,4 +1,4 @@
-# Test Companion — copy this to .github/workflows/test-companion.yml
+# Test Companion — copy this to.github/workflows/test-companion.yml
 #
 # Two secrets and you are done: BROWSERSTACK_USERNAME and BROWSERSTACK_ACCESS_KEY,
 # under Settings → Secrets and variables → Actions.
@@ -14,7 +14,7 @@
 name: Test Companion
 
 on:
-    # Ask for something by commenting "@test-companion ..." on a pull request.
+    # Ask for something by commenting "@test-companion." on a pull request.
     issue_comment:
         types: [created]
     # A pull request opening or receiving commits.

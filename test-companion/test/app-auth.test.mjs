@@ -71,9 +71,9 @@ describe("signJwt — Release 4", () => {
 	})
 })
 
-describe("installationTokenRequest — FR-4", () => {
+describe("installationTokenRequest", () => {
 	/**
-	 * FR-4: the Action uses the App's identity "FOR THAT REPO ONLY". An
+	 * the Action uses the App's identity "FOR THAT REPO ONLY". An
 	 * installation token minted with no body carries every permission the
 	 * installation holds, across every repository it covers — so a run in one
 	 * repository would hold write access to all of an organisation's.

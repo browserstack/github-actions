@@ -1,20 +1,16 @@
 /**
- * Signing in as the Test Companion GitHub App — STM-5434 Release 4.
+ * Signing in as the Test Companion GitHub App.
  *
- * Release 4 buys exactly three things, and this is what makes the first two
- * real: the comment and the tick come from "Test Companion" rather than
- * github-actions[bot], and the team can delete the permissions block from
- * their workflow file because an installation token carries the App's own
- * permissions.
+ * Two effects: the comment and the tick come from "Test Companion" rather
+ * than github-actions[bot], and the team can delete the permissions block
+ * from their workflow because an installation token carries the App's own.
  *
- * It does not run anything. A run still happens on the customer's machine
- * with their BrowserStack credentials; this only changes who GitHub thinks is
- * talking.
+ * It does not run anything — a run still happens on the customer's machine
+ * with their credentials. This only changes who GitHub thinks is talking.
  *
- * Zero dependencies, like the rest of the Action: Node's crypto signs the JWT
- * and `gh` exchanges it. The private key never leaves this process, and never
- * reaches the agent's environment — childEnvFor is an allowlist and these
- * names are not on it.
+ * Zero dependencies: Node's crypto signs the JWT and `gh` exchanges it. The
+ * private key never leaves this process and never reaches the agent's
+ * environment — childEnvFor is an allowlist and these names are not on it.
  */
 import { createSign } from "node:crypto"
 
@@ -24,9 +20,8 @@ const b64url = (input) => Buffer.from(input).toString("base64url")
 /**
  * The App's credentials, or nothing.
  *
- * Both halves are required: an App id with no key cannot sign, and a key with
- * no id cannot say who it is. Either alone means the workflow is half
- * configured, and falling back to the workflow token is the right answer —
+ * Both halves are required: an id with no key cannot sign, a key with no id
+ * cannot say who it is. Either alone falls back to the workflow token
  * silently, because a repository that never set this up is the normal case.
  */
 export function appCredentials(env = {}) {
@@ -61,23 +56,20 @@ export function signJwt({ appId, privateKey, now = Date.now() / 1000 }) {
 }
 
 /**
- * What to ask for when minting an installation token — FR-4.
+ * What to ask for when minting an installation token: this repository only.
  *
- * FR-4 says the Action uses the App's identity "for that repo only". A token
- * minted with no body does the opposite: it carries every permission the
- * installation holds across every repository it covers, so a run in one
- * repository would hold write access to all of an organisation's.
+ * A token minted with no body carries every permission the installation
+ * holds across every repository it covers, so a run in one repository would
+ * hold write access to all of an organisation's.
  *
- * The permissions are the four the starter workflow asks for, and the four
- * this Action actually uses:
- *   contents      — branches and commits for the fix and reconcile jobs
- *   pull_requests — the one comment, and opening a pull request
- *   checks        — the "Test Companion" check
- *   actions       — reading the red run, and cancelling one when a PR closes
+ * The four permissions the starter asks for and this Action uses:
+ *  contents — branches and commits for the fix and reconcile jobs
+ *  pull_requests — the one comment, and opening a pull request
+ *  checks — the "Test Companion" check
+ *  actions — reading the red run, and cancelling one when a PR closes
  *
- * Returns undefined for a repository we cannot parse. Falling back to an
- * unscoped request would be the worst possible reading of a value we did not
- * understand.
+ * Returns undefined for a repository we cannot parse, rather than falling
+ * back to an unscoped request.
  */
 export function installationTokenRequest(repo) {
 	const parts = String(repo ?? "").split("/")

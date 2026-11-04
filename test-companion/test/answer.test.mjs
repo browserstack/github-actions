@@ -151,14 +151,14 @@ describe("runCapturingAnswer", () => {
 		assert.equal(r.answer, "tests are still red")
 	})
 
-	// A long answer arrives in many pipe-sized pieces, split anywhere —
+	// A long answer arrives in many pipe-sized pieces, split anywhere
 	// including through a multi-byte character.
 	test("an answer larger than the pipe buffer survives being split up", async () => {
 		// The child BUILDS the payload; it is not passed in as an argument.
 		// Linux caps a single argv entry at 128KB (MAX_ARG_STRLEN) however
 		// large ARG_MAX is, so embedding 180KB of text here spawned fine on
 		// macOS and failed with E2BIG on every Linux runner — which is where
-		// CI runs. Caught by this test's first trip through CI, on PR #3286.
+		// CI runs. Caught by this test's first trip through CI, on.
 		const text = "— ".repeat(60_000) + "END"
 		const [cmd, args] = fake(
 			`const t = "— ".repeat(60000) + "END"; process.stdout.write(JSON.stringify({event:"answer",text:t})+"\\n")`,

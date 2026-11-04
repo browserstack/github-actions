@@ -1,20 +1,13 @@
 /**
- * Catch the agent's own closing words out of the run's output — STM-5434.
+ * Catch the agent's own closing words out of the run's output.
  *
  * Every job announces what it concluded. Under `--json` the CLI prints one
  * event per line and `{"event":"answer","text":...}` carries the prose, for
- * EVERY verb — run_render.go emits it unconditionally. What varies is only
- * whether the CLI also saves it to the result file, which it does for `rca`
- * and `verdict` alone (commands/narrative.go).
+ * every verb. What varies is whether the CLI also saves it to the result
+ * file, which it does for `rca` and `verdict` alone.
  *
- * So the Action used to show an answer for those two and a bare "Succeeded"
- * table for the rest. Worst for `fix` in preview, where prose is the whole
- * product: it found the cause, gave the one-line change, and the person who
- * asked saw none of it without opening the job log.
- *
- * The text was already arriving — the Action spawned the CLI with the runner's
- * stdout inherited, so it went straight to the log and was never read. This
- * reads it on the way past, which needs no change to the CLI and so no release.
+ * Reading the stream here means every other job can show its answer too —
+ * it matters most for `fix` in preview, where the prose IS the product.
  */
 import { spawn } from "node:child_process"
 import { StringDecoder } from "node:string_decoder"
@@ -31,8 +24,8 @@ export const MAX_PARTIAL_LINE = 1 << 20
 /**
  * A scanner for the CLI's event stream.
  *
- * Feed it `push(chunk)` as the bytes arrive and `end()` when the process
- * closes; `answer()` is the last thing the agent said.
+ * Feed it `push(chunk)` as the bytes arrive and `end` when the process
+ * closes; `answer` is the last thing the agent said.
  */
 export function createAnswerCapture() {
 	// Chunk boundaries fall mid-character: agent prose is full of em dashes and
@@ -97,17 +90,12 @@ export function createAnswerCapture() {
 /**
  * Run a command, showing its output live AND reading it on the way past.
  *
- * The Action used to spawn the CLI with stdout inherited, which is why no job
- * but `rca` and `verdict` ever showed an answer: the stream carrying it went
- * straight to the log and nothing read it.
- *
  * stdout is piped so it can be scanned and echoed on; stdin and stderr stay
- * inherited, so a prompt or a crash reaches the log exactly as before. The
- * echo happens first — someone watching a ten-minute run is reading that log,
- * and it must not wait on our parsing.
+ * inherited, so a prompt or a crash reaches the log unchanged. The echo
+ * happens first — someone watching a ten-minute run must not wait on our
+ * parsing.
  *
- * Never rejects. A run whose output we could not read has lost its answer,
- * which is where we started; it is not a reason to lose the report as well.
+ * Never rejects. Losing the answer is not a reason to lose the report too.
  */
 export function runCapturingAnswer(command, args, childEnv) {
 	return new Promise((resolve) => {

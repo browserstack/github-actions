@@ -1,32 +1,29 @@
 /**
- * What happened, in the five words the PRD specifies — STM-3663 FR-30, FR-48, FR-9.
+ * What happened, in five words.
  *
- * The CLI already distinguishes these cases, but across two channels: an exit
- * code (a stable contract — scripts branch on it) and a report file. Neither is
- * sufficient alone. Exit 4 covers a crash, a time ceiling AND a version-pin
- * mismatch, so only the report tells a ceiling from a crash; and a report can be
- * absent entirely if the process was killed.
+ * The CLI distinguishes these cases across two channels, and neither is
+ * sufficient alone: the exit code is a stable contract but exit 4 covers a
+ * crash, a time ceiling AND a version-pin mismatch, while the report file
+ * separates them but is absent if the process was killed.
  *
- * Three separate questions come out of that, and conflating them was the bug in
- * the first place:
- *   - what happened            → resolveOutcome  (the five labels)
- *   - what the check says      → checkConclusion (FR-48, never neutral)
- *   - whether the step is red  → stepShouldFail  (FR-9, the repo's own choice)
+ * Three separate questions, kept apart deliberately:
+ *  - what happened → resolveOutcome (the five labels)
+ *  - what the check says → checkConclusion
+ *  - whether the step is red → stepShouldFail
  *
  * The check always reports truthfully. The build effect only governs the step.
  */
 
-/** The five outcomes, spelled exactly as FR-30 requires. */
+/** The five outcomes, spelled exactly. */
 export const OUTCOMES = Object.freeze({
 	SUCCEEDED: "Succeeded",
 	TESTS_FAILED: "Tests failed",
 	RUN_BROKE: "Run broke",
 	STOPPED_AT_LIMIT: "Stopped at limit",
 	COULD_NOT_RUN: "Could not run",
-	// Not one of FR-30's five. Those describe a run that HAPPENED; this says
-	// none did, which the Action already reports for a draft PR, a fork, an
-	// unaddressed comment and a repository with no pipeline file. An event
-	// nothing is bound to belongs with those, not with the five.
+	// Not one of the five. Those describe a run that HAPPENED; this says none
+	// did — a draft PR, a fork, an unaddressed comment, no pipeline file, or
+	// an event nothing is bound to.
 	SKIPPED: "Skipped",
 })
 
@@ -57,14 +54,13 @@ export function parseSummary(text) {
  * passed, and never when the process was killed outright.
  */
 export function resolveOutcome(exitCode, summary = {}) {
-	// The report wins over a success exit code. This is not hypothetical: a run
-	// with an expired BrowserStack session was observed exiting 0 with status
-	// "completed" having done nothing at all, which any CI step checking only the
-	// exit code would have read as green.
 	// Nothing was bound to this event, so nothing ran. Checked before the
 	// report-wins rule below, which would otherwise read "not succeeded" as a
-	// breakage and put a red check on a commit that was never meant to run
-	// anything (review finding, PR #3030).
+	// breakage and redden a commit that was never meant to run anything.
+	//
+	// The report then wins over a success exit code: a run with an expired
+	// BrowserStack session can exit 0 having done nothing at all, which a CI
+	// step checking only the exit code reads as green.
 	if (summary.outcome === "skipped") {
 		return OUTCOMES.SKIPPED
 	}
@@ -87,8 +83,8 @@ export function resolveOutcome(exitCode, summary = {}) {
 		// ExitAuth: not signed in.
 		case 3:
 			return OUTCOMES.COULD_NOT_RUN
-		// ExitTaskBlocked: the turn finished but the task could not be performed —
-		// plan, entitlement, or a refusal.
+		// ExitTaskBlocked: the turn finished but the task could not be
+		// performed — plan, entitlement, or a refusal.
 		case 7:
 			return OUTCOMES.COULD_NOT_RUN
 		// ExitUnansweredQuestion: headless promised to answer every ask and did
@@ -102,7 +98,7 @@ export function resolveOutcome(exitCode, summary = {}) {
 }
 
 /**
- * What the "Test Companion" check says — FR-48.
+ * What the "Test Companion" check says.
  *
  * Never `neutral`: branch protection treats a neutral check as a pass, so a
  * neutral conclusion would let a run that could not finish satisfy a required
@@ -129,17 +125,11 @@ export function checkConclusion(outcome) {
 }
 
 /**
- * One mark per outcome, so the heading reads at a glance.
+ * One mark per outcome, so the heading reads at a glance in a crowded thread.
  *
- * "## Test Companion — Run broke" and "## Test Companion — Succeeded" look the
- * same in a crowded pull request thread, and the one that needs attention is
- * the one that blends in.
- *
- * Deliberately the four GitHub itself uses for the same ideas — a tick for
- * done, a cross for a failing test, a warning for "somebody has to look" —
- * rather than anything decorative. An outcome this Action has never heard of,
- * which a newer CLI could report, gets no mark rather than a crash: losing the
- * mark is cosmetic, losing the report is not.
+ * Deliberately the ones GitHub itself uses for the same ideas. An outcome a
+ * newer CLI reports and this Action has never heard of gets no mark rather
+ * than a crash: losing the mark is cosmetic, losing the report is not.
  */
 const OUTCOME_MARKS = Object.freeze({
 	[OUTCOMES.SUCCEEDED]: "✅",
@@ -171,7 +161,7 @@ function warnUnrecognisedBuildEffect(value) {
 	)
 }
 
-/** What a repository can ask a bad outcome to do to its build — FR-9. */
+/** What a repository can ask a bad outcome to do to its build. */
 export const BUILD_EFFECTS = Object.freeze({
 	/** Never red. The check still reports truthfully. */
 	REPORT: "report",
@@ -189,29 +179,22 @@ export const BUILD_EFFECTS = Object.freeze({
 const RUN_DID_NOT_WORK = new Set([OUTCOMES.RUN_BROKE, OUTCOMES.COULD_NOT_RUN, OUTCOMES.STOPPED_AT_LIMIT])
 
 /**
- * Whether the Action's own step goes red — FR-9.
+ * Whether the Action's own step goes red.
  *
  * Only ever governs the step. The check reports truthfully regardless, so a
- * repository choosing `report` sees a red check and a green build, deliberately.
+ * repository choosing `report` sees a red check and a green build by choice.
  *
- * THE DEFAULT CHANGED (STM-5434 demo feedback, item 6). It used to be `report`,
- * so a run that broke passed silently unless somebody had opted in — which is
- * not what anyone looking at a green tick would assume. The default is now
- * `fail-on-break`: a run that did not work reddens the step, a run that worked
- * and found failing tests does not. Making a test RESULT block the build is a
- * larger decision than this one, and `fail` is still there for anyone who wants
- * it.
+ * The default is `fail-on-break`: a run that did not work reddens the step, a
+ * run that worked and found failing tests does not. Making a test RESULT
+ * block the build is a larger decision, and `fail` is there for anyone who
+ * wants it.
  *
- * Anything unrecognised behaves as the DEFAULT, which reverses the old rule.
- * That rule — "a misconfiguration must never redden a build" — made sense while
- * `report` was the default. Now that it is not, a typo buying a quieter setting
- * than a fresh install gets is exactly the silent pass item 6 is about. A
- * misspelling leaves you where you would have been having said nothing.
+ * Anything unrecognised behaves as the DEFAULT rather than as `report`, so a
+ * typo cannot buy a quieter setting than a fresh install gets.
  *
- * `off` is still honoured as a synonym for `report` and is no longer
- * documented: it never did anything `report` did not, and a workflow already
- * saying it must not start failing builds because we stopped advertising the
- * word.
+ * `off` is still honoured as a synonym for `report`, undocumented: a workflow
+ * already saying it must not start failing builds because we stopped
+ * advertising the word.
  */
 export function stepShouldFail(buildEffect, outcome) {
 	// Neither of these is a bad outcome. A skipped run is NO outcome, and
@@ -223,10 +206,9 @@ export function stepShouldFail(buildEffect, outcome) {
 		.toLowerCase()
 	if (effect === BUILD_EFFECTS.REPORT || effect === "off") return false
 	if (effect === BUILD_EFFECTS.FAIL) return true
-	// Anything else is the default, which now reddens — so say which value we
-	// did not recognise, or the reddening has no explanation anywhere
-	// (STM-5434 review, PR #3286). `build-effect: none` and `warn` are the
-	// likely spellings somebody reaches for.
+	// Anything else is the default, which reddens — so say which value we did
+	// not recognise, or the reddening has no explanation anywhere. `none` and
+	// `warn` are the likely spellings somebody reaches for.
 	if (effect !== "" && effect !== BUILD_EFFECTS.FAIL_ON_BREAK) {
 		warnUnrecognisedBuildEffect(effect)
 	}
@@ -234,22 +216,16 @@ export function stepShouldFail(buildEffect, outcome) {
 }
 
 /**
- * Did this run use up the approval it was given — FR-43.
+ * Did this run use up the approval it was given?
  *
  * Replying `go` is spent by the run that carries the plan out, so a second
- * `go` cannot quietly run the same work twice. That marker used to be written
- * whatever happened, including to a run that never started.
+ * `go` cannot quietly run the same work twice.
  *
- * Found live (run 41463749519): an approved `fix` died in under a second
- * because the dedupe claim had no credential to push with. No work, nothing
- * written — and the comment still said the plan was spent. Every later `go` on
- * that commit was refused, a fresh proposal included, and the only way out was
- * a new commit.
- *
- * So the question is whether a RUN happened, not whether it went well. Red
- * tests and a ceiling both did the work and may have written some of it;
+ * The question is whether a RUN happened, not whether it went well. Red tests
+ * and a ceiling both did the work and may have written some of it;
  * re-running those would duplicate it and charge again. A run that broke or
- * never started did neither, and the person should be able to simply ask again.
+ * never started did neither, so the person can simply ask again — otherwise a
+ * `fix` that dies in a second leaves the commit unapprovable for good.
  */
 export function approvalWasSpent(outcome) {
 	return outcome !== OUTCOMES.RUN_BROKE && outcome !== OUTCOMES.COULD_NOT_RUN && outcome !== OUTCOMES.SKIPPED
