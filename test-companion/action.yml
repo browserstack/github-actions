@@ -125,7 +125,7 @@ runs:
               sh "$installer"
               echo "$HOME/.local/bin" >> "$GITHUB_PATH"
               version="$("$HOME/.local/bin/tc" --version 2>/dev/null | head -1 || echo unknown)"
-              # FR-2: pinning only means something if the pin actually took. The
+              # pinning only means something if the pin actually took. The
               # installer refuses an unverified pinned install on its own, but a
               # silent fallback to latest would leave the run reporting a version
               # nobody asked for — and "the same pipeline behaves the same next
@@ -153,7 +153,7 @@ runs:
           env:
               BROWSERSTACK_USERNAME: ${{ inputs.username }}
               BROWSERSTACK_ACCESS_KEY: ${{ inputs.access-key }}
-              # FR-2. This is the FIRST tc command of the job, and without the
+              # This is the FIRST tc command of the job, and without the
               # pin here the CLI self-upgrades during `auth login` — before the
               # Run step below ever applies it. The pin then correctly reports
               # a mismatch against the binary the pin was meant to preserve,
@@ -234,7 +234,7 @@ runs:
               # leaves a runner's own credentials alone — but a self-hosted
               # runner can export GH_CONFIG_DIR machine-wide, and the teardown
               # then saw a variable it had not set and removed somebody else's
-              # config (CodeRabbit, PR #3286). The sign-in respected them; the
+              # config. The sign-in respected them; the
               # cleanup has to as well.
               echo "TC_OWNS_GH_CONFIG_DIR=1" >> "$GITHUB_ENV"
               # GH_TOKEN REMOVED for the login itself. gh refuses to store a
@@ -248,8 +248,8 @@ runs:
                 # Let git use that credential too, for this host only.
                 #
                 # A live run's dedupe claim is a real `git push` to origin
-                # (FR-14). With `persist-credentials: false` in the workflow —
-                # which is the right setting, and what the starter ships —
+                # . With `persist-credentials: false` in the workflow
+                # which is the right setting, and what the starter ships
                 # there is no credential for it, so a live `fix` or `generate`
                 # died in under a second at the claim, before doing any work
                 # (live run 41463749519). Preview never hit it, which is why
@@ -339,7 +339,7 @@ runs:
               # us — manager-core, a PAT helper — and it ran even when our own
               # setup-git had failed and we had added nothing. The first Test
               # Companion job on a self-hosted runner permanently broke that
-              # runner's git auth (STM-5434 review, PR #3286). `--unset` with a
+              # runner's git auth. `--unset` with a
               # value pattern removes our entry and leaves the rest.
               #
               # BOTH entries, not just ours-looking-one. `gh auth setup-git`
@@ -347,8 +347,7 @@ runs:
               # any general helper inherited from a broader scope, and then its
               # own. Removing only the second left the empty one behind, so the
               # runner's manager-core (or whatever it had) stayed disabled for
-              # github.com — the same breakage by a quieter route (CodeRabbit,
-              # PR #3286).
+              # github.com — the same breakage by a quieter route.
               if [ "${TC_ADDED_GIT_HELPER:-}" = "1" ]; then
                 for host in github.com gist.github.com; do
                   git config --global --unset "credential.https://$host.helper" '^!.*gh auth git-credential' 2>/dev/null || true

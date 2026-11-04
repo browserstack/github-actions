@@ -16,29 +16,29 @@ runs is decided by `testcompanion-pipeline.yml` in your repository, not here.
 name: Test Companion
 
 on:
-    issue_comment:
-        types: [created]
-    pull_request:
-        types: [opened, reopened, synchronize, closed]
+ issue_comment:
+ types: [created]
+ pull_request:
+ types: [opened, reopened, synchronize, closed]
 
 jobs:
-    test-companion:
-        runs-on: ubuntu-latest
-        timeout-minutes: 35
-        permissions:
-            contents: write # branches and commits
-            pull-requests: write # the comment
-            checks: write # the "Test Companion" check
-            actions: write # stopping a run on request
-        steps:
-            - uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0 # jobs that look at what changed need history
+ test-companion:
+ runs-on: ubuntu-latest
+ timeout-minutes: 35
+ permissions:
+ contents: write # branches and commits
+ pull-requests: write # the comment
+ checks: write # the "Test Companion" check
+ actions: write # stopping a run on request
+ steps:
+ - uses: actions/checkout@v4
+ with:
+ fetch-depth: 0 # jobs that look at what changed need history
 
-            - uses: browserstack/github-actions/test-companion@v1
-              with:
-                  username: ${{ secrets.BROWSERSTACK_USERNAME }}
-                  access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+ - uses: browserstack/github-actions/test-companion@v1
+ with:
+ username: ${{ secrets.BROWSERSTACK_USERNAME }}
+ access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
 ```
 
 ## Pin the CLI version
@@ -55,8 +55,8 @@ unverified pinned install" — and the job stops before it reports anything. Tak
 both from the release you tested with.
 
 ```yaml
-                  cli-version: "1.2.0"
-                  cli-sha256: "<sha256 of that release for linux-amd64>"
+ cli-version: "1.2.0"
+ cli-sha256: "<sha256 of that release for linux-amd64>"
 ```
 
 ## Inputs

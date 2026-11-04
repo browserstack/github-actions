@@ -1,21 +1,16 @@
 /**
- * Keeping the work — STM-5434 FR-43.
+ * Keeping the work.
  *
- * An approved run writes test code on the runner, and the runner is thrown
- * away minutes later. Until this module existed there was no path by which any
- * of it survived: the CLI opens a pull request only for the `automate` and
- * `fix` jobs, so a `test-pr` run wrote eight passing tests and lost all eight.
- * The approval gate exists to authorise exactly that write, which made the
- * missing half the one thing the whole conversation was for.
+ * An approved run writes test code on a runner that is thrown away minutes
+ * later. The CLI opens a pull request only for the `automate` and `fix` jobs,
+ * so without this a `test-pr` run writes eight passing tests and loses all
+ * eight — the very write the approval gate exists to authorise.
  *
- * Where the work goes is already settled by FR-42, in access.mjs: "Tests go in
- * the pull request's own repository by default." So a commit on the pull
- * request's own branch, not a second pull request — a reviewer who asked for
- * tests on their change wants them on their change.
+ * It lands as a commit on the pull request's own branch, not a second pull
+ * request: a reviewer who asked for tests on their change wants them there.
  *
- * Everything here is a pure decision about strings. The git commands live at
- * the call site in main.mjs, so every rule below is testable without a
- * repository.
+ * Pure decisions about strings. The git commands live at the call site in
+ * main.mjs, so every rule below is testable without a repository.
  */
 
 /** Who we commit as. Must match the identity action.yml configures. */
@@ -94,13 +89,11 @@ export function changedPaths(porcelain) {
  * Drop the status code, without assuming it is exactly two characters wide.
  *
  * Porcelain writes `XY<space>path`, and X or Y may itself be a space — " M"
- * for an unstaged modification. A caller that trims git's whole stdout removes
- * that leading space from the FIRST LINE ONLY, leaving `M<space>path`. A fixed
- * slice(3) then eats the first letter of the path, which is how run
- * 40845669513 tried to add `ests/pricing.spec.js` and lost ten passing tests.
- *
- * The caller no longer trims, and this no longer assumes the width, because
- * the version that assumed it passed every unit test and still failed live.
+ * for an unstaged modification. A caller that trims git's whole stdout
+ * removes that leading space from the FIRST LINE ONLY, leaving
+ * `M<space>path`, and a fixed slice(3) then eats the first letter of the
+ * path: `tests/pricing.spec.js` becomes `ests/pricing.spec.js` and the file
+ * is never staged.
  */
 function stripStatus(line) {
 	if (line[2] === " ") return line.slice(3)
@@ -112,22 +105,19 @@ function stripStatus(line) {
  * Decode a porcelain path.
  *
  * Git quotes a path containing a space, a quote, a backslash or — with
- * `core.quotePath` on, which is the DEFAULT — any non-ASCII byte. Inside the
- * quotes it uses C escapes: `\\303\\251` for the two bytes of "é", plus the
- * usual `\\"`, `\\\\`, `\\n`, `\\t`.
+ * `core.quotePath` on, which is the DEFAULT — any non-ASCII byte, using C
+ * escapes for the bytes plus the usual two-character ones.
  *
- * Stripping the quotes without decoding leaves a path that does not exist.
- * `git add` with several pathspecs aborts on the FIRST miss and stages
- * nothing, so a single accented filename lost every file an approved run had
- * written — exactly what this module exists to prevent.
+ * Stripping the quotes without decoding leaves a path that does not exist,
+ * and `git add` with several pathspecs aborts on the FIRST miss and stages
+ * nothing — so one accented filename loses every file the run produced.
  *
- * The call site also passes `-c core.quotePath=false`, which stops the octal
- * escaping at source. This decodes it regardless, so a repository that forces
- * the setting back on cannot bring the bug back.
+ * The call site also passes `-c core.quotePath=false`. This decodes anyway,
+ * so a repository that forces the setting back on cannot bring the bug back.
  *
- * Octal escapes are decoded as BYTES and then read as UTF-8 together, because
- * one character is often several escapes and decoding them one at a time
- * produces mojibake.
+ * Octal escapes are decoded as BYTES and then read as UTF-8 together: one
+ * character is often several escapes, and decoding them singly gives
+ * mojibake.
  */
 function unquote(path) {
 	if (!(path.startsWith('"') && path.endsWith('"') && path.length >= 2)) return path
@@ -191,13 +181,13 @@ export function splitPushable(paths) {
 }
 
 /**
- * What the pull request comment says about the push — FR-42's rule applied to
- * this step: a write that did not happen is said out loud, because a silent
- * skip reads as "there was nothing to write".
+ * What the pull request comment says about the push.
  *
- * The file list is not decoration. This is the only record of what an
- * autonomous agent changed in someone's branch, and a reviewer who cannot see
- * it has to diff the branch to find out.
+ * A write that did not happen is said out loud, because a silent skip reads
+ * as "there was nothing to write".
+ *
+ * The file list is not decoration: it is the only record of what an
+ * autonomous agent changed in someone's branch.
  */
 export function renderPushNote({ branch, sha, files = [], skipped = [], error } = {}) {
 	const list = files.map((f) => `- \`${f}\``).join("\n")
@@ -221,14 +211,12 @@ const countOf = (files) => (files.length === 1 ? "1 file" : `${files.length} fil
 /**
  * Is the working tree sitting on the commit we think it is?
  *
- * On an `issue_comment` event GitHub checks out the DEFAULT branch, because the
- * payload names no ref. main.mjs already corrects that where it resolves the
- * comment's issue number into a head sha: it fetches that commit and detaches
- * onto it. But that step is ADVISORY — it warns and carries on, so a proposal
- * can still be built from the diff when the fetch fails.
+ * On an `issue_comment` event GitHub checks out the DEFAULT branch. main.mjs
+ * corrects that, but advisorily — it warns and carries on, so a proposal can
+ * still be built from the diff when the fetch fails.
  *
- * Which makes this the check that the advisory step actually worked. Pushing
- * from a tree that is not the reviewed commit would send the default branch's
+ * This is the check that the advisory step actually worked. Pushing from a
+ * tree that is not the reviewed commit would send the default branch's
  * content to the pull request's branch and clobber the change under review.
  *
  * Not knowing where we are is never a reason to push.
@@ -247,14 +235,14 @@ export function needsCheckout({ headSha, wantSha } = {}) {
 /**
  * Is this branch in the repository we are running in?
  *
- * Tri-state, like every other access answer here: undefined means we could not
- * find out, and shouldDoPushWork treats that as a no.
+ * Tri-state, like every other access answer here: undefined means we could
+ * not find out, and shouldDoPushWork treats that as a no.
  *
- * Takes the head repository's full name rather than fetching it, because where
- * it comes from depends on the trigger. A comment names an issue, so main.mjs
- * fetches the pull request to resolve a head sha; a pull_request event already
- * carries it on the payload and nothing is fetched. Reading only the fetched
- * object refused every pull_request-triggered push (run 40857884973).
+ * Takes the head repository's full name rather than fetching it, because
+ * where it comes from depends on the trigger: a comment makes main.mjs fetch
+ * the pull request, while a pull_request event already carries it on the
+ * payload. Reading only the fetched object refuses every
+ * pull_request-triggered push.
  */
 export function isSameRepo(headRepoFullName, repo) {
 	const head = String(headRepoFullName ?? "").trim()
@@ -264,18 +252,16 @@ export function isSameRepo(headRepoFullName, repo) {
 }
 
 /**
- * The git arguments that authenticate a push as the GitHub App — FR-4.
+ * The git arguments that authenticate a push as the GitHub App.
  *
- * The App's installation token lives in GH_TOKEN, which only `gh` reads. The
- * push is plain git, authenticating with whatever `actions/checkout` wrote
- * into .git/config — the workflow token. So a team that followed our own
- * advice and deleted the `permissions:` block, as action.yml and the starter
- * both suggest, got a 403 on every approved run.
+ * The App's installation token lives in GH_TOKEN, which only `gh` reads,
+ * while the push is plain git authenticating with whatever
+ * `actions/checkout` wrote into .git/config. Without this, a team that
+ * deleted the `permissions:` block as we advise gets a 403 on every approved
+ * run.
  *
- * Passed as configuration rather than baked into the remote URL: a token in a
- * URL ends up in the reflog, in error messages and in `git remote -v`. This
- * way it lives only in this one process's environment, and
- * appInstallationToken has already masked it in the log.
+ * Passed as configuration rather than baked into the remote URL: a token in
+ * a URL ends up in the reflog, in error messages and in `git remote -v`.
  *
  * No token returns nothing, so the checkout's own credential is used — which
  * is correct whenever the App is not installed.
@@ -317,16 +303,14 @@ export function pushUrlFor(repo, server = "https://github.com") {
  *
  * These run AFTER the agent, which has had --yolo write access to the working
  * tree. An agent that writes `.git/hooks/pre-commit` gets it executed by our
- * `git commit`, with whatever environment we hand it — and that environment
- * held TC_ACTION_APP_PRIVATE_KEY, GH_TOKEN and the customer's BrowserStack
- * key, because spawnSync with no `env` inherits everything.
+ * `git commit`, with whatever environment we hand it — and spawnSync with no
+ * `env` inherits everything, including the App key, GH_TOKEN and the
+ * customer's BrowserStack key. On `pull_request_target` the diff under test
+ * is attacker-authored, so that is one prompt injection from a key leaving
+ * the runner.
  *
- * On `pull_request_target` the diff under test is attacker-authored, so that
- * is a prompt-injection away from a key leaving the runner.
- *
- * childEnvFor already does this for the AGENT's subprocess. This is the same
- * reasoning applied to the commands that run after it. Proxy settings are kept
- * because a push has to reach the network; nothing else is.
+ * Proxy settings are kept because a push has to reach the network; nothing
+ * else is.
  */
 export function gitEnvFrom(env = {}) {
 	const out = {}
@@ -352,29 +336,26 @@ export function gitEnvFrom(env = {}) {
 }
 
 /**
- * Where the real git is, as an absolute path — or nothing, when we cannot find
- * one we are sure of.
+ * Where the real git is, as an absolute path — or nothing, when we cannot
+ * find one we are sure of.
  *
- * `spawnSync("git", ...)` resolves through PATH, and on a GitHub runner several
- * PATH directories are writable by the job's own user, which is also the user
- * the agent just ran as. A planted `git` would receive the credential we pass
- * in the environment.
+ * `spawnSync("git", ...)` resolves through PATH, and on a GitHub runner
+ * several PATH directories are writable by the job's own user, which is also
+ * the user the agent just ran as. A planted `git` would receive the
+ * credential we pass in the environment.
  *
- * "Sure of" means: it exists, and WE cannot write it. A binary this process
- * could overwrite is a binary the agent could have overwritten.
+ * "Sure of" means it exists and WE cannot write it: a binary this process
+ * could overwrite is one the agent could have overwritten.
  *
- * What this does NOT survive: on a GitHub-hosted runner the job's user has
- * passwordless sudo, so an agent that chose to could replace /usr/bin/git
- * itself and the replacement would pass this check. Nothing inside this
- * process can close that — the same access reaches our own source, node, and
- * the token in our memory. It closes with containment, by running the agent
- * somewhere that does not also hold the token, or by moving the commit to a
- * job that never shares a filesystem with it. Both are bigger than this file.
+ * KNOWN LIMIT: the job's user has passwordless sudo on a GitHub-hosted
+ * runner, so an agent could replace /usr/bin/git itself and pass this check.
+ * Nothing inside this process can close that — the same access reaches our
+ * own source, node, and the token in memory. It closes only with
+ * containment.
  *
- * There is deliberately no fallback to the bare name. Falling back would
- * reinstate the hole on exactly the machines where it matters, so the caller
- * handles the absence instead — and for us that means skipping the commit,
- * which is already how every other refusal in this module behaves.
+ * Deliberately no fallback to the bare name: falling back would reinstate the
+ * hole on exactly the machines where it matters, so the caller skips the
+ * commit instead.
  */
 export function trustedGitPath({ candidates = ["/usr/bin/git", "/bin/git"], exists, canWrite } = {}) {
 	return candidates.find((p) => exists(p) && !canWrite(p))
@@ -386,14 +367,12 @@ export function trustedGitPath({ candidates = ["/usr/bin/git", "/bin/git"], exis
  *
  * An ALLOW list, not a deny list. Config is where git keeps every "run this
  * program for me" hook it has — credential helpers, clean filters, textconv,
- * ssh commands, pagers — plus `insteadOf`, which rewrites any URL including
- * one given on the command line. Listing the dangerous keys means losing to
- * the next key git adds; listing the expected ones means a key we have never
- * heard of is refused by default, which is the right way round.
+ * ssh commands, pagers — plus `insteadOf`, which rewrites any URL. Listing
+ * the dangerous keys loses to the next key git adds; listing the expected
+ * ones refuses anything we have never heard of.
  *
  * `.gitattributes` is deliberately absent: it only names a filter, and the
- * command a filter runs comes from `filter.<name>.*` in config, which is not
- * on this list.
+ * command a filter runs comes from `filter.<name>.*` in config.
  */
 const EXPECTED_CONFIG = [
 	/^core\.(repositoryformatversion|filemode|bare|logallrefupdates|symlinks|ignorecase|precomposeunicode|quotepath|autocrlf|safecrlf|sparsecheckout|sparsecheckoutcone)$/,
@@ -414,21 +393,20 @@ const EXPECTED_CONFIG = [
  * `--local` is load-bearing: a bare `git config --list` also includes config
  * given on the command line with `-c`, which is where all of GIT_SAFE_ARGS
  * lives. Without it the check reads our own hardening back and calls it
- * tampering — live run 41049398591 refused to save, listing fifteen keys we
- * had passed ourselves.
+ * tampering.
  *
  * Worktree config needs no separate read: turning it on requires
- * `extensions.worktreeConfig` in the local file, which is not an expected key,
- * so a repository using it is refused by this same check.
+ * `extensions.worktreeConfig` in the local file, which is not an expected
+ * key, so a repository using it is refused by this same check.
  */
 /**
- * Did the agent commit something itself? — review of #3101, M7.
+ * Did the agent commit something itself?
  *
- * We push `HEAD`, so anything the agent committed rides along: edits to
- * source, to lockfiles, to `.github/`, none of it filtered by splitPushable
- * — and a workflow-file change makes the whole push fail with a permissions
- * error nobody can read. The run's own commit is made by us, after this
- * check, so a HEAD that moved during the run was not us.
+ * We push `HEAD`, so anything the agent committed rides along — edits to
+ * source, lockfiles or `.github/`, none of it filtered by splitPushable, and
+ * a workflow-file change fails the whole push with an unreadable permissions
+ * error. Our own commit is made after this check, so a HEAD that moved during
+ * the run was not us.
  *
  * Fails CLOSED. Not knowing where HEAD started is not permission to push.
  */
@@ -472,7 +450,7 @@ export const GIT_SAFE_ARGS = Object.freeze([
 	"credential.helper=",
 	"-c",
 	"core.askPass=",
-	// https only, so an ext:: or a local path in a rewritten URL cannot run.
+	// https only, so an ext: or a local path in a rewritten URL cannot run.
 	"-c",
 	"protocol.allow=never",
 	"-c",

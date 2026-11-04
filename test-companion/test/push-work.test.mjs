@@ -241,7 +241,7 @@ describe("changedPaths — the bug a live run found that 345 unit tests did not"
 	 * `git status --porcelain` puts a SPACE in the first column for an
 	 * unstaged modification, so the line is " M tests/pricing.spec.js" — three
 	 * characters before the path. The caller trimmed git's whole stdout, which
-	 * removed that leading space from the FIRST LINE ONLY, leaving a two-
+	 * removed that leading space from the FIRST LINE ONLY, leaving a two
 	 * character prefix and a fixed slice(3) that ate the "t".
 	 *
 	 * Both ends are fixed: the caller no longer trims, and this parse no
@@ -302,7 +302,7 @@ describe("isSameRepo — whose branch is this, really", () => {
 
 describe("changedPaths — paths git had to escape", () => {
 	/**
-	 * Reported in review of PR #3101, and reproduced: with `core.quotePath` on
+	 * With `core.quotePath` on
 	 * (the default) git octal-escapes non-ASCII bytes, so `café.spec.ts` comes
 	 * out as `"caf\\303\\251.spec.ts"`. Stripping the quotes without decoding
 	 * leaves a path that does not exist, and `git add` with several pathspecs
@@ -346,7 +346,7 @@ describe("changedPaths — characters outside the basic plane", () => {
 	 * each one, so an astral character — an emoji — was split into its two
 	 * surrogate halves and each half became U+FFFD:
 	 *
-	 *   "my 🎉 file.spec.ts"  ->  "my \uFFFD\uFFFD file.spec.ts"
+	 *  "my 🎉 file.spec.ts" -> "my \uFFFD\uFFFD file.spec.ts"
 	 *
 	 * Reachable BECAUSE of the other half of the fix: with
 	 * `core.quotePath=false` git stops octal-escaping non-ASCII but still
@@ -375,7 +375,7 @@ describe("changedPaths — characters outside the basic plane", () => {
 
 describe("the App token has to reach git, not just gh", () => {
 	/**
-	 * Reported in review of PR #3101. action.yml and the starter both tell
+	 * action.yml and the starter both tell
 	 * customers they can delete the `permissions:` block once the App is
 	 * installed, "because the App's installation token carries these
 	 * permissions itself". The token was put in GH_TOKEN, which only `gh`
@@ -444,7 +444,7 @@ describe("our own git commands must not carry secrets or run hooks", () => {
 	 * `git commit` with TC_ACTION_APP_PRIVATE_KEY, GH_TOKEN and the customer's
 	 * BrowserStack key in its environment. On pull_request_target the diff is
 	 * attacker-authored, so that is one prompt injection from a key leaving
-	 * the runner. Reported by the security review of this change.
+	 * the runner.
 	 */
 	const dirty = {
 		PATH: "/usr/bin",
@@ -719,11 +719,10 @@ describe("the config check reads the repository, not our own flags", () => {
 })
 
 /**
- * Review of PR #3101, M6 and M7. Two ways the push carried more than the run
- * meant to write.
+ * Two ways the push could carry more than the run meant to write.
  */
 describe("the push carries the run's test files and nothing else", () => {
-	test("M6 — a new directory must arrive as its files, not as one entry", () => {
+	test("a new directory must arrive as its files, not as one entry", () => {
 		// `git status --porcelain` without -uall collapses a new directory to
 		// `?? tests/`. splitPushable then sees ONE path with one segment, its
 		// deny list never sees `tests/.env` or `tests/run.log`, and
@@ -740,14 +739,14 @@ describe("the push carries the run's test files and nothing else", () => {
 		assert.ok(split.skip.includes("tests/.env"), "a secret must never be committed")
 	})
 
-	test("M7 — a commit the agent made itself is not ours to push", () => {
+	test("a commit the agent made itself is not ours to push", () => {
 		// We push HEAD. If the agent committed, HEAD carries whatever it put in
-		// — source, lockfiles, .github/ — none of it filtered by splitPushable.
+		// source, lockfiles.github/ — none of it filtered by splitPushable.
 		assert.equal(agentCommitted("aaa111", "bbb222"), true)
 		assert.equal(agentCommitted("aaa111", "aaa111"), false)
 	})
 
-	test("M7 — not knowing where HEAD was is not permission to push", () => {
+	test("not knowing where HEAD was is not permission to push", () => {
 		assert.equal(agentCommitted(undefined, "bbb222"), true, "unknown must fail closed")
 		assert.equal(agentCommitted("", "bbb222"), true)
 	})

@@ -2,7 +2,7 @@ import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { detectFramework } from "../src/framework.mjs"
 
-describe("detectFramework — FR-13", () => {
+describe("detectFramework", () => {
 	test("a config file names the framework", () => {
 		assert.equal(detectFramework({ filenames: ["playwright.config.ts", "src/app.ts"] }), "Playwright")
 		assert.equal(detectFramework({ filenames: ["cypress.config.js"] }), "Cypress")

@@ -69,7 +69,7 @@ describe("resolveOutcome", () => {
 	})
 })
 
-describe("checkConclusion — FR-48", () => {
+describe("checkConclusion", () => {
 	// Branch protection counts a neutral check as a pass, so there must never be one.
 	test("is never neutral, whatever happened", () => {
 		for (const o of Object.values(OUTCOMES)) {
@@ -95,7 +95,7 @@ describe("checkConclusion — FR-48", () => {
 	})
 })
 
-describe("stepShouldFail — FR-9 build effect", () => {
+describe("stepShouldFail — build effect", () => {
 	test("report leaves the step green whatever happened", () => {
 		for (const o of Object.values(OUTCOMES)) {
 			assert.equal(stepShouldFail("report", o), false, `${o} reddened the step under report`)
@@ -117,7 +117,7 @@ describe("stepShouldFail — FR-9 build effect", () => {
 		assert.equal(stepShouldFail("fail", OUTCOMES.SUCCEEDED), false)
 	})
 
-	// REVERSED by STM-5434 demo feedback, item 6. While `report` was the
+	// REVERSED by. While `report` was the
 	// default, "a misconfiguration must never redden a build" was the safe
 	// direction. The default is now fail-on-break, so a typo landing you on a
 	// quieter setting than a fresh install is the silent pass item 6 is about.

@@ -10,7 +10,7 @@ const actionYml = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..
 const steps = actionYml.split(/\n {8}- name: /).slice(1)
 const nameOf = (s) => s.split("\n")[0].trim()
 
-describe("action.yml — every step that runs tc must pin it (FR-2)", () => {
+describe("action.yml — every step that runs tc must pin it", () => {
 	/**
 	 * Found live on 2026-10-29, the day tc 1.1.9 shipped.
 	 *
@@ -19,10 +19,10 @@ describe("action.yml — every step that runs tc must pin it (FR-2)", () => {
 	 * correctly reported a mismatch against the very binary the pin existed to
 	 * preserve:
 	 *
-	 *   tc is pinned to version 1.1.8 but the installed binary is 1.1.9
+	 *  tc is pinned to version 1.1.8 but the installed binary is 1.1.9
 	 *
 	 * So asking for a pinned version MADE THE RUN FAIL, which is the exact
-	 * opposite of what FR-2 promises. The spec lists FR-2 as "Done, but NEVER
+	 * opposite of what promises. The spec lists as "Done, but NEVER
 	 * EXECUTED"; this is what was hiding in it.
 	 *
 	 * `tc --version` is exempt: upgrade.shouldSkip returns true for it, because
@@ -81,7 +81,7 @@ describe("action.yml — git's credential helper is cleaned up", () => {
 		// `--unset` WITH A VALUE PATTERN, not `--unset-all`. The blanket form
 		// removed every helper for that URL, including ones the runner's owner
 		// set up before us, and ran even when our own setup-git had failed
-		// (STM-5434 review, PR #3286).
+		//
 		assert.match(
 			actionYml,
 			/--unset "credential:\/\/\$host\.helper"|--unset "credential\.https:\/\/\$host\.helper"/,
@@ -104,7 +104,7 @@ describe("action.yml — git's credential helper is cleaned up", () => {
 })
 
 /**
- * STM-5434 review (kritansh20, PR #3286). The cleanup must not damage a
+ *  (kritansh20, ). The cleanup must not damage a
  * self-hosted runner's own git configuration.
  */
 describe("action.yml — the cleanup only removes what this job added", () => {
@@ -122,7 +122,7 @@ describe("action.yml — the cleanup only removes what this job added", () => {
 })
 
 /**
- * CodeRabbit, PR #3286. `gh auth setup-git` writes TWO values per host: an
+ * `gh auth setup-git` writes TWO values per host: an
  * empty helper that clears any general helper inherited from a broader scope,
  * and then its own. Removing only the second leaves the runner's own helper
  * disabled for that host.

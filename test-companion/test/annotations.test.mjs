@@ -43,7 +43,7 @@ describe("parseFailedTests — reading the report back", () => {
 	})
 })
 
-describe("buildAnnotations — FR-28, FR-48", () => {
+describe("buildAnnotations", () => {
 	test("puts a failure on the line the test is declared on", () => {
 		const [a] = buildAnnotations([{ name: "Checkout > pays", file: "tests/checkout.spec.ts", line: 18 }])
 		assert.equal(a.path, "tests/checkout.spec.ts")

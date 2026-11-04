@@ -59,7 +59,7 @@ describe("comment trigger", () => {
 		assert.equal(r.skip.reason, "not-addressed-to-us")
 	})
 
-	// FR-33: editing a comment must not start a run. Otherwise fixing a typo in
+	// editing a comment must not start a run. Otherwise fixing a typo in
 	// a months-old comment re-runs the job.
 	test("ignores an edited comment", () => {
 		const r = plan("issue_comment", {
@@ -102,14 +102,14 @@ describe("pull request triggers", () => {
 		assert.equal(r.skip.reason, "closed-unmerged")
 	})
 
-	// FR-36: a draft never starts a run on its own. A comment still can, which is
+	// a draft never starts a run on its own. A comment still can, which is
 	// why this check belongs here and not in the comment path.
 	test("a draft pull request does not start a run on its own", () => {
 		const r = plan("pull_request", { action: "opened", pull_request: pr({ draft: true }) })
 		assert.equal(r.skip.reason, "draft")
 	})
 
-	// FR-3. A fork PR runs with a read-only token and no secrets, so starting
+	// . A fork PR runs with a read-only token and no secrets, so starting
 	// would fail confusingly partway. Refusing up front is the clean skip.
 	test("a pull request from a fork does not run", () => {
 		const r = plan("pull_request", {
@@ -153,7 +153,7 @@ describe("red build trigger", () => {
 		assert.equal(r.skip.reason, "build-not-red")
 	})
 
-	// FR-21: never explain a red run that is our own. Without this, a failing
+	// never explain a red run that is our own. Without this, a failing
 	// Test Companion check triggers a run to explain the failing Test Companion
 	// check, which triggers another one.
 	test("never explains its own failed run", () => {
@@ -189,7 +189,7 @@ describe("other triggers", () => {
 		assert.equal(r.event, TC_EVENTS.SCHEDULE)
 	})
 
-	// FR-12: a manual run names its own job and ignores the bindings entirely,
+	// a manual run names its own job and ignores the bindings entirely,
 	// which the CLI expresses as "no --event at all".
 	test("a manual run carries no event, so bindings are bypassed", () => {
 		const r = plan(
@@ -266,7 +266,7 @@ describe("workflow_run is a privileged trigger", () => {
 })
 
 describe("context values cannot inject extra keys", () => {
-	// --context is a comma-separated k=v list, so a comment body containing a
+	// context is a comma-separated k=v list, so a comment body containing a
 	// comma and an equals sign could otherwise append keys of its own, e.g.
 	// overriding the commit the run looks at.
 	test("strips separators out of free text", () => {
@@ -334,8 +334,6 @@ describe("an explicitly named job", () => {
 	})
 })
 
-// ── CodeRabbit findings on PR #3030 ─────────────────────────────────────────
-
 describe("contextArgs — one flag per pair", () => {
 	// A single `--context a=1,b=2` is parsed by pflag with encoding/csv, which
 	// returns ErrBareQuote when an unquoted field contains a double quote. So a
@@ -374,7 +372,7 @@ describe("a pull request does not send its title as the subject", () => {
 	// generateSubject in the CLI builds the commit-scoped prompt ("the change in
 	// PR #N, commit SHA … covering only what that change touches") ONLY when no
 	// subject is given. Sending the title meant `generate` on a pull request
-	// wrote cases for the title instead of the diff, which is FR-15.
+	// wrote cases for the title instead of the diff, which is.
 	test("pr_opened carries sha, branch and pr but no subject", () => {
 		const plan = planRun({
 			eventName: "pull_request",
@@ -391,7 +389,7 @@ describe("a pull request does not send its title as the subject", () => {
 //
 // The issue_comment plan carries `pr` but no `sha`, so checkSha fell back to
 // GITHUB_SHA — the default branch tip for that event — and the starter's
-// checkout took the default branch too. `@test-companion generate` on PR #42
+// checkout took the default branch too. `@test-companion generate` on
 // therefore read main, and the check landed on main's latest commit.
 describe("withPullRequestHead — a comment run must name the PR's own commit", () => {
 	const plan = () => ({ event: "pr_comment", context: { pr: "42", instructions: "generate" } })
@@ -431,13 +429,13 @@ describe("withPullRequestHead — a comment run must name the PR's own commit", 
 	})
 })
 
-describe("a bare approval reaches us — FR-43", () => {
+describe("a bare approval reaches us", () => {
 	/**
 	 * Found by the first approved run. The proposal comment says "Reply **go**
 	 * to run this for real", a person replies exactly that, and the run skipped
 	 * with "No @test-companion mention, so nothing was asked of Test Companion".
 	 *
-	 * The proposal was instructing an action that could not work. FR-43 says "a
+	 * The proposal was instructing an action that could not work. says "a
 	 * reply of 'go'", and the PRD's own user story has the SDET replying "go"
 	 * with no mention at all.
 	 *
@@ -458,8 +456,8 @@ describe("a bare approval reaches us — FR-43", () => {
 	})
 
 	/**
-	 * CHANGED by M3 (review of #3101). This used to be carried through, so
-	 * FR-43's "edit the list while approving" worked with no mention. But
+	 * CHANGED by M3. This used to be carried through, so
+	 *  "edit the list while approving" worked with no mention. But
 	 * "Approved, but rename the login case" is an ordinary review comment on
 	 * any pull request, and unaddressed it started a live write run with the
 	 * trailing text as approver edits that win.
@@ -585,12 +583,12 @@ describe("pull_request_target is a privileged trigger — it must fail CLOSED", 
 
 describe("the flag guard sees the FINAL value, not the raw one", () => {
 	/**
-	 * Reported in review of PR #3101 and reproduced. `looksLikeAFlag` ran
+	 * `looksLikeAFlag` used to run
 	 * BEFORE `cleanContext`, which calls `stripSeparators` and turns `,`, `=`
 	 * and `"` into spaces before trimming. So a value crafted to look safe
 	 * beforehand became flag-like afterwards and the gate never saw it:
 	 *
-	 *   `",--config /tmp/evil.yml"`  →  guard passes  →  `--config /tmp/evil.yml`
+	 *  `",--config /tmp/evil.yml"` → guard passes → `--config /tmp/evil.yml`
 	 *
 	 * while the same text unwrapped was correctly refused. Not injectable
 	 * today only because every Go arg builder re-checks — the user-visible
@@ -621,8 +619,6 @@ describe("the flag guard sees the FINAL value, not the raw one", () => {
 })
 
 /**
- * Review of PR #3101, M3.
- *
  * An UNADDRESSED comment reaches us only as a possible approval. It used to
  * be enough to open with the word, so "Approved, but rename X" — an ordinary
  * review comment on any pull request — started a live write run, with
@@ -630,7 +626,7 @@ describe("the flag guard sees the FINAL value, not the raw one", () => {
  *
  * Unaddressed, the comment must now BE the approval and nothing else.
  * Addressed, "@test-companion go and also cover X" still works: that is
- * FR-43's "you can edit the list first", and they did address us.
+ *  "you can edit the list first", and they did address us.
  */
 describe("an unaddressed comment counts as approval only when it is exactly that", () => {
 	const comment = (body) =>

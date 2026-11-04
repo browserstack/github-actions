@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs"
 import { OUTCOMES, stepShouldFail, BUILD_EFFECTS } from "../src/outcome.mjs"
 
 /**
- * A run that BROKE should redden the build — STM-5434 demo feedback, item 6.
+ * A run that BROKE should redden the build.
  *
  * It never did unless a repository opted in, which meant every bad outcome so
  * far passed silently. That is not what anyone looking at a green tick would
@@ -108,7 +108,7 @@ describe("the input documents what it does", () => {
 
 describe("an unrecognised value explains the reddening it causes", () => {
 	/**
-	 * STM-5434 review (kritansh20, PR #3286). Reversing the fail-closed rule
+	 *  (kritansh20, ). Reversing the fail-closed rule
 	 * means `build-effect: none` / `warn` / `false` starts reddening builds.
 	 * That is the right default, but it should say why.
 	 */

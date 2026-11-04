@@ -1,24 +1,17 @@
 /**
- * What the agent's subprocess is allowed to see — STM-3663 FR-3.
- *
- * Pulled out of main.mjs so this boundary is testable: everything here is
- * readable by shell commands the model chooses to run, which makes it the one
- * place in the Action where a mistake hands away a credential.
- */
-/**
  * The environment the agent's subprocess gets — an allowlist, not a denylist.
  *
  * The run executes shell commands the model chooses, so everything here is
- * readable by them. A denylist was the first attempt and was not enough: a
- * composite action's own inputs can surface as INPUT_* variables, which would
- * have reintroduced the very GitHub token the denylist removed. Listing what
- * the CLI needs is the only version that stays correct as the surroundings
- * change.
+ * readable by them. This is the one place in the Action where a mistake hands
+ * away a credential, which is why it lives in its own testable module.
  *
- * Known gap, not solved here: `actions/checkout` leaves a credential in
- * .git/config, which this cannot reach. That is the same tension recorded as an
- * open item in the tech spec — the pull-request-raising jobs genuinely need a
- * push credential inside the run.
+ * A denylist is not enough: a composite action's own inputs can surface as
+ * INPUT_* variables, reintroducing the very token a denylist removed. Listing
+ * what the CLI needs is the only version that stays correct as the
+ * surroundings change.
+ *
+ * Known gap: `actions/checkout` leaves a credential in .git/config, which
+ * this cannot reach.
  */
 export function childEnvFor(source) {
 	const KEEP_EXACT = new Set([

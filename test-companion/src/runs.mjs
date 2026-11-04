@@ -1,21 +1,15 @@
 /**
- * Which runs a closed pull request should end — STM-5434 FR-36.
+ * Which runs a closed pull request should end.
  *
- * Written for `stop`, which was removed (item 7). Closing a pull request
- * without merging still cancels its run, and that is the same question.
+ * Pure, and separated from the `gh` calls in main.mjs so it can be tested
+ * without staging a live run.
  *
- * Pure, and separated from the `gh` calls in main.mjs for the usual reason: the
- * only other way to exercise it is to start a run, comment on it and watch, and
- * the interesting cases here are the ones that are awkward to stage on purpose.
+ * Two cases that are silent when they go wrong:
  *
- * Two of those cases are worth stating out loud, because both are silent when
- * they go wrong:
- *
- *   - The run handling the "stop" comment is ITSELF an in-flight run on that
- *     commit. Cancel it and the job doing the cancelling disappears mid-reply,
- *     so the person who asked is told nothing at all.
- *   - "Stop" means stop Test Companion, not stop the repository's own build. A
- *     comment must never become a way to cancel someone else's CI.
+ *  - The run doing the cancelling is ITSELF in flight on that commit. Cancel
+ *    it and the job disappears mid-reply, telling the person nothing.
+ *  - Cancelling means cancelling Test Companion, never the repository's own
+ *    build. A comment must not become a way to stop someone else's CI.
  */
 
 /** A run GitHub has not finished with yet. */
@@ -41,23 +35,16 @@ export function chooseRunsToCancel(runs, { selfRunId, headSha, workflowName } = 
 }
 
 /**
- * Our in-flight run ids, from the check runs on a commit — FR-36.
+ * Our in-flight run ids, from the check runs on a commit.
  *
- * Replaces asking GitHub for `actions/runs?head_sha=<the pull request's head>`.
- * That query cannot work for this feature: a run started by an ISSUE_COMMENT
- * carries the DEFAULT BRANCH's sha, because that is what GitHub checks out for
- * that event. So it matched nothing, every time — `stop` answered "nothing is
- * running" with a run plainly in flight, and closing a pull request did not
- * stop its run either.
+ * Neither obvious route works. `actions/runs?head_sha=` misses every time,
+ * because a run started by an issue_comment carries the DEFAULT BRANCH's sha.
+ * A run's own `pull_requests` field reports the pull request whose head is the
+ * checked-out branch, which is a different pull request.
  *
- * A run's own `pull_requests` field looks like the answer and is not: on an
- * issue_comment run it reports the pull request whose HEAD is the checked-out
- * branch, which is a different pull request. Observed live: a run for #22
- * reporting number 18.
- *
- * The check run is the handle that actually holds. It is posted on the pull
- * request's own head commit, it carries the run id in `external_id`, and
- * nothing else writes a check by this name.
+ * The check run is the handle that holds: posted on the pull request's own
+ * head commit, carrying the run id in `external_id`, and written by nothing
+ * else under this name.
  *
  * `selfRunId` is GITHUB_RUN_ID, a string here and a number from the API, so
  * both sides are compared as strings.
@@ -84,17 +71,15 @@ const RED = new Set(["failure", "cancelled", "timed_out", "startup_failure"])
  * The build a comment means by "the failure" — the newest red run on this
  * commit, or nothing.
  *
- * `rca`, `fix` and `verdict` all need to know WHICH build failed. On a
- * build_failed trigger GitHub hands us the run and plan-run.mjs passes
- * `run.html_url` straight through; from a COMMENT nobody hands us one, so all
- * three failed on the first comment with "Could not run" — while CAPABILITIES
- * advertises them by name and renderUnknownRequest offers them as suggestions.
+ * `rca`, `fix` and `verdict` all need to know WHICH build failed. A
+ * build_failed trigger hands us the run; a comment does not, so it is found
+ * here.
  *
- * Returns the run's own URL, which is the shape `--build` and `--run` accept
+ * Returns the run's own URL, the shape `--build` and `--run` accept
  * (`https://github.com/<owner>/<repo>/actions/runs/<id>`).
  *
- * Two runs are never the answer. Ours, because explaining our own failure is a
- * mirror rather than an answer; and the one asking, which has not finished.
+ * Two runs are never the answer: ours, because explaining our own failure is
+ * a mirror rather than an answer, and the one asking, which has not finished.
  */
 export function latestFailedRun(runs, { selfRunId, selfWorkflowName } = {}) {
 	const red = (runs ?? []).filter(

@@ -1,5 +1,5 @@
 /**
- * What the run leaves behind — STM-3663 FR-27, FR-29.
+ * What the run leaves behind.
  *
  * Only the rendering and the decisions live here, with no network calls, so the
  * awkward parts are testable without a runner: whether a preview run is marked
@@ -21,19 +21,18 @@ const withMark = (outcome) => {
 }
 
 /**
- * How a later run finds the comment it wrote earlier — FR-29 wants ONE comment,
- * edited in place, not a new one per run. An HTML comment so a reader never
- * sees it.
+ * How a later run finds the comment it wrote earlier: ONE comment, edited in
+ * place, not a new one per run. An HTML comment so a reader never sees it.
  */
 /**
- * Is this comment one WE wrote? — review of #3101, M2.
+ * Is this comment one WE wrote?
  *
- * "Any bot" was the old answer, and it was not good enough. Another App on
- * the repository, or `github-actions[bot]` driven by any other workflow in
- * it, could post a comment carrying our proposal marker. A maintainer's `go`
- * then fed that body to a live `--yolo` run as the approved plan — no write
- * access needed, just a workflow, and plenty of repositories run one on a
- * fork's pull request.
+ * "Any bot" is not good enough. Another App on the repository, or
+ * `github-actions[bot]` driven by any other workflow, could post a comment
+ * carrying our proposal marker — and a maintainer's `go` would then feed that
+ * body to a live `--yolo` run as the approved plan. No write access needed,
+ * just a workflow, and plenty of repositories run one on a fork's pull
+ * request.
  *
  * Fails CLOSED: with no login to compare against, nothing is ours. The worst
  * case is proposing again; the alternative is running someone else's text.
@@ -45,15 +44,14 @@ export const COMMENT_MARKER = "<!-- test-companion-run -->"
 const previewRun = (summary) => summary?.preview === "true"
 
 /**
- * What the run produced, in the words a reviewer actually wants — FR-27.
+ * What the run produced, in the words a reviewer actually wants.
  *
- * Returns nothing for a run that generates no cases (rca, fix, verdict): a row
- * reading "0 generated" on one of those looks like something went wrong.
+ * Returns nothing for a run that generates no cases (rca, fix, verdict): a
+ * row reading "0 generated" on one of those looks like something went wrong.
  *
- * The case that matters most is cases generated and NONE saved. Left to a bare
+ * The case that matters most is cases generated and NONE saved. As a bare
  * pair of numbers, "12 generated · 0 saved" reads as success to a skimming
- * reader, which is the exact failure this whole feature exists to prevent — a
- * real run produced 27 cases, reported "Succeeded", and lost all of them.
+ * reader — a run can produce 27 cases, report "Succeeded", and lose them all.
  */
 function producedLines(summary, resultArtifact) {
 	const generated = Number(summary.cases_generated ?? 0)
@@ -78,7 +76,7 @@ function producedLines(summary, resultArtifact) {
 }
 
 /**
- * How many failing tests the report names before it stops — FR-28.
+ * How many failing tests the report names before it stops.
  *
  * A suite that loses a hundred tests turns the check into a wall of text
  * nobody reads. The first few plus a count is more useful than all of them,
@@ -90,20 +88,14 @@ const FAILURES_LISTED = 20
  * Make text that came from outside safe to put in our own comment.
  *
  * The answer and the failing-test names are the only parts of the comment
- * this Action did not write: agent prose quoting build logs and repository
- * files, and test names out of the run's report. On a fork's pull request all
- * of it is attacker-influenceable, and even without malice a log line can
- * happen to contain one of our markers.
- *
- * Markers are how a later run finds this comment and how a proposal's state
- * is tracked, and they are HTML comments — so one arriving inside borrowed
+ * this Action did not write. On a fork's pull request both are
+ * attacker-influenceable, and even without malice a log line can contain one
+ * of our markers — which are HTML comments, so one arriving inside borrowed
  * text is read back as our own control data.
  *
  * Only the OPENING delimiter needs breaking; without it `-->` is three
- * characters of prose. `&lt;!--` still reads as `<!--` once GitHub renders
- * it, so a quoted log line is not altered for the person reading it. Breaking
- * the syntax rather than the words also means a legitimate explanation that
- * mentions a marker by name still says what it meant to say.
+ * characters of prose. `&lt;!--` still renders as `<!--`, so a quoted log
+ * line is unchanged for the person reading it.
  *
  * Idempotent: the output contains no `<!--` for a second pass to find.
  */
@@ -156,7 +148,7 @@ export function renderJobSummary({
 	lines.push(`## Test Companion — ${withMark(outcome)}`)
 	lines.push("")
 
-	// FR-43: both asking and approving need write access, so one person doing
+	// both asking and approving need write access, so one person doing
 	// both is not an escalation — but a reviewer reading the result should be
 	// able to see that no second pair of eyes was involved.
 	if (String(approvalNote ?? "").trim()) {
@@ -167,13 +159,13 @@ export function renderJobSummary({
 	// The run could not plant its duplicate-protection flag and went ahead
 	// anyway. The CLI records it in the report as `dedupe:`; without this the
 	// only trace was the raw job log, and the comment — which is what the
-	// customer reads — said nothing (STM-5434 review, PR #3286).
+	// customer reads — said nothing.
 	if (String(summary.dedupe ?? "").trim()) {
 		lines.push(`> \u26a0\ufe0f Ran without duplicate protection: ${inertMarkers(summary.dedupe)}`)
 		lines.push("")
 	}
 
-	// FR-42: a write that was configured and could not happen must be said out
+	// a write that was configured and could not happen must be said out
 	// loud — a silent skip reads as "there was nothing to write".
 	for (const w of warnings) {
 		if (String(w ?? "").trim()) {
@@ -183,12 +175,12 @@ export function renderJobSummary({
 	}
 
 	if (previewRun(summary)) {
-		// FR-8. Without this a clean-looking report reads as "the work landed".
+		// . Without this a clean-looking report reads as "the work landed".
 		// Not "nothing was written": preview refuses Test Companion's own write
 		// TOOLS, and deliberately allows `execute_command` because that is how
 		// tests run (preview-tool-policy.ts). A shell command the agent chose can
 		// still edit a file or push, so claiming nothing was written overstates
-		// the guarantee (review finding, PR #3030).
+		// the guarantee (review finding, ).
 		lines.push(
 			"> **Preview** — Test Companion refused every one of its own write tools, so it created, changed and saved nothing itself. Shell commands the agent ran are not covered by that.",
 		)
@@ -230,7 +222,7 @@ export function renderJobSummary({
 	lines.push(...failureLines(failedTests))
 	lines.push(...producedLines(summary, resultArtifact))
 
-	// FR-43: what the approved run actually saved, and where. The run writes
+	// what the approved run actually saved, and where. The run writes
 	// on a runner that is deleted minutes later, so this line is the only
 	// record a reviewer gets of what an agent changed in their branch.
 	if (String(workNote ?? "").trim()) {
@@ -246,7 +238,7 @@ export function renderJobSummary({
 	}
 	if (runUrl) lines.push(`[Full run](${runUrl})`)
 
-	// FR-45: the accessibility and visual lines, when the settings asked for them.
+	// the accessibility and visual lines, when the settings asked for them.
 	if (extraChecks.length > 0) {
 		lines.push("")
 		for (const l of extraChecks) lines.push(l)
@@ -258,9 +250,9 @@ export function renderJobSummary({
 /**
  * The longest body GitHub will accept on an issue comment.
  *
- * Over this the API rejects the call outright, so the run reports NOTHING —
+ * Over this the API rejects the call outright, so the run reports NOTHING
  * no table, no answer, no link. Worse than the missing answer that reading
- * every job's closing words set out to fix (STM-5434).
+ * every job's closing words set out to fix.
  */
 export const COMMENT_LIMIT = 65536
 
@@ -277,19 +269,18 @@ function cutShortNote(runUrl) {
  * thirty test cases runs to tens of thousands of characters. It is cut before
  * anything else, because the table, the links and the marker are what make the
  * comment work at all — and the marker in particular is how the next run finds
- * this comment to edit. Lose it and every run posts a new one (FR-29).
+ * this comment to edit. Lose it and every run posts a new one.
  */
 export function renderComment(args) {
 	return renderWithin(args, COMMENT_LIMIT, `\n\n${COMMENT_MARKER}`)
 }
 
 /**
- * GitHub's cap on a check run's `output.summary` — STM-5434, CodeRabbit on
- * #3286.
+ * GitHub's cap on a check run's `output.summary`.
  *
  * One short of the comment limit, and it bites harder: an over-long comment
  * fails to post, which is visible, while an over-long summary 422s the check
- * API. gh() turns that into a warning and returns null, so the "Running" check
+ * API. gh turns that into a warning and returns null, so the "Running" check
  * posted before the run is never completed and sits `in_progress` on the head
  * commit for ever — blocking anyone who made it required.
  */
@@ -303,12 +294,11 @@ export function renderCheckSummary(args) {
 /**
  * Render the report so that it fits, cutting the ANSWER first.
  *
- * Was the body of renderComment. Pulled out because three sinks render the
- * same view and only one of them was bounded: the comment, the check run's
- * summary, and the proposal reply. The answer is the one field with no natural
- * bound — `generate` describing thirty cases runs to tens of thousands of
- * characters — so it is cut before anything else, and the table, the links and
- * the marker survive.
+ * Three sinks render the same view and each needs its own bound: the comment,
+ * the check run's summary, and the proposal reply. The answer is the one
+ * field with no natural limit — `generate` describing thirty cases runs to
+ * tens of thousands of characters — so it is cut first and the table, the
+ * links and the marker survive.
  */
 function renderWithin(args, limit, tail) {
 	const body = renderJobSummary(args)
@@ -367,15 +357,14 @@ export function checkSha(planContext = {}, summary = {}, githubSha) {
 }
 
 /**
- * Someone without write access asked for a run — FR-33.
+ * Someone without write access asked for a run.
  *
- * This used to go only to the job summary, which the person who commented never
- * opens: from where they sat, Test Companion ignored them. One line, naming who
- * can ask, so the answer is where the question was.
+ * One line, naming who can ask, posted where the question was — the job
+ * summary is not somewhere the person who commented ever looks.
  *
  * No COMMENT_MARKER, here or below. A refusal is not a run report, and
- * chooseCommentAction takes the OLDEST marked comment as the one it edits — so
- * a marked refusal would become the place every later run wrote its results.
+ * chooseCommentAction edits the OLDEST marked comment — so a marked refusal
+ * would become the place every later run wrote its results.
  */
 export function renderNotAuthorized(login, askTeam) {
 	const team = String(askTeam ?? "").trim()
@@ -384,15 +373,14 @@ export function renderNotAuthorized(login, askTeam) {
 		: `@${login} — only someone with write access to this repository can ask Test Companion for a run.`
 }
 
-/** We could not place the request — FR-34: reply with what we can do, run nothing. */
+/** We could not place the request —: reply with what we can do, run nothing. */
 export function renderUnknownRequest() {
 	const lines = CAPABILITIES.map(({ ask, does }) => `- **${ask}** — ${does}`)
 	return [`I could not tell which job that was asking for, so nothing ran. Here is what I can do:`, "", ...lines].join("\n")
 }
 
 /**
- * What to say to somebody who asked us to stop — STM-5434 demo feedback,
- * item 7.
+ * What to say to somebody who asked us to stop.
  *
  * `stop` used to cancel the run in flight and drop the waiting plan. Both are
  * gone, so this answers both halves: GitHub cancels a run, and a plan nobody
@@ -409,13 +397,13 @@ export function renderStopRemoved() {
 	].join("\n")
 }
 
-/** FR-44: a proposal nobody answers is dropped after 24 hours. */
+/** a proposal nobody answers is dropped after 24 hours. */
 export const PROPOSAL_WINDOW_MS = 24 * 60 * 60 * 1000
 
 /**
- * How a waiting proposal is recognised later — STM-5434 FR-43.
+ * How a waiting proposal is recognised later.
  *
- * Keyed to the COMMIT, which is what makes FR-44's "new commits replace the
+ * Keyed to the COMMIT, which is what makes "new commits replace the
  * proposal" true without anything having to sweep: once the branch moves, the
  * old proposal simply stops being found, so a "go" can never approve work that
  * was proposed against different code.
@@ -425,35 +413,23 @@ export function proposalMarkerFor(sha, requester, workflow) {
 	// The JOB travels with the proposal. Without it, approving a `fix`
 	// proposal ran whatever binding happened to be first in the pipeline file,
 	// because the GO path sets no workflow and the CLI then resolves one from
-	// the event alone. FR-43 is "what you saw is what runs".
+	// the event alone. is "what you saw is what runs".
 	const job = String(workflow ?? "").trim()
 	return `<!-- test-companion-proposal sha=${sha}${by ? ` by=${by}` : ""}${job ? ` workflow=${job}` : ""} -->`
 }
 
 /**
- * The ONE pattern for a proposal marker, because the two readers have now
- * drifted twice.
- *
- * findProposal learned about `workflow=`; findSupersededProposal, 200 lines
- * away, did not — its pattern still required ` -->` right after the optional
- * `by=`, so it matched no marker this branch writes and the "your plan is
- * stale" reply silently died back to "No @test-companion mention", which is
- * the exact failure it was written to fix.
+ * The ONE pattern for a proposal marker. Several readers need it, and when
+ * there were several patterns they drifted.
  *
  * Groups: 1 = requester, 2 = workflow. Both optional, so markers written
  * before either field existed stay readable.
  *
- * ONE LITERAL pattern, with the sha captured rather than interpolated.
- *
- * It used to be built per-search from the sha, which meant the sha had to be
- * regex-escaped or it would quietly match OTHER commits — `a.c*d+` also finds
- * `abcccd`, so a plan for one commit could be approved against another. The
- * escaping was correct, but it was a rule every caller had to remember.
- *
- * Comparing captured text with `===` removes the rule instead of restating
- * it: there is nothing to escape, nothing to get wrong, and no pattern built
- * from input (which is also what Semgrep was pointing at —
- * browserstack/github-actions#91, findings 9 and 12).
+ * LITERAL, with the sha captured rather than interpolated. Built per-search
+ * from the sha, it would have to be regex-escaped or it would quietly match
+ * OTHER commits — `a.c*d+` also finds `abcccd`, so a plan for one commit
+ * could be approved against another. Comparing captured text with `===`
+ * removes the rule instead of restating it.
  */
 const MARKER = /<!-- test-companion-proposal sha=([^\s>]+)(?: by=([^\s>]+))?(?: workflow=([^\s>]+))? -->/
 
@@ -464,21 +440,20 @@ const readMarker = (body) => {
 }
 
 /**
- * The commit a check we already posted belongs to — review of #3101, B1.
+ * The commit a check we already posted belongs to.
  *
- * The "in progress" check goes up BEFORE the CLI runs, so the run can be
- * cancelled while it is going, and it is posted on the PULL REQUEST's head. Anything
- * that finishes the run afterwards has to complete THAT check, on THAT
- * commit. Reaching for the event's own sha instead is wrong on a comment run,
- * where GITHUB_SHA is the default branch's commit: the second check lands on
- * main and the pull request's one stays pending for ever.
+ * The "in progress" check goes up BEFORE the CLI runs, on the PULL REQUEST's
+ * head, so anything finishing the run afterwards has to complete THAT check
+ * on THAT commit. Reaching for the event's own sha is wrong on a comment run,
+ * where GITHUB_SHA is the default branch's: the second check lands on main
+ * and the pull request's stays pending for ever.
  */
 export function checkSubjectFor(made, fallbackSha) {
 	for (const sha of made?.keys?.() ?? []) return sha
 	return fallbackSha
 }
 
-/** The proposal comment: what the run would do, and how to let it — FR-43. */
+/** The proposal comment: what the run would do, and how to let it. */
 export function renderProposal(body, sha, requester, workflow) {
 	return [
 		body,
@@ -490,17 +465,14 @@ export function renderProposal(body, sha, requester, workflow) {
 }
 
 /**
- * Has the plan for THIS commit already been used, and how?
+ * Has the plan for this commit already been used, and how?
  *
- * Found by the live run that verified the consumed marker. A second `go` was
- * correctly not re-run, but the reply said "that plan was for an earlier
- * commit" — because with nothing waiting the caller reaches for a superseded
- * proposal, and an older one from before the branch moved was still in the
- * thread. The commit had not changed; the plan had been approved and run.
+ * Distinguishes "used up" from "proposed against an earlier commit": with
+ * nothing waiting, the caller would otherwise reach for a superseded proposal
+ * still in the thread and report the wrong reason.
  *
- * Returns "approved" or "dropped" so the reply can say which, or undefined
- * when the plan on this commit has not been used at all and the superseded
- * reading is the right one after all.
+ * Returns "approved", "dropped", or undefined when the superseded reading is
+ * the right one after all.
  */
 export function proposalAlreadyUsed(comments, sha, us, workflow) {
 	const want = String(sha ?? "").trim()
@@ -531,7 +503,7 @@ export function findProposal(comments, sha, now = Date.now(), us, opts = {}) {
 	// by the sweep. Checked before anything else, so neither a second `go` nor
 	// the sweep can act on a plan that is already finished with.
 	//
-	// PER JOB, not per commit (STM-5434 demo feedback, item 5). A plan a
+	// PER JOB, not per commit. A plan a
 	// marker does not name is still waiting, however many OTHER plans on this
 	// commit have been used up.
 	const spent = spentPlans(comments, us).filter((m) => m.sha === want)
@@ -540,8 +512,8 @@ export function findProposal(comments, sha, now = Date.now(), us, opts = {}) {
 
 	let ours = (comments ?? []).filter((c) => isOurs(c, us) && readMarker(c.body)?.sha === want)
 	ours = ours.filter((c) => !spentJobs.has(readMarker(c.body)?.workflow ?? ""))
-	// `go #1234` names ONE plan. With two waiting there is otherwise nothing in
-	// what was typed that picks between them, and the newest wins by default —
+	// `go ` names ONE plan. With two waiting there is otherwise nothing in
+	// what was typed that picks between them, and the newest wins by default
 	// fine when there is one, a coin toss when there are two.
 	const named = String(opts?.id ?? "").trim()
 	if (named) ours = ours.filter((c) => String(c.id) === named)
@@ -558,24 +530,24 @@ export function findProposal(comments, sha, now = Date.now(), us, opts = {}) {
 		// The job the person actually read and approved. Undefined on a
 		// proposal written before the marker carried one.
 		workflow: mark?.workflow,
-		// The run has to READ the approved plan to carry it out (FR-43), so the
+		// The run has to READ the approved plan to carry it out, so the
 		// body travels with the decision rather than being fetched again.
 		body: newest.body ?? "",
 	}
 }
 
 /**
- * The plan an approved run must carry out — FR-43.
+ * The plan an approved run must carry out.
  *
- * FR-43 allows a reply of "go" WITH OR WITHOUT edits to the case list, and the
- * edits win: someone looked at the proposal and changed it before approving.
+ * A reply of "go" may carry edits to the case list, and the edits win:
+ * someone looked at the proposal and changed it before approving.
  * Handing the run only the original proposal would quietly discard that.
  *
  * The proposal's own marker is stripped. It is bookkeeping, and leaving it in
  * invites the run to read it as an instruction.
  */
 /**
- * Did the approver change anything, or just say go? — FR-43.
+ * Did the approver change anything, or just say go?
  *
  * Worth knowing separately from the plan itself: edits made at approval time
  * were reviewed by nobody but the approver, and on a self-approved run by
@@ -586,9 +558,9 @@ export function hasApproverEdits(replyText) {
 	const reply = String(replyText ?? "").trim()
 	if (!reply) return false
 	// A bare approval is not an edit, and neither is one that names WHICH plan
-	// — `go #1234`. Presenting either as an edit would have the run looking for
+	// `go `. Presenting either as an edit would have the run looking for
 	// an instruction nobody gave, and renderApprovedPlan would hand the agent
-	// the comment id itself under "these win" (STM-5434 review, PR #3286).
+	// the comment id itself under "these win".
 	return !isApprovalOnly(reply)
 }
 
@@ -606,18 +578,18 @@ export function renderApprovedPlan(proposalBody, replyText) {
 }
 
 /**
- * How a dropped proposal is remembered — FR-44.
+ * How a dropped proposal is remembered.
  *
  * The sweep that drops proposals runs nightly. Without a record, it would post
  * a fresh "Action required" check and a fresh comment on the same dead proposal
  * every night for as long as the pull request stayed open.
  */
 /**
- * A proposal has been APPROVED and run — review of #3101, M5.
+ * A proposal has been APPROVED and run.
  *
- * Approving left no trace, so the proposal stayed "waiting" after it had
- * already been carried out: a second `go` ran the job again, and a day later
- * the sweep told the person their approved plan had gone unanswered.
+ * Without this record the proposal stays "waiting" after it has been carried
+ * out: a second `go` runs the job again, and the sweep later reports the
+ * approved plan as unanswered.
  *
  * Separate from the dropped marker because they are different events and the
  * reply text differs, but both mean the same thing here — this plan is spent.
@@ -631,11 +603,11 @@ export function proposalDroppedMarkerFor(sha, workflow) {
 }
 
 /**
- * The JOB travels with a spent plan too — STM-5434 demo feedback, item 5.
+ * The job travels with a spent plan too.
  *
- * Keyed on the commit alone, one approval finished off every plan on that
- * commit: approving `fix` meant a waiting `generate` plan could not be
- * approved at all until somebody pushed. Hit twice during testing.
+ * Keyed on the commit alone, one approval would finish off every plan on that
+ * commit: approving `fix` would leave a waiting `generate` plan unapprovable
+ * until somebody pushed.
  */
 function jobField(workflow) {
 	const job = String(workflow ?? "").trim()
@@ -645,13 +617,12 @@ function jobField(workflow) {
 /**
  * Every record in this thread of a plan being finished with, and what for.
  *
- * ONE pattern, matching both kinds, for the same reason MARKER is one pattern:
- * the readers drifted twice when there were several.
+ * ONE pattern matching both kinds, for the same reason MARKER is one.
  *
  * `workflow=` is absent on markers written before the job was recorded. Those
- * mean the whole commit — which is what they meant when they were written.
- * Reading them as "no particular job" would let an upgrade re-run work
- * somebody had already approved, so they keep their old, wider meaning.
+ * mean the whole commit, which is what they meant when written — reading them
+ * as "no particular job" would let an upgrade re-run work somebody had
+ * already approved.
  */
 const SPENT_MARKER = /<!-- test-companion-proposal-(consumed|dropped) sha=([^\s>]+)(?: workflow=([^\s>]+))? -->/g
 
@@ -667,14 +638,12 @@ function spentPlans(comments, us) {
 }
 
 /**
- * Is there a proposal on this commit that has run out of time and not yet been
- * dropped? — FR-44.
+ * Is there a proposal on this commit that has run out of time and not yet
+ * been dropped?
  *
- * This exists because FR-44's in-progress check is only safe if something is
- * guaranteed to end it. A proposal nobody answers would otherwise leave the
- * check on "in progress" forever, and anyone who made it a required check is
- * then blocked by a check that never resolves — the exact failure Release 2
- * avoided by posting the tick at the end of a run rather than the start.
+ * An in-progress check is only safe if something is guaranteed to end it. A
+ * proposal nobody answers would otherwise leave the check on "in progress"
+ * forever, blocking anyone who made it required.
  */
 export function proposalNeedsDropping(comments, sha, now = Date.now(), us) {
 	// findProposal already leaves out anything dropped or approved, per job, so
@@ -686,19 +655,19 @@ export function proposalNeedsDropping(comments, sha, now = Date.now(), us) {
 }
 
 /**
- * The items out of a `gh api --paginate --slurp` response — FR-29.
+ * The items out of a `gh api --paginate --slurp` response.
  *
  * `--slurp` returns an ARRAY OF PAGES, not a flat array of items, and it wraps
  * even when there is only one page. Verified against gh 2.91.0: twelve pages at
  * per_page=2, and still `[[...]]` at per_page=100.
  *
  * Without this, chooseCommentAction is handed an array of arrays, matches
- * nothing, returns "create" every time, and every run posts a NEW comment —
- * the single-comment guarantee in FR-29, broken by the fix meant to protect it.
+ * nothing, returns "create" every time, and every run posts a NEW comment
+ * the single-comment guarantee in, broken by the fix meant to protect it.
  * `--slurp` was added to stop `[...][...]` from failing JSON.parse, which it
  * does; the shape it produces instead was the part that got missed.
  *
- * Objects are not arrays, so flat() leaves an already-flat list alone. That
+ * Objects are not arrays, so flat leaves an already-flat list alone. That
  * keeps this correct if gh ever changes its mind.
  */
 export function flattenPages(slurped) {
@@ -706,7 +675,7 @@ export function flattenPages(slurped) {
 }
 
 /**
- * The accessibility and visual lines on the check — STM-5434 FR-45.
+ * The accessibility and visual lines on the check.
  *
  * Both are silent unless the settings asked for them, and both read their
  * numbers from the run's summary file. Those keys — accessibility_new,
@@ -747,7 +716,7 @@ export function renderExtraChecks(summary = {}, { wcag, visual } = {}) {
 }
 
 /**
- * May accessibility turn the check red? — FR-45.
+ * May accessibility turn the check red?
  *
  * Only when the settings say so, and only for violations THIS CHANGE
  * introduced. Failing a pull request for the state of a page it never touched
@@ -763,7 +732,7 @@ export function accessibilityFailsCheck(summary = {}, { wcag, failOnNew } = {}) 
 }
 
 /**
- * The body of a proposal — FR-38, FR-43.
+ * The body of a proposal.
  *
  * The first live run posted a proposal containing only a report header. The
  * run had designed nine test cases and verified each one by probing the
@@ -776,7 +745,7 @@ export function accessibilityFailsCheck(summary = {}, { wcag, failOnNew } = {}) 
  */
 export function renderProposalBody({ summary, plan, sizeNote } = {}) {
 	const parts = []
-	// FR-44's warning goes above the list, where it can still change what the
+	//  warning goes above the list, where it can still change what the
 	// reviewer approves.
 	if (String(sizeNote ?? "").trim()) parts.push(sizeNote, "")
 	if (String(summary ?? "").trim()) parts.push(summary, "")
@@ -794,7 +763,7 @@ export function renderProposalBody({ summary, plan, sizeNote } = {}) {
 			.trim()
 	const alreadyAbove = body !== "" && squash(summary).includes(squash(body))
 	// Only `test-pr` writes a separate plan file. For every other job the
-	// proposal run is a PREVIEW run — it does the work and writes nothing —
+	// proposal run is a PREVIEW run — it does the work and writes nothing
 	// so its report above IS what is being approved. Saying "there is nothing
 	// here to approve" told the reader to re-run something that had worked.
 	const noPlan = String(summary ?? "").trim()
@@ -805,9 +774,9 @@ export function renderProposalBody({ summary, plan, sizeNote } = {}) {
 }
 
 /**
- * A proposal on this pull request that a newer commit has left behind — FR-44.
+ * A proposal on this pull request that a newer commit has left behind.
  *
- * FR-44 keys a proposal to a commit, so a new commit silently replaces it.
+ *  keys a proposal to a commit, so a new commit silently replaces it.
  * That is the right safety behaviour: a plan written against code that has
  * since changed must never be carried out. But silence is the wrong way to
  * say it.
@@ -837,15 +806,15 @@ export function findSupersededProposal(comments, sha, us) {
 }
 
 /**
- * Create the "Test Companion" check, or update the one this run already made —
- * FR-48, "one check, never neutral".
+ * Create the "Test Companion" check, or update the one this run already made
+ * , "one check, never neutral".
  *
  * Every call used to POST. A single run posts up to three times — in progress
  * before the work, the result after it, and the catch-all on a crash — so a
  * pull request collected two or three checks of the same name, and a proposal
  * left ITS in-progress one pending forever because nothing ever completed it.
  * That is the "blocked by a check that never arrives" failure the design is
- * meant to avoid. Reported in review of PR #3101.
+ * meant to avoid.
  *
  * Keyed by commit: a run can legitimately check two (the head early on, and
  * whatever the report names later), and those are different checks, not an

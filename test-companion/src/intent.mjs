@@ -1,20 +1,17 @@
 /**
- * What did the comment ask for? — STM-5434 FR-34.
+ * What did the comment ask for?
  *
- * A person writes "@test-companion fix the failing tests" and something has to
- * turn that sentence into a job name. That happens HERE, in the Action, before
- * the CLI is spawned, for one reason: FR-34 says a request we cannot place gets
- * a reply listing what we can do, and "nothing SHALL run". Handing the sentence
- * to the agent and letting it work out what was meant would spend the
- * customer's credits discovering that "make coffee" was never a job.
+ * "@test-companion fix the failing tests" becomes a job name here, in the
+ * Action, before the CLI is spawned. Handing the sentence to the agent
+ * instead would spend the customer's credits discovering that "make coffee"
+ * was never a job.
  *
- * Kept pure — text in, intent out, no I/O — like plan-run.mjs beside it, so the
- * whole vocabulary is testable in milliseconds instead of a push-and-wait loop.
+ * Pure — text in, intent out, no I/O — so the whole vocabulary is testable in
+ * milliseconds.
  *
- * The phrasing people use is NOT a closed set, and this will never match
- * everything. That is why UNKNOWN is a real answer rather than a failure: an
- * unmatched comment gets the list of what Test Companion can do, which is both
- * the honest reply and the cheapest one.
+ * The phrasing people use is not a closed set, so UNKNOWN is a real answer
+ * rather than a failure: an unmatched comment gets the list of what Test
+ * Companion can do.
  */
 
 /** What a comment turned out to be asking for. */
@@ -23,11 +20,11 @@ export const INTENT = Object.freeze({
 	WORKFLOW: "workflow",
 	/** Asked us to stop. Nothing stops any more — item 7 — but the word is still answered. */
 	STOP: "stop",
-	/** Approve a waiting proposal, which starts the real run — FR-43. */
+	/** Approve a waiting proposal, which starts the real run. */
 	GO: "go",
-	/** Open the pull request that adds a starter pipeline file — FR-13. */
+	/** Open the pull request that adds a starter pipeline file. */
 	SETUP: "setup",
-	/** We could not place it. FR-34: reply with the list, run nothing. */
+	/** We could not place it.: reply with the list, run nothing. */
 	UNKNOWN: "unknown",
 })
 
@@ -50,8 +47,8 @@ const withoutQuotes = (text) =>
 const POLITENESS = /^(?:please\s+|pls\s+|can\s+you\s+|could\s+you\s+|kindly\s+)+/i
 
 /**
- * Still checked before any job word, so
- * "stop, don't fix anything" cannot start a fix run.
+ * Checked before any job word, so "stop, don't fix anything" cannot start a
+ * fix run.
  *
  * ANCHORED, because matching the word anywhere made "don't stop until the
  * tests pass" cancel the run. What the comment opens with is what it is
@@ -59,28 +56,29 @@ const POLITENESS = /^(?:please\s+|pls\s+|can\s+you\s+|could\s+you\s+|kindly\s+)+
  * else.
  */
 /**
- * STILL RECOGNISED, but it no longer does anything — STM-5434 demo feedback,
- * item 7. Proposals already sitting in live threads tell people to say it, and
+ * STILL RECOGNISED, but it no longer does anything.
+ *
+ * Proposals already sitting in live threads tell people to say it, and
  * answering those with "that did not name anything I can do" would be true and
  * useless. main.mjs says what to do instead.
  */
 const STOP = /^stop\b/i
 
 /**
- * FR-13: "set up this repo" opens the pull request that adds the starter file.
+ * "set up this repo" opens the pull request that adds the starter file.
  * Anchored for the same reason — "the test setup is broken, fix it" was
  * opening a settings pull request instead of running fix.
  */
 const SETUP = /^set\s?-?\s?up\b/i
 
-/** FR-8: "Any comment MAY ask for a single preview run." A modifier, not a job. */
+/** "Any comment MAY ask for a single preview run." A modifier, not a job. */
 const PREVIEW = /\bpreview\b/i
 
 /** Run the bound jobs again on this commit — which is what a re-check is. */
 const RECHECK = /\bre-?\s?check\b/i
 
 /**
- * Approve a waiting proposal — FR-43.
+ * Approve a waiting proposal.
  *
  * Tested AFTER the job words, deliberately. "go" is two letters and turns up
  * inside ordinary instructions, so a sentence that names a job is read as
@@ -93,23 +91,20 @@ const GO = /\b(go|approved?)\b/i
  * An approval and nothing else.
  *
  * ONE definition, exported, because three readers have to agree on it: this
- * file (does the reply name a plan?), plan-run.mjs (may an UNADDRESSED comment
- * reach us at all?) and report.mjs (did the approver edit the plan?). They did
- * not agree, and each disagreement was a bug — the gate dropped `go #1234`
- * before it was read, and hasApproverEdits called it an edit, which put the
- * comment id into the plan the agent was handed as an instruction that wins.
+ * file (does the reply name a plan?), plan-run.mjs (may an UNADDRESSED
+ * comment reach us at all?) and report.mjs (did the approver edit the plan?).
+ * Each past disagreement between them was a bug.
  */
 export const BARE_APPROVAL = /^\s*(?:go|approved?)\s*[.!]*\s*$/i
 
 /**
- * An approval that names WHICH plan — `go #1234`, or `go <comment link>`.
+ * An approval that names WHICH plan — `go #<id>`, or `go <comment link>`.
  *
  * ANCHORED to the approval word and to the end of the comment. Matching a
- * `#id` anywhere turned "go — and pull the steps from <url>#issuecomment-…"
- * into an approval of a plan that does not exist, which was then refused
- * (STM-5434 review, PR #3286).
+ * `#id` anywhere would turn "go — and pull the steps from
+ * <url>#issuecomment-…" into an approval of a plan that does not exist.
  *
- * Six digits at least: a GitHub comment id is a ten-digit number, and `#25` is
+ * Six digits at least: a GitHub comment id is ten digits, and `#25` is
  * somebody pointing at a pull request.
  */
 export const APPROVAL_WITH_PLAN = /^\s*(?:go|approved?)\s+\S*#(?:issuecomment-)?(\d{6,})\s*[.!]*\s*$/i
@@ -118,25 +113,20 @@ export const APPROVAL_WITH_PLAN = /^\s*(?:go|approved?)\s+\S*#(?:issuecomment-)?
 export const isApprovalOnly = (text) => BARE_APPROVAL.test(String(text ?? "")) || APPROVAL_WITH_PLAN.test(String(text ?? ""))
 
 /**
- * WHICH plan a reply is approving — STM-5434 demo feedback, item 5.
+ * WHICH plan a reply is approving.
  *
- * `go #6580278184`, or the comment link GitHub gives you when you copy a
- * comment's address. A bare `go` names nothing and the newest waiting plan
- * wins, which is right when there is one and a coin toss when there are two.
- *
- * Six digits at least. A GitHub comment id is a ten-digit number; `#25` in a
- * reply is somebody pointing at a pull request, and reading that as a plan id
- * would find no plan and refuse an approval that was perfectly clear.
+ * `go #<id>`, or the comment link GitHub gives you when you copy a comment's
+ * address. A bare `go` names nothing and the newest waiting plan wins, which
+ * is right when there is one and a coin toss when there are two.
  */
 const namedProposal = (text) => APPROVAL_WITH_PLAN.exec(String(text ?? ""))?.[1]
 
 /**
  * Plain words to job names, most specific first.
  *
- * The names on the right are the CLI's, not the PRD's — `tc workflow run` only
- * accepts what is in registry.go's builtinNames, so "explain" has to become
- * `rca` and "find the bad PR" has to become `verdict` here or the run fails
- * with "unknown workflow". That translation is the whole point of this table.
+ * The names on the right are the CLI's: `tc workflow run` only accepts its
+ * own registered jobs, so "explain" has to become `rca` and "find the bad PR"
+ * has to become `verdict` here, or the run fails with "unknown workflow".
  */
 const PHRASES = [
 	// Before the `fix` rule: "find the bad PR" shares no word with it, but
@@ -146,11 +136,10 @@ const PHRASES = [
 	// Each phrase maps to a PREFERENCE LIST: the first one this repository has
 	// actually bound wins, and the first overall is the fallback.
 	//
-	// "test this PR" is why the list exists. It used to map to `test`, which
-	// runs a project's EXISTING suite and never reads the diff — the very
-	// behaviour test-pr was built to replace. A repository still bound to the
-	// older job keeps working; one that has moved gets the job that reads the
-	// change. (Found by the first live run, rag_assignment PR #20.)
+	// "test this PR" is why the list exists. `test` runs a project's EXISTING
+	// suite and never reads the diff, which is what test-pr replaced. A
+	// repository still bound to the older job keeps working; one that has
+	// moved gets the job that reads the change.
 	[/\btest\s+(this\s+)?(pr|pull request|change|diff)\b/i, ["test-pr", "test"]],
 	[/\bexplain\b/i, ["rca"]],
 	[/\bfix\b/i, ["fix"]],
@@ -160,12 +149,10 @@ const PHRASES = [
 const pickBound = (candidates, workflows) => candidates.find((c) => (workflows ?? []).includes(c)) ?? candidates[0]
 
 /**
- * A job asked for by its own name — FR-34.
+ * A job asked for by its own name.
  *
- * PHRASES covers the wording the PRD lists, which is four of the CLI's
- * fourteen jobs. FR-34 asks for "any BOUND workflow in plain words", and
- * naming a job IS plain words, so the names the repository has actually bound
- * are matched literally as a fallback.
+ * PHRASES covers four of the CLI's fourteen jobs, so the names a repository
+ * has actually bound are matched literally as a fallback.
  *
  * Longest first, so "mobile run" is never read as "run". Word boundaries, so
  * "regenerated the lockfile" is not a request to run `generate`.
@@ -190,17 +177,14 @@ const wordsOf = (text) =>
 /**
  * Does `said` contain `name` as a consecutive run of WHOLE words?
  *
- * This replaced a regex built per name from the name itself. The regex was
- * escaped and safe, but a pattern assembled from input is a pattern someone
- * can get wrong later, and Semgrep flagged it twice
- * (browserstack/github-actions#91, findings 8 and 12). Comparing words needs
- * no escaping at all.
+ * Word comparison rather than a regex built from the name, so there is
+ * nothing to escape.
  *
- * One deliberate difference: punctuation inside a name is now a word break,
- * so a job called `a.c` is also found in the words "a c". Names come from the
- * repository's own pipeline file and are ordinary words in practice, and
- * being slightly more willing to recognise one is the safe direction — the
- * alternative is telling someone their own job name is not a job.
+ * One consequence: punctuation inside a name is a word break, so a job called
+ * `a.c` is also found in the words "a c". Names come from the repository's own
+ * pipeline file, and being slightly more willing to recognise one is the safe
+ * direction — the alternative is telling someone their own job name is not a
+ * job.
  */
 const saysAll = (said, name) => name.length > 0 && said.some((_, i) => name.every((w, j) => said[i + j] === w))
 
@@ -223,12 +207,11 @@ export function readIntent(instructions, { workflows = [], proposalWaiting = fal
 
 	const preview = PREVIEW.test(text)
 
-	// With a plan waiting, an approval is what a reply most likely IS — and
-	// FR-43 invites edits alongside it ("you can edit the list first"). Job
-	// words match anywhere, so testing them first read "go, and fix case 3's
-	// title" as a fresh request for `fix` and quietly dropped the approval
-	// (M4, review of #3101). Still after STOP: approving and cancelling in one
-	// breath has to cancel.
+	// With a plan waiting, a reply most likely IS an approval — and edits
+	// alongside it are invited ("you can edit the list first"). Job words
+	// match anywhere, so testing them first would read "go, and fix case 3's
+	// title" as a fresh request for `fix` and drop the approval. Still after
+	// STOP: approving and cancelling in one breath has to cancel.
 	if (proposalWaiting && GO.test(text)) return { kind: INTENT.GO, proposalId: namedProposal(text) }
 
 	for (const [pattern, candidates] of PHRASES) {
@@ -241,7 +224,7 @@ export function readIntent(instructions, { workflows = [], proposalWaiting = fal
 	const named = namedWorkflow(text, workflows)
 	if (named) return { kind: INTENT.WORKFLOW, workflow: named, preview }
 
-	// FR-43: a reply of "go", with or without edits to the case list.
+	// a reply of "go", with or without edits to the case list.
 	if (GO.test(text)) return { kind: INTENT.GO, proposalId: namedProposal(text) }
 
 	// No job named, but a clear ask: run whatever the pipeline file binds to this
@@ -254,13 +237,12 @@ export function readIntent(instructions, { workflows = [], proposalWaiting = fal
 }
 
 /**
- * What to offer when we could not place a request — FR-34.
+ * What to offer when we could not place a request.
  *
- * Deliberately only what actually works today. The PRD also names reconcile and
- * "automate the backlog", and neither exists as a `tc` job yet; listing them
- * would invite a request we would then have to refuse a second time.
+ * Only what actually works today: advertising a job that does not exist
+ * invites a request we would have to refuse a second time.
  *
- * Kept next to PHRASES on purpose: a phrase people can type and a phrase we
+ * Kept next to PHRASES on purpose — a phrase people can type and a phrase we
  * advertise should never drift apart.
  */
 export const CAPABILITIES = Object.freeze([

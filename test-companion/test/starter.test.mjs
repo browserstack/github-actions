@@ -31,10 +31,10 @@ describe("pipelineConfigPath — the same file the CLI would read", () => {
 	})
 })
 
-describe("no pipeline file — FR-13", () => {
+describe("no pipeline file", () => {
 	// Installing the Action and getting a red build with "open
 	// testcompanion-pipeline.yml: no such file or directory" is the worst
-	// possible first run. FR-13: a clean pass, and the file they need.
+	// possible first run.: a clean pass, and the file they need.
 	test("the report says plainly that nothing is configured yet", () => {
 		const out = renderNoPipelineReport("testcompanion-pipeline.yml")
 		assert.match(out, /testcompanion-pipeline\.yml/)
@@ -70,11 +70,11 @@ describe("no pipeline file — FR-13", () => {
 	})
 })
 
-describe("which branch the settings file is read from — FR-7", () => {
+describe("which branch the settings file is read from", () => {
 	/**
 	 * The safety fix. Read from the branch under test, a pull request can edit
 	 * its own rules and be obeyed: switch itself from preview to live, delete its
-	 * own spending limit, or name its own Test Management destination. FR-7:
+	 * own spending limit, or name its own Test Management destination.:
 	 * read from the default branch, so an edit takes effect only once it merges.
 	 */
 	test("the repository's default branch, not the branch under test", () => {
@@ -98,9 +98,9 @@ describe("which branch the settings file is read from — FR-7", () => {
 	})
 })
 
-describe("the starter file matches the install defaults — FR-13", () => {
+describe("the starter file matches the install defaults", () => {
 	/**
-	 * FR-13: "'Test this PR' started by comment, review-before-run, live; every
+	 * "'Test this PR' started by comment, review-before-run, live; every
 	 * other binding in preview."
 	 *
 	 * Live AND gated is the safe pairing, not a contradiction: a gated request
@@ -141,7 +141,7 @@ describe("the starter file matches the install defaults — FR-13", () => {
 	})
 })
 
-describe("the starter reflects the detected framework — FR-13", () => {
+describe("the starter reflects the detected framework", () => {
 	test("a detected framework is recorded in the file", () => {
 		assert.match(starterPipelineFor("Playwright"), /Playwright/)
 	})
@@ -194,7 +194,7 @@ describe("the starter workflow points somewhere that exists", () => {
 	 * pinned install with no checksum ("refusing an unverified pinned
 	 * install"), the step runs under `set -euo pipefail`, and every repository
 	 * that copied the starter would have died on its first run with no comment
-	 * and no check. Reported in review of PR #3101.
+	 * and no check.
 	 *
 	 * The rule is a PAIR: an ACTIVE `cli-version:` requires an active
 	 * `cli-sha256:`. Commented-out guidance is fine and is how the starter now
@@ -225,16 +225,14 @@ describe("the starter workflow points somewhere that exists", () => {
 })
 
 /**
- * Review of PR #3101, blocker B2.
- *
  * A closed pull request is a CONTROL event: it exists to act on a run that is
  * already going. Sharing a concurrency group with that run, with
  * `cancel-in-progress: false`, meant it queued behind the very thing it was
  * sent to end and only ran once that had finished on its own.
  *
- * `stop` used to be the other one. It was removed with the feature (STM-5434
- * demo feedback, item 7); the lane stays for the closed pull request, which is
- * FR-36 and did not go anywhere. See stop-removed.test.mjs.
+ * `stop` used to be the other one. It was removed with the feature; the lane
+ * stays for the closed pull request, which did not go anywhere. See
+ * stop-removed.test.mjs.
  */
 describe("control events do not queue behind the run they act on", () => {
 	const starter = readFileSync(new URL("../starter-workflow.yml", import.meta.url), "utf8")
@@ -257,7 +255,7 @@ describe("control events do not queue behind the run they act on", () => {
 })
 
 /**
- * Review of PR #3101, M9. Every comment on every pull request booted a
+ * Every comment on every pull request used to boot a
  * runner, cloned the repository, installed the CLI and signed in to
  * BrowserStack — and then decided it had not been addressed. On a busy
  * repository that is most of the runs, and each one also joined the
