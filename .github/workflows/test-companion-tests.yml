@@ -23,12 +23,22 @@ on:
 permissions:
     contents: read
 
+# One run per pull request or branch. A newer push makes the older run's
+# result irrelevant, so it is cancelled rather than left to finish.
+concurrency:
+    group: test-companion-tests-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+
 jobs:
     unit-tests:
+        name: Test Companion unit tests
         runs-on: ubuntu-latest
         timeout-minutes: 10
         steps:
             - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  # The tests need no git credentials, so none are left on disk.
+                  persist-credentials: false
 
             # The Action has no dependencies: Node's standard library plus `gh`.
             # There is nothing to install.
