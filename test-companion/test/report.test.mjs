@@ -667,7 +667,7 @@ describe("findSupersededProposal — telling a stale plan from silence", () => {
 	 * Defect found live on 2026-10-29. Someone replied "go" after the branch
 	 * had moved on, and was told:
 	 *
-	 *  "No @test-companion mention, so nothing was asked of Test Companion."
+	 *  "No @browserstack mention, so nothing was asked of Test Companion."
 	 *
 	 * Wrong twice. They DID give a valid approval word, and the real reason is
 	 * that their plan was for an earlier commit. The guard that drops
@@ -790,7 +790,7 @@ describe("the two marker readers must not drift apart", () => {
 	 *
 	 * The consequence was the exact failure commit 0c2125b68f fixed: reply
 	 * `go` after the branch moves, the superseded lookup finds nothing, and
-	 * you are told "No @test-companion mention" again.
+	 * you are told "No @browserstack mention" again.
 	 *
 	 * The old tests missed it because the superseded block hand-wrote its
 	 * fixture while the new marker tests only ever fed proposalMarkerFor
@@ -882,7 +882,7 @@ describe("a proposal for a job that writes no plan file", () => {
 })
 
 /**
- * Live run 41049398591. Someone asked "@test-companion explain why the
+ * Live run 41049398591. Someone asked "@browserstack explain why the
  * contract check is failing". The agent answered — "CI failure analysis from
  * a run link is not enabled for your account yet. Please reach out to support
  * to get access." — and the pull request comment showed a table saying

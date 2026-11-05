@@ -14,7 +14,7 @@
 name: Test Companion
 
 on:
-    # Ask for something by commenting "@test-companion." on a pull request.
+    # Ask for something by commenting "@browserstack." on a pull request.
     issue_comment:
         types: [created]
     # A pull request opening or receiving commits.
@@ -49,7 +49,7 @@ concurrency:
     # onto one group named after the default branch: a comment on PR A, a
     # comment on PR B, the nightly schedule and a red-build run all queued
     # together. GitHub keeps one pending run per group, so a reviewer's
-    # @test-companion request could be cancelled by an unrelated push.
+    # @browserstack request could be cancelled by an unrelated push.
     #
     # issue_comment carries the PR number as `issue.number`; everything else
     # falls back to the run id, which is unique, so those events never share a
@@ -81,12 +81,21 @@ jobs:
         # BrowserStack, only to decide "not addressed to us" and stop. On a
         # busy repository that is most of the runs.
         #
-        # The second and third lines are the bare approval: a proposal says
-        # "reply go", and people reply without a mention. String comparison in
-        # these expressions is case-insensitive, so `Go` is covered.
+        # This is a quick, loose first filter, not the real decision. These
+        # expressions can only test whether the text CONTAINS something, so a
+        # comment holding an email address such as someone@browserstack.com
+        # still gets through. The Action then reads the comment properly, sees
+        # it was not addressed to it, and stops without posting anything on
+        # the pull request. The cost is one short job in the Actions tab. Do
+        # not try to tighten this line: anything stricter than "contains" here
+        # would also drop real requests.
+        #
+        # The last two lines are the bare approval: a proposal says "reply
+        # go", and people reply without a mention. String comparison in these
+        # expressions is case-insensitive, so `Go` is covered.
         if: >-
             github.event_name != 'issue_comment'
-            || contains(github.event.comment.body, '@test-companion')
+            || contains(github.event.comment.body, '@browserstack')
             || startsWith(github.event.comment.body, 'go')
             || startsWith(github.event.comment.body, 'approve')
         # With the Test Companion GitHub App installed, this whole block can be
