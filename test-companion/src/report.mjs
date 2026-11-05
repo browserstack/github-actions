@@ -152,7 +152,7 @@ export function renderJobSummary({
 	// both is not an escalation — but a reviewer reading the result should be
 	// able to see that no second pair of eyes was involved.
 	if (String(approvalNote ?? "").trim()) {
-		lines.push(`>${approvalNote}`)
+		lines.push(`>${inertMarkers(approvalNote)}`)
 		lines.push("")
 	}
 
@@ -169,7 +169,7 @@ export function renderJobSummary({
 	// loud — a silent skip reads as "there was nothing to write".
 	for (const w of warnings) {
 		if (String(w ?? "").trim()) {
-			lines.push(`> \u26a0\ufe0f ${w}`)
+			lines.push(`> \u26a0\ufe0f ${inertMarkers(w)}`)
 			lines.push("")
 		}
 	}
@@ -225,8 +225,11 @@ export function renderJobSummary({
 	// what the approved run actually saved, and where. The run writes
 	// on a runner that is deleted minutes later, so this line is the only
 	// record a reviewer gets of what an agent changed in their branch.
+	// Neutralised like every other borrowed field: it carries file names the
+	// agent created and git's own error text, and a file named like a marker
+	// would otherwise plant one in our trusted comment.
 	if (String(workNote ?? "").trim()) {
-		lines.push(workNote, "")
+		lines.push(inertMarkers(workNote), "")
 	}
 
 	if (summary.error_type) {
