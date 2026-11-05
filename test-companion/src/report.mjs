@@ -458,7 +458,7 @@ export function renderProposal(body, sha, requester, workflow) {
 	return [
 		body,
 		"",
-		"Reply **go** to run this for real. Nothing is written until you do. To change the list first, reply **@test-companion go** with your edits. Leave it and it stops being approvable after a day.",
+		"Reply **go** to run this for real. Nothing is written until you do. To change the list first, reply **@browserstack go** with your edits. Leave it and it stops being approvable after a day.",
 		"",
 		proposalMarkerFor(sha, requester, workflow),
 	].join("\n")

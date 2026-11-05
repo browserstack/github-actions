@@ -179,7 +179,7 @@ describe("naming a plan does not need the mention", () => {
 	 * learned about `go `, and the gate in plan-run.mjs that decides
 	 * whether an UNADDRESSED comment reaches us at all did not — it still
 	 * only accepted a bare `go`. So `go ` was dropped as "no
-	 * @test-companion mention" before the intent was ever read, and naming a
+	 * @browserstack mention" before the intent was ever read, and naming a
 	 * plan only worked if you also addressed the comment.
 	 *
 	 * Still narrow. `go` followed by a plan reference and nothing else is
@@ -264,12 +264,12 @@ describe("naming a plan is not editing it", () => {
 describe("a plan reference has to sit next to the approval", () => {
 	/**
 	 * . GO_TARGET matched a `#id` anywhere in the comment, so
-	 * "@test-companion go — and pull the steps from <url>#issuecomment-…"
+	 * "@browserstack go — and pull the steps from <url>#issuecomment-…"
 	 * became an approval of a plan that does not exist, and was refused.
 	 */
 	test("a link quoted later in the sentence is not a plan reference", () => {
 		const got = readIntent(
-			"@test-companion go — and pull the steps from https://github.com/o/r/pull/9#issuecomment-2345678901",
+			"@browserstack go — and pull the steps from https://github.com/o/r/pull/9#issuecomment-2345678901",
 			{
 				proposalWaiting: true,
 			},

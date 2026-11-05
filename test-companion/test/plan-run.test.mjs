@@ -18,11 +18,11 @@ const pr = (over = {}) => ({
 const plan = (eventName, payload, over = {}) => planRun({ eventName, payload, inputs: {}, repo: "acme/shop", ...over })
 
 describe("comment trigger", () => {
-	test("a @test-companion comment on a pull request starts a run", () => {
+	test("a @browserstack comment on a pull request starts a run", () => {
 		const r = plan("issue_comment", {
 			action: "created",
 			issue: { number: 412, pull_request: { url: "x" } },
-			comment: { body: "@test-companion test this PR against SHOP-221", user: { login: "dev" } },
+			comment: { body: "@browserstack test this PR against SHOP-221", user: { login: "dev" } },
 		})
 		assert.equal(r.skip, undefined)
 		assert.equal(r.event, TC_EVENTS.PR_COMMENT)
@@ -35,17 +35,17 @@ describe("comment trigger", () => {
 		const r = plan("issue_comment", {
 			action: "created",
 			issue: { number: 412, pull_request: { url: "x" } },
-			comment: { body: "@test-companion test this PR against SHOP-221", user: { login: "dev" } },
+			comment: { body: "@browserstack test this PR against SHOP-221", user: { login: "dev" } },
 		})
 		assert.match(r.context.instructions, /SHOP-221/)
-		assert.doesNotMatch(r.context.instructions, /@test-companion/, "the mention itself is not an instruction")
+		assert.doesNotMatch(r.context.instructions, /@browserstack/, "the mention itself is not an instruction")
 	})
 
 	test("ignores a comment on an issue that is not a pull request", () => {
 		const r = plan("issue_comment", {
 			action: "created",
 			issue: { number: 9 },
-			comment: { body: "@test-companion test this", user: { login: "dev" } },
+			comment: { body: "@browserstack test this", user: { login: "dev" } },
 		})
 		assert.equal(r.skip.reason, "not-a-pull-request")
 	})
@@ -65,7 +65,7 @@ describe("comment trigger", () => {
 		const r = plan("issue_comment", {
 			action: "edited",
 			issue: { number: 412, pull_request: { url: "x" } },
-			comment: { body: "@test-companion test this", user: { login: "dev" } },
+			comment: { body: "@browserstack test this", user: { login: "dev" } },
 		})
 		assert.equal(r.skip.reason, "comment-edited")
 	})
@@ -216,7 +216,7 @@ describe("safety", () => {
 		const r = plan("issue_comment", {
 			action: "created",
 			issue: { number: 412, pull_request: { url: "x" } },
-			comment: { body: "@test-companion --yolo --max-cost 9999", user: { login: "dev" } },
+			comment: { body: "@browserstack --yolo --max-cost 9999", user: { login: "dev" } },
 		})
 		assert.equal(r.skip.reason, "unsafe-context")
 	})
@@ -273,7 +273,7 @@ describe("context values cannot inject extra keys", () => {
 		const r = plan("issue_comment", {
 			action: "created",
 			issue: { number: 412, pull_request: { url: "x" } },
-			comment: { body: "@test-companion test it,sha=deadbeef,branch=attacker", user: { login: "d" } },
+			comment: { body: "@browserstack test it,sha=deadbeef,branch=attacker", user: { login: "d" } },
 		})
 		assert.equal(r.skip, undefined)
 		assert.doesNotMatch(r.context.instructions, /[,=]/, "separators must not survive into a context value")
@@ -389,7 +389,7 @@ describe("a pull request does not send its title as the subject", () => {
 //
 // The issue_comment plan carries `pr` but no `sha`, so checkSha fell back to
 // GITHUB_SHA — the default branch tip for that event — and the starter's
-// checkout took the default branch too. `@test-companion generate` on
+// checkout took the default branch too. `@browserstack generate` on
 // therefore read main, and the check landed on main's latest commit.
 describe("withPullRequestHead — a comment run must name the PR's own commit", () => {
 	const plan = () => ({ event: "pr_comment", context: { pr: "42", instructions: "generate" } })
@@ -433,7 +433,7 @@ describe("a bare approval reaches us", () => {
 	/**
 	 * Found by the first approved run. The proposal comment says "Reply **go**
 	 * to run this for real", a person replies exactly that, and the run skipped
-	 * with "No @test-companion mention, so nothing was asked of Test Companion".
+	 * with "No @browserstack mention, so nothing was asked of Test Companion".
 	 *
 	 * The proposal was instructing an action that could not work. says "a
 	 * reply of 'go'", and the PRD's own user story has the SDET replying "go"
@@ -471,7 +471,7 @@ describe("a bare approval reaches us", () => {
 
 		const addressed = planRun({
 			eventName: "issue_comment",
-			payload: comment("@test-companion go, but drop case two"),
+			payload: comment("@browserstack go, but drop case two"),
 			repo: "acme/shop",
 		})
 		assert.equal(addressed.skip, undefined)
@@ -492,7 +492,7 @@ describe("a bare approval reaches us", () => {
 	})
 
 	test("an addressed comment is unchanged and is not an approval-only one", () => {
-		const out = planRun({ eventName: "issue_comment", payload: comment("@test-companion test this PR"), repo: "acme/shop" })
+		const out = planRun({ eventName: "issue_comment", payload: comment("@browserstack test this PR"), repo: "acme/shop" })
 		assert.equal(out.skip, undefined)
 		assert.ok(!out.approvalOnly)
 	})
@@ -603,16 +603,16 @@ describe("the flag guard sees the FINAL value, not the raw one", () => {
 	const run = (body) => planRun({ eventName: "issue_comment", repo: "acme/shop", payload: comment(body) })
 
 	test("a bare flag is refused — the case that already worked", () => {
-		assert.equal(run("@test-companion --config /tmp/evil.yml").skip?.reason, "unsafe-context")
+		assert.equal(run("@browserstack --config /tmp/evil.yml").skip?.reason, "unsafe-context")
 	})
 
 	test("a flag smuggled past the guard by a separator is refused too", () => {
-		const out = run('@test-companion ",--config /tmp/evil.yml"')
+		const out = run('@browserstack ",--config /tmp/evil.yml"')
 		assert.equal(out.skip?.reason, "unsafe-context", `leaked: ${JSON.stringify(out.context?.instructions)}`)
 	})
 
 	test("an ordinary request still gets through untouched", () => {
-		const out = run("@test-companion test this PR")
+		const out = run("@browserstack test this PR")
 		assert.equal(out.skip, undefined)
 		assert.equal(out.context.instructions, "test this PR")
 	})
@@ -625,7 +625,7 @@ describe("the flag guard sees the FINAL value, not the raw one", () => {
  * "but rename X" carried in as approver edits that win.
  *
  * Unaddressed, the comment must now BE the approval and nothing else.
- * Addressed, "@test-companion go and also cover X" still works: that is
+ * Addressed, "@browserstack go and also cover X" still works: that is
  *  "you can edit the list first", and they did address us.
  */
 describe("an unaddressed comment counts as approval only when it is exactly that", () => {
@@ -653,7 +653,7 @@ describe("an unaddressed comment counts as approval only when it is exactly that
 	})
 
 	test("addressed, edits alongside the approval are still allowed", () => {
-		const plan = comment("@test-companion go, and also cover the empty-cart case")
+		const plan = comment("@browserstack go, and also cover the empty-cart case")
 		assert.equal(plan.skip, undefined)
 		assert.match(plan.context.instructions, /also cover the empty-cart case/)
 	})
@@ -672,7 +672,7 @@ describe("the asking comment is carried through", () => {
 		const r = plan("issue_comment", {
 			action: "created",
 			issue: { number: 412, pull_request: { url: "x" } },
-			comment: { body: "@test-companion explain this failure", user: { login: "dev" }, html_url: at },
+			comment: { body: "@browserstack explain this failure", user: { login: "dev" }, html_url: at },
 		})
 		assert.equal(r.askedAt, at)
 		assert.equal(r.commenter, "dev")
@@ -682,7 +682,7 @@ describe("the asking comment is carried through", () => {
 		const r = plan("issue_comment", {
 			action: "created",
 			issue: { number: 412, pull_request: { url: "x" } },
-			comment: { body: "@test-companion explain this failure", user: { login: "dev" } },
+			comment: { body: "@browserstack explain this failure", user: { login: "dev" } },
 		})
 		assert.equal(r.skip, undefined)
 		assert.equal(r.askedAt, undefined)
@@ -692,5 +692,69 @@ describe("the asking comment is carried through", () => {
 	test("a run nobody asked for has no asking comment", () => {
 		const r = plan("pull_request", { action: "opened", pull_request: pr() })
 		assert.equal(r.askedAt, undefined)
+	})
+})
+
+/**
+ * People address the Action as @browserstack, the name the GitHub App posts
+ * under, so the name they type matches the name that replies.
+ *
+ * "browserstack" also appears in text that is NOT addressed to us: email
+ * addresses (someone@browserstack.com), GitHub team mentions
+ * (@browserstack/qa), npm package scopes (@browserstack/wdio-service) and the
+ * App's own bot account (@browserstack[bot]). A plain "does the comment
+ * contain @browserstack" check would start a run for every one of those, so
+ * only the word on its own counts.
+ */
+describe("the @browserstack mention", () => {
+	const comment = (body) => ({
+		action: "created",
+		issue: { number: 7, pull_request: {} },
+		comment: { body, user: { login: "dev" } },
+	})
+	const run = (body) => planRun({ eventName: "issue_comment", payload: comment(body), repo: "acme/shop" })
+
+	test("addresses us wherever it stands, in any case", () => {
+		for (const body of [
+			"@browserstack test this PR",
+			"@BrowserStack test this PR",
+			"hey @browserstack, test this PR",
+			"LGTM.\n@browserstack test this PR",
+			"test this PR please @browserstack",
+			"thanks @browserstack.",
+			"(@browserstack) test this PR",
+			"**@browserstack** test this PR",
+		]) {
+			const out = run(body)
+			assert.equal(out.skip, undefined, `"${body}" is addressed to us`)
+			assert.equal(out.event, TC_EVENTS.PR_COMMENT)
+		}
+	})
+
+	test("text that merely contains the name is not addressed to us", () => {
+		for (const body of [
+			"ping naimish@browserstack.com about this",
+			"sent to QA@BrowserStack.com",
+			"@browserstack/qa please review",
+			"bump @browserstack/wdio-browserstack-service to 9.1",
+			"@browserstack-team have a look",
+			"@browserstack_ci is flaky again",
+			"@browserstacker said so",
+			"@browserstack[bot] posted twice",
+		]) {
+			assert.equal(run(body).skip?.reason, "not-addressed-to-us", `"${body}" must not start a run`)
+		}
+	})
+
+	test("the old @test-companion mention no longer addresses us", () => {
+		assert.equal(run("@test-companion test this PR").skip?.reason, "not-addressed-to-us")
+	})
+
+	test("the mention is stripped from the instructions, and nothing else is", () => {
+		const out = run("@browserstack test this PR, cc qa@browserstack.com and @browserstack/qa")
+		assert.doesNotMatch(out.context.instructions, /(^|\s)@browserstack(\s|$)/i, "the mention itself is not an instruction")
+		assert.match(out.context.instructions, /qa@browserstack\.com/, "an email address is left intact")
+		assert.match(out.context.instructions, /@browserstack\/qa/, "a team mention is left intact")
+		assert.match(out.context.instructions, /test this PR/)
 	})
 })

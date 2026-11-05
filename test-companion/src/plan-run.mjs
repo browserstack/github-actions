@@ -27,8 +27,25 @@ export const TC_EVENTS = Object.freeze({
 	SCHEDULE: "schedule",
 })
 
-/** How a run is addressed in a comment. */
-const MENTION = "@test-companion"
+/**
+ * How a run is addressed in a comment: @browserstack, the name the GitHub App
+ * posts under, so the name people type matches the name that replies.
+ *
+ * Only the word on its own counts. "browserstack" also turns up in text that
+ * is not addressed to us, and each of these must NOT start a run:
+ *
+ * - an email address, someone@browserstack.com (a word character before @);
+ * - a team mention or npm scope, @browserstack/qa (a slash after);
+ * - a longer name, @browserstack-team or @browserstack_ci (a word character
+ *   or hyphen after);
+ * - the App's own bot account, @browserstack[bot];
+ * - a domain, @browserstack.com (a dot followed by more of the name). A dot
+ *   that ends a sentence, "thanks @browserstack.", still counts.
+ *
+ * Case-insensitive, because people type BrowserStack.
+ */
+const MENTION = /(^|[^\w.+@-])@browserstack(?![\w\-/[]|\.\w)/i
+const MENTIONS = new RegExp(MENTION.source, "gi")
 
 /**
  * The CLI rejects a context value that begins with `-` (CWE-88), and a pull
@@ -72,7 +89,7 @@ const ALLOWED_CONTEXT_KEYS = new Set([
 
 /**
  * `--context` is a comma-separated `k=v` list, so a value containing `,` or
- * `=` can append keys of its own — "@test-companion go,sha=deadbeef" would
+ * `=` can append keys of its own — "@browserstack go,sha=deadbeef" would
  * redirect the run at another commit. Comments and titles are
  * attacker-controlled on a public repo, so the separators are removed rather
  * than escaped: readable prose matters more than its punctuation.
@@ -205,7 +222,7 @@ function fromComment(payload, inputs) {
 	if (!payload.issue?.pull_request) return skip("not-a-pull-request")
 
 	const body = payload.comment?.body ?? ""
-	const addressed = body.toLowerCase().includes(MENTION)
+	const addressed = MENTION.test(body)
 
 	// A bare approval needs no mention: the proposal says "Reply go to run
 	// this for real", and people do exactly that.
@@ -225,7 +242,8 @@ function fromComment(payload, inputs) {
 
 	// Everything after the mention is what the person actually asked for. The
 	// mention itself is addressing, not instruction, so it is stripped.
-	const instructions = body.replace(new RegExp(MENTION, "ig"), "").replace(/\s+/g, " ").trim()
+	// The character before the mention is part of the match, so put it back.
+	const instructions = body.replace(MENTIONS, "$1").replace(/\s+/g, " ").trim()
 
 	return {
 		event: TC_EVENTS.PR_COMMENT,
@@ -300,7 +318,7 @@ function fromPullRequest(payload, repo) {
 		// commit-scoped prompt — "the change in PR #N, commit SHA … covering only
 		// what that change touches" — ONLY when no subject is given. Sending the
 		// title made `generate` write cases for the title rather than the diff,
-		// which is the opposite of.
+		// when a run should only ever work on the change that triggered it.
 		context: { sha: p.head?.sha, branch: p.head?.ref, pr: String(p.number) },
 	}
 }

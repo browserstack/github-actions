@@ -42,7 +42,7 @@ workflows:
       time: 20m
       credits: 300
 
-  # Ask for anything by commenting "@test-companion ..." on a pull request.
+  # Ask for anything by commenting "@browserstack ..." on a pull request.
   #
   # Live AND gated, which is the safe pairing rather than a contradiction: a
   # gated request first runs in preview to produce its proposal, and only a run

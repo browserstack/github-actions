@@ -395,7 +395,7 @@ function readEventUncached() {
 function finishSkipped(reason, detail) {
 	const human = {
 		"not-a-pull-request": "That comment was on an issue, not a pull request.",
-		"not-addressed-to-us": "No @test-companion mention, so nothing was asked of Test Companion.",
+		"not-addressed-to-us": "No @browserstack mention, so nothing was asked of Test Companion.",
 		"proposal-superseded": "The plan being approved was for an earlier commit, so it was not run.",
 		"proposal-already-run": "That plan was already approved and run on this commit.",
 		"proposal-dropped": "That plan was stopped, so there was nothing left to approve.",
@@ -672,7 +672,7 @@ async function main() {
 		//
 		// Unless a plan we put up has been left behind by a newer commit. Then
 		// they were talking to us, they used a word we accept, and telling them
-		// "no @test-companion mention" is both wrong and unhelpful — the reason
+		// "no @browserstack mention" is both wrong and unhelpful — the reason
 		// is sitting in the comment history.
 		if (plan.approvalOnly && !waiting) {
 			// Already approved, or already stopped. Checked BEFORE the

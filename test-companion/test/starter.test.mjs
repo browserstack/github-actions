@@ -268,7 +268,7 @@ describe("a comment that is not for us does not start a job", () => {
 	test("the job is filtered before any runner starts", () => {
 		assert.match(job, /if: >-/)
 		assert.match(job, /github\.event_name != 'issue_comment'/)
-		assert.match(job, /contains\(github\.event\.comment\.body, '@test-companion'\)/)
+		assert.match(job, /contains\(github\.event\.comment\.body, '@browserstack'\)/)
 	})
 
 	test("a bare approval still gets through — proposals ask for exactly that", () => {
@@ -278,6 +278,10 @@ describe("a comment that is not for us does not start a job", () => {
 
 	test("every other event is untouched, so pushes and schedules still run", () => {
 		// The filter opens with the non-comment case for exactly this reason.
-		assert.ok(job.indexOf("!= 'issue_comment'") < job.indexOf("@test-companion"))
+		// Compare against the condition itself, not the first "@browserstack":
+		// the comment above the filter mentions the name too.
+		const mentionCheck = job.indexOf("contains(github.event.comment.body, '@browserstack')")
+		assert.ok(mentionCheck > 0, "the mention check is in the filter")
+		assert.ok(job.indexOf("!= 'issue_comment'") < mentionCheck)
 	})
 })

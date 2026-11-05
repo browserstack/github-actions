@@ -2,7 +2,7 @@
 
 Ask BrowserStack Test Companion for test work from a pull request.
 
-Comment `@test-companion test this PR` and it reads the change, proposes the
+Comment `@browserstack test this PR` and it reads the change, proposes the
 tests it would write, and writes them once someone replies `go`. The result
 comes back as one comment and one check.
 

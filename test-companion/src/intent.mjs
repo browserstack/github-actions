@@ -1,7 +1,7 @@
 /**
  * What did the comment ask for?
  *
- * "@test-companion fix the failing tests" becomes a job name here, in the
+ * "@browserstack fix the failing tests" becomes a job name here, in the
  * Action, before the CLI is spawned. Handing the sentence to the agent
  * instead would spend the customer's credits discovering that "make coffee"
  * was never a job.
@@ -24,7 +24,7 @@ export const INTENT = Object.freeze({
 	GO: "go",
 	/** Open the pull request that adds a starter pipeline file. */
 	SETUP: "setup",
-	/** We could not place it.: reply with the list, run nothing. */
+	/** We could not place it: reply with the list, run nothing. */
 	UNKNOWN: "unknown",
 })
 

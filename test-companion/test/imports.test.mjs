@@ -82,7 +82,7 @@ describe("every src module is reachable", () => {
 })
 
 /**
- * Found by a live run, run 41048725625. Asking "@test-companion explain why
+ * Found by a live run, run 41048725625. Asking "@browserstack explain why
  * the contract check is failing" worked: the Action found the red build and
  * passed it to the CLI. Replying "go" to the proposal it put up did NOT
  * the CLI was spawned with no build at all and died with
