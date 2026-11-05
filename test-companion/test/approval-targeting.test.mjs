@@ -263,17 +263,17 @@ describe("naming a plan is not editing it", () => {
 
 describe("a plan reference has to sit next to the approval", () => {
 	/**
-	 * . GO_TARGET matched a `#id` anywhere in the comment, so
+	 * GO_TARGET matched a `#id` anywhere in the comment, so
 	 * "@browserstack go — and pull the steps from <url>#issuecomment-…"
 	 * became an approval of a plan that does not exist, and was refused.
+	 *
+	 * readIntent receives the comment with the mention already removed by
+	 * plan-run.mjs, so that is what is passed here.
 	 */
 	test("a link quoted later in the sentence is not a plan reference", () => {
-		const got = readIntent(
-			"@browserstack go — and pull the steps from https://github.com/o/r/pull/9#issuecomment-2345678901",
-			{
-				proposalWaiting: true,
-			},
-		)
+		const got = readIntent("go — and pull the steps from https://github.com/o/r/pull/9#issuecomment-2345678901", {
+			proposalWaiting: true,
+		})
 		assert.equal(got.kind, INTENT.GO)
 		assert.equal(got.proposalId, undefined)
 	})
@@ -284,5 +284,31 @@ describe("a plan reference has to sit next to the approval", () => {
 			readIntent("approved https://github.com/o/r/pull/1#issuecomment-6600030205", { proposalWaiting: true }).proposalId,
 			"6600030205",
 		)
+	})
+})
+
+/**
+ * The approval word is only recognised at the START of the instruction, so
+ * this pins the hand-off it depends on: plan-run.mjs removes the mention, and
+ * what reaches readIntent opens with the word the person actually led with.
+ */
+describe("a real approval comment, end to end through plan-run", () => {
+	const comment = (body) => ({
+		action: "created",
+		issue: { number: 7, pull_request: {} },
+		comment: { body, user: { login: "an-sdet" } },
+	})
+	const intentOf = (body) => {
+		const plan = planRun({ eventName: "issue_comment", payload: comment(body), repo: "acme/shop" })
+		return readIntent(plan.context.instructions, { workflows: ["test-pr", "fix"], proposalWaiting: true })
+	}
+
+	test("an addressed approval with edits still approves", () => {
+		assert.equal(intentOf("@browserstack go, and drop case two").kind, INTENT.GO)
+		assert.equal(intentOf("@BrowserStack approved, but rename the login case").kind, INTENT.GO)
+	})
+
+	test("an addressed comment that only mentions the word does not", () => {
+		assert.notEqual(intentOf("@browserstack don't go ahead yet, explain this failure").kind, INTENT.GO)
 	})
 })

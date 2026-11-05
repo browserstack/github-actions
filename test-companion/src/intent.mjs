@@ -80,12 +80,14 @@ const RECHECK = /\bre-?\s?check\b/i
 /**
  * Approve a waiting proposal.
  *
- * Tested AFTER the job words, deliberately. "go" is two letters and turns up
- * inside ordinary instructions, so a sentence that names a job is read as
- * asking for that job; only a reply naming none is an approval. `\bgo\b` does
- * not match "going", which is the case that would otherwise bite.
+ * ANCHORED, like STOP and SETUP: only a comment that OPENS with the word (after
+ * any politeness) approves. Matched anywhere, a comment that merely mentions it
+ * approved a waiting plan and started a live run that writes to the branch:
+ * "don't go ahead yet, explain this failure" and "no, do not approve that"
+ * both did. Opening with it still allows edits after it: "go, and fix case 3's
+ * title". `\b` keeps "going" and "gopher" out.
  */
-const GO = /\b(go|approved?)\b/i
+const GO = /^(?:go|approved?)\b/i
 
 /**
  * An approval and nothing else.
@@ -212,7 +214,7 @@ export function readIntent(instructions, { workflows = [], proposalWaiting = fal
 	// match anywhere, so testing them first would read "go, and fix case 3's
 	// title" as a fresh request for `fix` and drop the approval. Still after
 	// STOP: approving and cancelling in one breath has to cancel.
-	if (proposalWaiting && GO.test(text)) return { kind: INTENT.GO, proposalId: namedProposal(text) }
+	if (proposalWaiting && GO.test(asked)) return { kind: INTENT.GO, proposalId: namedProposal(text) }
 
 	for (const [pattern, candidates] of PHRASES) {
 		if (pattern.test(text)) {
@@ -225,7 +227,7 @@ export function readIntent(instructions, { workflows = [], proposalWaiting = fal
 	if (named) return { kind: INTENT.WORKFLOW, workflow: named, preview }
 
 	// a reply of "go", with or without edits to the case list.
-	if (GO.test(text)) return { kind: INTENT.GO, proposalId: namedProposal(text) }
+	if (GO.test(asked)) return { kind: INTENT.GO, proposalId: namedProposal(text) }
 
 	// No job named, but a clear ask: run whatever the pipeline file binds to this
 	// event — the same thing an event-driven run does — and carry the preview

@@ -215,7 +215,7 @@ describe("stop and set up are what the comment ASKS FOR, not words it contains",
 	 * the ones where the word is incidental. A leading politeness is allowed,
 	 * because "please stop" is plainly a stop.
 	 */
-	const jobs = ["test-pr", "fix", "rca"]
+	const jobs = { workflows: ["test-pr", "fix", "rca"] }
 
 	test('"stop" still stops, with or without politeness', () => {
 		for (const body of ["stop", "please stop", "can you stop", "stop, don't fix anything"]) {
@@ -300,5 +300,51 @@ describe("a reply to a waiting proposal is read as an approval first", () => {
 
 	test("a comment that names no job and no approval is still unknown", () => {
 		assert.equal(readIntent("looks good to me", bound).kind, INTENT.UNKNOWN)
+	})
+})
+
+/**
+ * The approval word counts only when the comment OPENS with it, like stop and
+ * set up. Matched anywhere, a comment that merely mentions it approved a
+ * waiting plan, and that starts a LIVE run that writes to the branch:
+ *
+ *  "don't go ahead yet, explain this failure" -> approved
+ *  "no, do not approve that, test this PR instead" -> approved
+ *
+ * and with nothing waiting, "let's go over the login flow" was told there was
+ * no plan to approve instead of being offered what it can ask for.
+ */
+describe("go approves only when the comment opens with it", () => {
+	const waiting = { workflows: ["test-pr", "fix", "rca"], proposalWaiting: true }
+	const idle = { workflows: ["test-pr", "fix", "rca"], proposalWaiting: false }
+
+	test("a comment that only mentions the word does not approve a waiting plan", () => {
+		for (const body of [
+			"don't go ahead yet, explain this failure",
+			"no, do not approve that, test this PR instead",
+			"wait before you go",
+		]) {
+			assert.notEqual(readIntent(body, waiting).kind, INTENT.GO, body)
+		}
+	})
+
+	test("with nothing waiting, a passing mention is not read as an approval either", () => {
+		assert.notEqual(readIntent("let's go over the login flow", idle).kind, INTENT.GO)
+	})
+
+	test("a comment that opens with the word still approves, edits and all", () => {
+		for (const body of [
+			"go",
+			"Go!",
+			"please go",
+			"approved",
+			"approve",
+			"go, and fix case 3's title",
+			"approved, but rename the login case",
+			"go #1234567",
+			"go — and pull the steps from https://github.com/o/r/pull/9#issuecomment-2345678901",
+		]) {
+			assert.equal(readIntent(body, waiting).kind, INTENT.GO, body)
+		}
 	})
 })
