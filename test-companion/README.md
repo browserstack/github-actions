@@ -8,38 +8,22 @@ comes back as one comment and one check.
 
 ## Quick start
 
-Two secrets — `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY` — and the
-workflow below at `.github/workflows/test-companion.yml`. Copy it as-is; what
-runs is decided by `testcompanion-pipeline.yml` in your repository, not here.
+1. Add two secrets: `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY`.
+2. Copy [`starter-workflow.yml`](starter-workflow.yml) to
+   `.github/workflows/test-companion.yml` in your repository, as-is.
 
-```yaml
-name: Test Companion
+What runs is decided by `testcompanion-pipeline.yml` in your repository, not by
+the workflow file.
 
-on:
- issue_comment:
- types: [created]
- pull_request:
- types: [opened, reopened, synchronize, closed]
+Use the starter file itself rather than writing your own. Besides the triggers,
+it carries safeguards that are easy to leave out:
 
-jobs:
- test-companion:
- runs-on: ubuntu-latest
- timeout-minutes: 35
- permissions:
- contents: write # branches and commits
- pull-requests: write # the comment
- checks: write # the "Test Companion" check
- actions: write # stopping a run on request
- steps:
- - uses: actions/checkout@v4
- with:
- fetch-depth: 0 # jobs that look at what changed need history
-
- - uses: browserstack/github-actions/test-companion@v1
- with:
- username: ${{ secrets.BROWSERSTACK_USERNAME }}
- access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
-```
+- a filter that skips comments not meant for Test Companion, so they don't start
+  a job;
+- `persist-credentials: false` on checkout, so the workflow token is not left in
+  `.git/config` where commands the agent runs could read it;
+- the concurrency rules that keep one run per pull request, and let closing a
+  pull request cancel its run.
 
 ## Pin the CLI version
 
@@ -55,8 +39,12 @@ unverified pinned install" — and the job stops before it reports anything. Tak
 both from the release you tested with.
 
 ```yaml
- cli-version: "1.2.0"
- cli-sha256: "<sha256 of that release for linux-amd64>"
+      - uses: browserstack/github-actions/test-companion@v1
+        with:
+          username: ${{ secrets.BROWSERSTACK_USERNAME }}
+          access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+          cli-version: "1.2.0"
+          cli-sha256: "<sha256 of that release for linux-amd64>"
 ```
 
 ## Inputs
@@ -67,10 +55,22 @@ both from the release you tested with.
 | `access-key` | yes | BrowserStack access key, from your secret store |
 | `cli-version` | no | Pin the CLI. Strongly recommended — see above |
 | `cli-sha256` | no | Checksum for the pinned version |
-| `build-effect` | no | `off`, `report` or `fail` — whether a test failure fails your build |
+| `build-effect` | no | Whether this step goes red. `fail-on-break` (the default) only when the run itself broke, could not start or hit a limit, not when tests failed. `report` never. `fail` on anything that is not a success, test failures included. The Test Companion check always reports truthfully either way |
 | `workflow` | no | Manual runs only; event-driven runs read the pipeline file |
 | `preview` | no | Report what would happen and change nothing |
 | `app-id` / `app-private-key` | no | Use the Test Companion GitHub App's identity |
+
+## Approving a plan
+
+Before a job changes anything, Test Companion posts its plan and waits for
+someone with write access to reply `go`. Read the plan before you reply.
+
+Without the GitHub App, Test Companion posts as `github-actions[bot]`, the same
+account every other workflow in your repository uses. It can only recognise its
+own plans by that account and a hidden marker. So a different workflow that
+copies outside text into a comment could imitate a plan. A reply of `go` only
+ever approves a plan for the pull request's current commit. With the App, Test
+Companion posts under its own account, which no other workflow can use.
 
 ## What runs is not decided here
 
