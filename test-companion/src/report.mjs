@@ -175,12 +175,13 @@ export function renderJobSummary({
 	}
 
 	if (previewRun(summary)) {
-		// . Without this a clean-looking report reads as "the work landed".
+		// Say that a preview wrote nothing. Without this a clean-looking report
+		// reads as "the work landed".
 		// Not "nothing was written": preview refuses Test Companion's own write
 		// TOOLS, and deliberately allows `execute_command` because that is how
 		// tests run (preview-tool-policy.ts). A shell command the agent chose can
 		// still edit a file or push, so claiming nothing was written overstates
-		// the guarantee (review finding, ).
+		// the guarantee.
 		lines.push(
 			"> **Preview** — Test Companion refused every one of its own write tools, so it created, changed and saved nothing itself. Shell commands the agent ran are not covered by that.",
 		)
@@ -202,8 +203,7 @@ export function renderJobSummary({
 		["Asked by", askedBy ? (askedAt ? `[@${askedBy}](${askedAt})` : `@${askedBy}`) : ""],
 		// WHICH plan this run carried out. With two plans waiting on one commit,
 		// "approved" on its own does not say which was approved — and after
-		// item 5 two CAN wait, because approving one no longer finishes off the
-		// other.
+		// two CAN wait, because approving one no longer finishes off the other.
 		["Plan", approvedPlan?.url ? `[#${approvedPlan.id}](${approvedPlan.url})` : ""],
 	].filter(([, v]) => v)
 
@@ -437,8 +437,14 @@ export function proposalMarkerFor(sha, requester, workflow) {
 const MARKER = /<!-- test-companion-proposal sha=([^\s>]+)(?: by=([^\s>]+))?(?: workflow=([^\s>]+))? -->/
 
 /** The marker's fields, or undefined when the comment has none. */
+//
+// The LAST marker, because ours is always the last line of the comment. The
+// plan above it is escaped (renderProposalBody), but if anything ever slips
+// through unescaped, the first match would be the planted one, and a planted
+// marker can name a different job for `go` to run.
 const readMarker = (body) => {
-	const found = MARKER.exec(String(body ?? ""))
+	const all = [...String(body ?? "").matchAll(new RegExp(MARKER.source, "g"))]
+	const found = all.at(-1)
 	return found ? { sha: found[1], requester: found[2], workflow: found[3] } : undefined
 }
 
@@ -454,6 +460,19 @@ const readMarker = (body) => {
 export function checkSubjectFor(made, fallbackSha) {
 	for (const sha of made?.keys?.() ?? []) return sha
 	return fallbackSha
+}
+
+/**
+ * Whether the job a proposal names may be run by a `go`.
+ *
+ * Only a job this repository has enabled. The name came out of a comment, and
+ * it goes onto the CLI's command line, so anything else is refused: a job the
+ * settings never bound, or something shaped like an option (`--config=…`).
+ * Exact match against the settings' own list does both.
+ */
+export function isApprovableJob(workflow, enabledWorkflows) {
+	const job = String(workflow ?? "")
+	return job !== "" && !job.startsWith("-") && (enabledWorkflows ?? []).includes(job)
 }
 
 /** The proposal comment: what the run would do, and how to let it. */
@@ -502,7 +521,7 @@ export function findProposal(comments, sha, now = Date.now(), us, opts = {}) {
 	// `by=` and `workflow=` are both optional, so proposals written before
 	// either was recorded stay approvable rather than becoming stuck.
 	const want = String(sha ?? "").trim()
-	// Spent, either way round: approved and run (M5), or dropped by `stop` or
+	// Spent, either way round: approved and run, or dropped by `stop` or
 	// by the sweep. Checked before anything else, so neither a second `go` nor
 	// the sweep can act on a plan that is already finished with.
 	//
@@ -653,7 +672,7 @@ export function proposalNeedsDropping(comments, sha, now = Date.now(), us) {
 	// an expired plan coming back from it is by definition one nobody has
 	// finished with. The separate dropped-marker check this used to do was the
 	// same question asked twice, and the second asking was commit-wide — which
-	// is exactly what item 5 had to stop.
+	// is exactly what per-job plans had to stop.
 	return Boolean(findProposal(comments, sha, now, us)?.expired)
 }
 
@@ -748,23 +767,27 @@ export function accessibilityFailsCheck(summary = {}, { wcag, failOnNew } = {}) 
  */
 export function renderProposalBody({ summary, plan, sizeNote } = {}) {
 	const parts = []
-	//  warning goes above the list, where it can still change what the
+	// The size warning goes above the list, where it can still change what the
 	// reviewer approves.
 	if (String(sizeNote ?? "").trim()) parts.push(sizeNote, "")
-	if (String(summary ?? "").trim()) parts.push(summary, "")
+	// Escaped, both of them. The plan is written by the agent, so it can carry
+	// a hidden `<!-- test-companion-proposal … -->` that the person approving
+	// never sees, naming a different job for their `go` to run.
+	const safeSummary = inertMarkers(String(summary ?? ""))
+	if (safeSummary.trim()) parts.push(safeSummary, "")
 
-	const body = String(plan ?? "").trim()
+	const body = inertMarkers(String(plan ?? "").trim())
 	// The answer is now caught off the run's own output and rendered in the
 	// summary above, for every job. For the verbs whose result file holds that
 	// SAME closing text — `test-pr` proposing is one — appending it here
-	// printed the whole explanation twice (live run 41457337090). Compared on
+	// printed the whole explanation twice. Compared on
 	// squashed whitespace, because the two copies travel by different routes
 	// and need not agree on line breaks.
 	const squash = (t) =>
 		String(t ?? "")
 			.replace(/\s+/g, " ")
 			.trim()
-	const alreadyAbove = body !== "" && squash(summary).includes(squash(body))
+	const alreadyAbove = body !== "" && squash(safeSummary).includes(squash(body))
 	// Only `test-pr` writes a separate plan file. For every other job the
 	// proposal run is a PREVIEW run — it does the work and writes nothing
 	// so its report above IS what is being approved. Saying "there is nothing
@@ -779,7 +802,7 @@ export function renderProposalBody({ summary, plan, sizeNote } = {}) {
 /**
  * A proposal on this pull request that a newer commit has left behind.
  *
- *  keys a proposal to a commit, so a new commit silently replaces it.
+ * The marker keys a proposal to a commit, so a new commit silently replaces it.
  * That is the right safety behaviour: a plan written against code that has
  * since changed must never be carried out. But silence is the wrong way to
  * say it.
@@ -809,8 +832,8 @@ export function findSupersededProposal(comments, sha, us) {
 }
 
 /**
- * Create the "Test Companion" check, or update the one this run already made
- * , "one check, never neutral".
+ * Create the "Test Companion" check, or update the one this run already made:
+ * one check, never neutral.
  *
  * Every call used to POST. A single run posts up to three times — in progress
  * before the work, the result after it, and the catch-all on a crash — so a

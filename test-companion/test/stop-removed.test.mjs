@@ -56,7 +56,16 @@ describe("the starter workflow keeps the control lane for closed pull requests",
 	 * does now is reply. The lane is cheap; the eviction is not.
 	 */
 	test("a stop comment keeps its own lane, so it cannot evict a queued run", () => {
-		assert.match(group, /'stop'/)
+		assert.match(group, /startsWith\(github\.event\.comment\.body, '@browserstack stop'\)/)
+	})
+
+	/**
+	 * It used to be `contains(body, 'stop')`, so "@browserstack test the stop
+	 * button" took the lane too and ran beside the run already going on that
+	 * pull request, which breaks one run per pull request.
+	 */
+	test("only a comment that starts with the stop request takes the lane", () => {
+		assert.doesNotMatch(group, /contains\(github\.event\.comment\.body, 'stop'\)/)
 	})
 
 	/**

@@ -456,8 +456,8 @@ describe("a bare approval reaches us", () => {
 	})
 
 	/**
-	 * CHANGED by M3. This used to be carried through, so
-	 *  "edit the list while approving" worked with no mention. But
+	 * CHANGED. This used to be carried through, so
+	 * "edit the list while approving" worked with no mention. But
 	 * "Approved, but rename the login case" is an ordinary review comment on
 	 * any pull request, and unaddressed it started a live write run with the
 	 * trailing text as approver edits that win.

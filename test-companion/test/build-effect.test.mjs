@@ -50,7 +50,7 @@ describe("the default reddens a broken run and nothing else", () => {
 	 * that reddening builds is the one direction a misconfiguration must not
 	 * fail in. That reasoning made sense while report WAS the default. Now that
 	 * it is not, a typo buying you a quieter setting than everybody else gets
-	 * is the silent pass item 6 is about — and a misspelling leaves you exactly
+	 * is exactly the silent pass to avoid — and a misspelling leaves you exactly
 	 * where a fresh install would be, which is defensible.
 	 */
 	test("a misspelling lands on the default, not on the quietest setting", () => {
@@ -108,7 +108,7 @@ describe("the input documents what it does", () => {
 
 describe("an unrecognised value explains the reddening it causes", () => {
 	/**
-	 *  (kritansh20, ). Reversing the fail-closed rule
+	 * Reversing the fail-closed rule
 	 * means `build-effect: none` / `warn` / `false` starts reddening builds.
 	 * That is the right default, but it should say why.
 	 */

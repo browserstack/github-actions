@@ -82,7 +82,7 @@ describe("every src module is reachable", () => {
 })
 
 /**
- * Found by a live run, run 41048725625. Asking "@browserstack explain why
+ * Found by a live run. Asking "@browserstack explain why
  * the contract check is failing" worked: the Action found the red build and
  * passed it to the CLI. Replying "go" to the proposal it put up did NOT
  * the CLI was spawned with no build at all and died with
@@ -123,7 +123,7 @@ describe("main.mjs — the failing build is resolved after the workflow is final
  * spawned afterwards inherits it — and the agent runs with --yolo, so "what
  * gets spawned afterwards" includes programs it chose.
  *
- * The git half of B3 is closed in push-work.mjs (minimal env, hooks and
+ * The git half of keeping credentials from the agent is closed in push-work.mjs (minimal env, hooks and
  * fsmonitor off, config allow-listed, binary pinned). This is the other half:
  * once the key has been used, it should not still be readable.
  */
