@@ -10,7 +10,7 @@
  * Zero dependencies — Node's standard library plus `gh`, which is preinstalled
  * on every GitHub runner and is already how this product talks to GitHub.
  */
-import { readFileSync, appendFileSync, writeFileSync, existsSync, rmSync, readdirSync, accessSync, constants } from "node:fs"
+import { readFileSync, appendFileSync, writeFileSync, existsSync, rmSync, readdirSync, accessSync, mkdtempSync, constants } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -66,6 +66,8 @@ import {
 	agentCommitted,
 	CONFIG_READ_ARGS,
 	trustedGitPath,
+	trustedGhPath,
+	ghEnvFrom,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
 } from "./push-work.mjs"
@@ -95,13 +97,48 @@ const addToJobSummary = (md) => env.GITHUB_STEP_SUMMARY && appendFileSync(env.GI
 const notice = (m) => console.log(`::notice::${m}`)
 const warn = (m) => console.log(`::warning::${m}`)
 
+/**
+ * The gh we run, found once, at load, BEFORE the agent runs. Looked up by
+ * name instead, a `gh` the agent planted on PATH would be handed our token.
+ * See trustedGhPath.
+ */
+const GH_BIN = trustedGhPath({
+	exists: (p) => existsSync(p),
+	canWrite: (p) => {
+		try {
+			accessSync(p, constants.W_OK)
+			return true
+		} catch {
+			return false
+		}
+	},
+})
+
+/**
+ * Every gh call in the Action goes through here, never through a bare
+ * `spawnSync("gh", ...)`. A test checks that.
+ *
+ * Each call gets its own empty settings folder, made just before and removed
+ * just after (see ghEnvFrom for why). The token is passed per call, so the
+ * App's signed key never sits in any environment.
+ */
+function runGh(args, { token, input } = {}) {
+	if (!GH_BIN) return { status: 1, stdout: "", stderr: "no trusted gh binary" }
+	const configDir = mkdtempSync(join(env.RUNNER_TEMP || tmpdir(), "tc-gh-call-"))
+	try {
+		return spawnSync(GH_BIN, args, {
+			encoding: "utf8",
+			input,
+			env: ghEnvFrom(env, { token, configDir }),
+		})
+	} finally {
+		rmSync(configDir, { recursive: true, force: true })
+	}
+}
+
 /** The raw `gh` call, so a caller that cares WHY it failed can look. */
 function ghRaw(args, body) {
-	return spawnSync("gh", args, {
-		encoding: "utf8",
-		input: body ? JSON.stringify(body) : undefined,
-		env: { ...env, GH_TOKEN: env.GH_TOKEN },
-	})
+	return runGh(args, { token: env.GH_TOKEN, input: body ? JSON.stringify(body) : undefined })
 }
 
 /** `gh api`, returning parsed JSON or null. Never throws — reporting must not break a run. */
@@ -203,7 +240,7 @@ function appInstallationToken() {
 	// The JWT authenticates the APP; only the installation token can touch a
 	// repository. Passed per-call rather than exported, so it never lands in
 	// the environment at all.
-	const asApp = (args) => spawnSync("gh", args, { encoding: "utf8", env: { ...env, GH_TOKEN: jwt } })
+	const asApp = (args) => runGh(args, { token: jwt })
 
 	const found = asApp(["api", `repos/${REPO}/installation`])
 	if (found.status !== 0) {
@@ -233,10 +270,9 @@ function appInstallationToken() {
 	}
 
 	const mint = (body) =>
-		spawnSync("gh", ["api", `app/installations/${installationId}/access_tokens`, "--method", "POST", "--input", "-"], {
-			encoding: "utf8",
+		runGh(["api", `app/installations/${installationId}/access_tokens`, "--method", "POST", "--input", "-"], {
+			token: jwt,
 			input: JSON.stringify(body),
-			env: { ...env, GH_TOKEN: jwt },
 		})
 
 	// An installation granted fewer permissions than we ask for refuses the
@@ -282,13 +318,9 @@ function appInstallationToken() {
  * `--raw` because this is YAML, not the JSON envelope gh parses.
  */
 function fetchSettings(path, ref) {
-	const r = spawnSync(
-		"gh",
+	const r = runGh(
 		["api", `repos/${REPO}/contents/${path}?ref=${encodeURIComponent(ref)}`, "-H", "Accept: application/vnd.github.raw"],
-		{
-			encoding: "utf8",
-			env: { ...env, GH_TOKEN: env.GH_TOKEN },
-		},
+		{ token: env.GH_TOKEN },
 	)
 	if (r.status !== 0) {
 		const first = (r.stderr ?? "").trim().split("\n")[0]
@@ -465,6 +497,17 @@ function finishWithStarter(path) {
 }
 
 async function main() {
+	// Without a gh we trust, nothing can be reported, so a run would finish
+	// green and silent. Say so, and stop before anything is spent.
+	if (!GH_BIN) {
+		console.log(
+			"::error::Test Companion could not find GitHub's gh command in a system folder this job cannot write to " +
+				"(/usr/bin, /usr/local/bin, /opt/homebrew/bin or /bin). It will not run a gh found elsewhere, because " +
+				"that copy could have been replaced. Install gh system-wide on this runner.",
+		)
+		process.exit(1)
+	}
+
 	// Release 4: act as the App when it is installed, so the comment and the
 	// tick carry Test Companion's name. Before anything else talks to GitHub.
 	const appToken = appInstallationToken()

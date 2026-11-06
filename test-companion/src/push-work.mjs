@@ -362,6 +362,51 @@ export function trustedGitPath({ candidates = ["/usr/bin/git", "/bin/git"], exis
 }
 
 /**
+ * Where the real gh is. The same rule as git, for the same reason, and the
+ * stakes are higher: every gh call we make carries a GitHub token, and the
+ * App's calls carry a token signed with the App's private key.
+ *
+ * The obvious hijack is `$HOME/.local/bin`. The install step puts it on PATH
+ * so the CLI can be found, it comes before the system folders, and the agent
+ * can write to it. A `gh` planted there would be the one a bare name finds.
+ *
+ * The candidates are where gh is normally installed: apt on Linux, the
+ * official package and Homebrew on macOS. Same known limit as git (sudo), and
+ * the same refusal to fall back to the bare name.
+ */
+export function trustedGhPath({
+	candidates = ["/usr/bin/gh", "/usr/local/bin/gh", "/opt/homebrew/bin/gh", "/bin/gh"],
+	exists,
+	canWrite,
+} = {}) {
+	return trustedGitPath({ candidates, exists, canWrite })
+}
+
+/**
+ * The environment for one of OUR gh calls: the caller's, with the token we
+ * chose and a settings folder nobody else has touched.
+ *
+ * The settings folder matters as much as the binary. The job-wide one is
+ * shared with the agent on purpose (the CLI's own gh needs it), so the agent
+ * can write a config.yml there. gh obeys that file, and one of its settings,
+ * `http_unix_socket`, sends every API request, token included, to whatever
+ * is listening on a local socket. A fresh empty folder per call means gh
+ * runs on its defaults.
+ *
+ * The update check is off because it is network noise that writes a state
+ * file, and prompts are off because nobody is there to answer them.
+ */
+export function ghEnvFrom(source, { token, configDir }) {
+	return {
+		...source,
+		GH_TOKEN: token,
+		GH_CONFIG_DIR: configDir,
+		GH_NO_UPDATE_NOTIFIER: "1",
+		GH_PROMPT_DISABLED: "1",
+	}
+}
+
+/**
  * The git config an ordinary `actions/checkout` leaves behind. Anything else
  * means the repository's config was changed after the checkout.
  *
