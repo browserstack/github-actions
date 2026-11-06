@@ -1567,9 +1567,14 @@ function openHandedOffPr(path, plan) {
 			? `**Already done:** \`${req.branch}\` already exists, so this job's pull request was opened by an earlier run.`
 			: `**Could not open the pull request:** ${pushed.err || "git push failed"}.`
 	}
+	// The base is the repository's real default branch, asked of GitHub. The
+	// CLI's guess comes from the clone's record of the remote's HEAD, which
+	// actions/checkout never writes, so on a runner it is always "main",
+	// wrong for a repository on master or develop. The CLI's value is only
+	// the fallback when GitHub does not answer.
 	const opened = ghRaw(["api", `repos/${REPO}/pulls`, "--method", "POST", "--input", "-"], {
 		head: req.branch,
-		base: req.base,
+		base: defaultBranchName() || req.base,
 		title: req.title,
 		body: req.body,
 	})
