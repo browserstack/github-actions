@@ -1,7 +1,7 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -17,6 +17,8 @@ import {
 	agentCommitted,
 	CONFIG_READ_ARGS,
 	trustedGitPath,
+	trustedGhPath,
+	ghEnvFrom,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
 	pushUrlFor,
@@ -682,6 +684,62 @@ describe("git itself must be the real git", () => {
 	test("PATH is pinned, not inherited — a planted directory cannot come along", () => {
 		const got = gitEnvFrom({ PATH: "/home/runner/.local/bin:/usr/bin" })
 		assert.equal(got.PATH, "/usr/bin:/bin")
+	})
+})
+
+/**
+ * Every gh call we make carries a token, the App's included. The agent can
+ * write to `$HOME/.local/bin`, which is on PATH ahead of the system folders,
+ * and to the job's shared gh settings folder.
+ */
+describe("gh itself must be the real gh, with settings nobody planted", () => {
+	const notWritable = () => false
+
+	test("a system gh is used, never a bare name", () => {
+		const exists = (p) => p === "/usr/bin/gh"
+		assert.equal(trustedGhPath({ exists, canWrite: notWritable }), "/usr/bin/gh")
+	})
+
+	test("the agent's own bin folder is never a candidate", () => {
+		// Even if a gh there looked read-only, it is not where we look.
+		const exists = (p) => p.endsWith("/.local/bin/gh")
+		assert.equal(trustedGhPath({ exists, canWrite: notWritable }), undefined)
+	})
+
+	test("a gh we can write is skipped for the next one", () => {
+		const exists = (p) => ["/usr/local/bin/gh", "/opt/homebrew/bin/gh"].includes(p)
+		const canWrite = (p) => p === "/usr/local/bin/gh"
+		assert.equal(trustedGhPath({ exists, canWrite }), "/opt/homebrew/bin/gh")
+	})
+
+	test("nothing trustworthy means nothing, not a fallback to PATH", () => {
+		assert.equal(trustedGhPath({ exists: () => false, canWrite: notWritable }), undefined)
+		assert.equal(trustedGhPath({ exists: () => true, canWrite: () => true }), undefined)
+	})
+
+	test("our settings folder replaces the shared one the agent can write", () => {
+		const got = ghEnvFrom(
+			{ GH_CONFIG_DIR: "/runner/_temp/tc-gh-config", GH_TOKEN: "workflow-token", PATH: "/usr/bin" },
+			{ token: "app-token", configDir: "/runner/_temp/tc-gh-call-abc" },
+		)
+		assert.equal(got.GH_CONFIG_DIR, "/runner/_temp/tc-gh-call-abc")
+		assert.equal(got.GH_TOKEN, "app-token")
+		assert.equal(got.GH_NO_UPDATE_NOTIFIER, "1")
+		assert.equal(got.GH_PROMPT_DISABLED, "1")
+	})
+
+	test("no source file starts gh by its bare name", () => {
+		// Every call must go through runGh in main.mjs, which uses the path
+		// found above and a fresh settings folder.
+		const src = new URL("../src/", import.meta.url).pathname
+		for (const f of readdirSync(src).filter((n) => n.endsWith(".mjs"))) {
+			const code = readFileSync(join(src, f), "utf8")
+				.split("\n")
+				.filter((l) => !/^\s*(\*|\/\/)/.test(l))
+				.join("\n")
+			assert.doesNotMatch(code, /spawn(Sync)?\(\s*["']gh["']/, `${f} runs gh by name`)
+			assert.doesNotMatch(code, /exec(File)?(Sync)?\(\s*["']gh["']/, `${f} runs gh by name`)
+		}
 	})
 })
 
