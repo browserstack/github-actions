@@ -16,9 +16,15 @@ What runs is decided by `testcompanion-pipeline.yml` in your repository, not by
 the workflow file.
 
 **Runner requirements:** a Linux runner (GitHub's `ubuntu-latest` works as is)
-with Node 20 or later and the `gh` command installed system-wide, in `/usr/bin`
-or `/usr/local/bin`. Test Companion will not run a `gh` from anywhere the job
-itself could have written to.
+with Node 20 or later, the `gh` command installed system-wide (in `/usr/bin` or
+`/usr/local/bin`), and password-free `sudo` for the job.
+
+`sudo` is what keeps your tokens away from the AI agent. Test Companion runs
+the agent as a separate user with no admin rights, which cannot read this
+job's tokens, secrets or temp files. Its `gh` can only read from GitHub,
+through a relay; every write (saving tests, opening a pull request) is made by
+the Action itself after the run. On a runner without password-free `sudo` the
+run stops and says why, unless you set `allow-unisolated: true`.
 
 Use the starter file itself rather than writing your own. Besides the triggers,
 it carries safeguards that are easy to leave out:
@@ -63,6 +69,7 @@ both from the release you tested with.
 | `build-effect` | no | Whether this step goes red. `fail-on-break` (the default) only when the run itself broke, could not start or hit a limit, not when tests failed. `report` never. `fail` on anything that is not a success, test failures included. The Test Companion check always reports truthfully either way |
 | `workflow` | no | Manual runs only; event-driven runs read the pipeline file |
 | `preview` | no | Report what would happen and change nothing |
+| `allow-unisolated` | no | `"true"` runs the agent as the job's own user when it cannot be locked down. It can then reach this job's tokens and secrets. Off by default |
 | `app-id` / `app-private-key` | no | Use the GitHub App's identity. Keep the workflow's `permissions:` block anyway: the workflow token is still the fallback |
 
 ## Approving a plan

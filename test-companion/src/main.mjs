@@ -21,6 +21,9 @@ import { decideGate, GATE, describeChangeSize, ANSWER_JOBS } from "./gate.mjs"
 import { mayAsk, describeTestRepoAccess } from "./access.mjs"
 import { findTicket } from "./ticket.mjs"
 import { childEnvFor } from "./child-env.mjs"
+import { canIsolate, prepareSandbox, stopSandbox, handToAgent, writeAgentEnv, readAgentFile } from "./sandbox.mjs"
+import { agentEnvFrom, asAgentCommand, checkPrHandoff, readClaimResult } from "./sandbox-policy.mjs"
+import { startRelay } from "./relay.mjs"
 import { runCapturingAnswer } from "./answer.mjs"
 import { appCredentials, signJwt, installationTokenRequest } from "./app-auth.mjs"
 import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent } from "./outcome.mjs"
@@ -186,6 +189,21 @@ let headBeforeRun = ""
 
 /** Set when this run is carrying out an approved proposal, so the plan is marked spent. */
 let consumedMarker = ""
+
+/** What happened to a pull request the CLI handed back to open, for the comment. */
+let handoffNote
+
+/**
+ * The CLI this job installed. Ours to run: it lives in the runner's home,
+ * which the locked-down agent cannot reach. The agent gets its own copy.
+ */
+const TC_PATH = join(env.HOME ?? "", ".local", "bin", "tc")
+
+/**
+ * Whether to run the agent unisolated when it cannot be locked down. Off by
+ * default: unisolated, the agent can reach every token and secret in the job.
+ */
+const ALLOW_UNISOLATED = /^true$/i.test(String(env.TC_ACTION_ALLOW_UNISOLATED ?? "").trim())
 
 /**
  * The proposal this run is carrying out, so the report can link it.
@@ -466,6 +484,7 @@ function finishSkipped(reason, detail) {
 		"nothing-to-approve": "Nothing is waiting for approval on this commit.",
 		"proposal-not-found": "That reply named a plan that is not waiting on this commit.",
 		"proposal-job-not-enabled": "That plan named a job this repository has not enabled, so it was not run.",
+		"already-done": "This job already ran for this commit, so it was not run again.",
 		"proposal-expired": "That proposal was more than a day old and has been dropped.",
 		proposed: "Proposed, and waiting for someone to reply go.",
 		"setup-requested": "Opened a pull request adding the settings file.",
@@ -901,23 +920,6 @@ async function main() {
 		finishWithStarter(configPath)
 	}
 
-	// A manual run names its job and carries no event, which is how the CLI is
-	// told to ignore the bindings. An event-driven run does NOT name one:
-	// which job an event runs is the pipeline file's decision, so the Action
-	// passes only --event. Guessing a name here was the first live run's
-	// failure — `no binding for "pr_opened" (workflow "test")`, because the
-	// repository had bound `generate`.
-	const args = ["workflow", "run"]
-	if (plan.workflow) args.push(plan.workflow)
-	if (plan.event) args.push("--event", plan.event)
-	// One flag per pair. A single joined value is parsed by pflag with
-	// encoding/csv, where one double quote anywhere — `Fix "Pay now" button`
-	// fails the whole flag and the run reports "Could not run".
-	args.push(...contextArgs(plan.context))
-	if (plan.preview) args.push("--preview")
-	// The fetched copy, not whatever the checkout holds.
-	args.push("--config", settingsFile)
-	args.push("--json", "--yolo", "--summary-file", SUMMARY_FILE, "--result-file", RESULT_FILE)
 
 	// Put the tree on the commit under review, when nothing else already has.
 	//
@@ -965,6 +967,50 @@ async function main() {
 		notice(`Nothing will be saved to ${plan.context.branch}: ${saving.why}.`)
 	}
 
+	// Lock the agent down before it starts: a separate user, no admin rights,
+	// no way into this Action's process or the runner's files. See
+	// sandbox-policy.mjs for what that closes. Set up AFTER the checkout, so
+	// the tree it is given is the one under review.
+	const sandbox = isolateAgent(plan)
+
+	// A manual run names its job and carries no event, which is how the CLI is
+	// told to ignore the bindings. An event-driven run does NOT name one:
+	// which job an event runs is the pipeline file's decision, so the Action
+	// passes only --event. Guessing a name here was the first live run's
+	// failure — `no binding for "pr_opened" (workflow "test")`, because the
+	// repository had bound `generate`.
+	const args = ["workflow", "run"]
+	if (plan.workflow) args.push(plan.workflow)
+	if (plan.event) args.push("--event", plan.event)
+	// One flag per pair. A single joined value is parsed by pflag with
+	// encoding/csv, where one double quote anywhere — `Fix "Pay now" button`
+	// fails the whole flag and the run reports "Could not run".
+	// The run's files. When the agent is locked down, the ones it reads are
+	// copies in its `in` folder and the ones it writes land in its `out`
+	// folder; ours are in the runner's home, which it cannot reach.
+	const runFiles = sandbox
+		? {
+				config: handToAgent(sandbox, settingsFile, "testcompanion-pipeline.yml"),
+				summary: `${sandbox.out}/report.md`,
+				result: `${sandbox.out}/result.md`,
+				handoff: `${sandbox.out}/pr-handoff.json`,
+			}
+		: { config: settingsFile, summary: SUMMARY_FILE, result: RESULT_FILE }
+	if (sandbox && plan.context.plan_file) plan.context.plan_file = handToAgent(sandbox, plan.context.plan_file, "approved-plan.md")
+	args.push(...contextArgs(plan.context))
+	if (plan.preview) args.push("--preview")
+	// The fetched copy, not whatever the checkout holds.
+	args.push("--config", runFiles.config)
+	args.push("--json", "--yolo", "--summary-file", runFiles.summary, "--result-file", runFiles.result)
+
+	// The "already running" marker. The locked-down agent has nothing to
+	// write to GitHub with, so the Action plants the marker itself, before
+	// the run, and tells the CLI it is held. A marker already there means
+	// this job already ran for this commit.
+	const claim = sandbox ? holdClaim(plan, settingsFile) : { held: false }
+	if (claim.collision) finishSkipped("already-done", claim.workflow)
+	if (claim.passFlag) args.push("--claim-held")
+
 	// The handle anything cancelling this run needs — a pull request closed
 	// without merging is the one left. Posted BEFORE the run, because
 	// a check written at the end cannot help cancel the run that is writing
@@ -1001,8 +1047,24 @@ async function main() {
 	// environment is readable by them. Stripped rather than trusted, because the
 	// product only scrubs these on BrowserStack-hosted runs, not a customer's
 	// own machine.
-	const run = await runCapturingAnswer("tc", args, childEnvFor(env))
+	const run = sandbox ? await runLockedDown(sandbox, args, runFiles) : await runCapturingAnswer("tc", args, childEnvFor(env))
 	const exitCode = run.status ?? 1
+
+	if (sandbox) {
+		// Stop anything the agent left running before reading its files or
+		// saving its work, then bring its files over to where the rest of this
+		// Action (and the upload steps) expect them.
+		stopSandbox(sandbox)
+		for (const [from, to] of [
+			[runFiles.summary, SUMMARY_FILE],
+			[runFiles.result, RESULT_FILE],
+		]) {
+			const text = readAgentFile(from)
+			if (text !== undefined) writeFileSync(to, text)
+		}
+		if (claim.held && exitCode !== 0) releaseClaim(claim)
+		if (!plan.preview) handoffNote = openHandedOffPr(runFiles.handoff, plan)
+	}
 
 	// The report is absent whenever the process was killed, so treat it as a
 	// real case rather than assuming it is there.
@@ -1058,7 +1120,9 @@ async function main() {
 	// nothing carried it off the machine — the CLI opens a pull request only
 	// for `automate` and `fix`, so an approved `test-pr` run wrote eight
 	// passing tests and lost all eight.
-	const workNote = saveWork(saving, plan)
+	// automate and fix hand back a pull request to open rather than work to
+	// save on this branch; when they did, that is what the comment reports.
+	const workNote = handoffNote ?? saveWork(saving, plan)
 
 	const view = {
 		workflow: plan.workflow ?? summary.workflow,
@@ -1289,6 +1353,238 @@ function saveWork(saving, plan) {
 		return renderPushNote({ branch, files: push, skipped: skip, error: hint })
 	}
 	return renderPushNote({ branch, sha: git(["rev-parse", "HEAD"]).out, files: push, skipped: skip })
+}
+
+/**
+ * Set up the locked-down user, or decide what to do when we cannot.
+ *
+ * Returns the sandbox layout, or undefined when the run goes ahead
+ * unisolated because the workflow asked for that. Otherwise stops the run:
+ * running an AI agent that can reach the job's tokens is not a default.
+ */
+function isolateAgent(plan) {
+	const can = canIsolate()
+	let why = can.why
+	if (can.ok) {
+		try {
+			const layout = prepareSandbox({ repoDir: process.cwd(), tcPath: TC_PATH })
+			notice("Test Companion: the agent runs as a separate, locked-down user with no access to this job's tokens.")
+			return layout
+		} catch (e) {
+			why = e?.message ?? String(e)
+		}
+	}
+	if (ALLOW_UNISOLATED) {
+		warn(
+			`Test Companion could not lock the agent down (${why}). allow-unisolated is set, so it runs as this job's own user and can reach this job's tokens and secrets.`,
+		)
+		return undefined
+	}
+	const message =
+		`Test Companion did not run: it could not run the agent as a separate, locked-down user (${why}). ` +
+		"Without that, the agent could reach this job's tokens and secrets. GitHub's own Linux runners support it. " +
+		"On your own runner, give the job password-free sudo, or set `allow-unisolated: true` to accept the risk."
+	console.log(`::error::${message}`)
+	if (plan?.context?.pr) replyOnPr(plan.context.pr, message)
+	setOutput("outcome", OUTCOMES.COULD_NOT_RUN)
+	setOutput("should-fail", "true")
+	process.exit(1)
+}
+
+/**
+ * What the installed CLI can do, asked once. An older CLI still claims and
+ * opens pull requests itself, which a locked-down agent cannot.
+ */
+let cliAbilities
+function cliSupports() {
+	if (cliAbilities) return cliAbilities
+	const ask = (args) => spawnSync(TC_PATH, args, { encoding: "utf8", env: childEnvFor(env), timeout: 60_000 })
+	const run = ask(["workflow", "run", "--help"])
+	const claim = ask(["workflow", "claim", "--help"])
+	const runHelp = `${run.stdout ?? ""}${run.stderr ?? ""}`
+	cliAbilities = {
+		claimHeld: /--claim-held/.test(runHelp),
+		prHandoff: /--pr-handoff/.test(runHelp),
+		// An unknown subcommand prints the parent's help and exits 0, so look
+		// for a flag only the claim command has.
+		claimCommand: /--release/.test(`${claim.stdout ?? ""}${claim.stderr ?? ""}`),
+	}
+	return cliAbilities
+}
+
+/**
+ * Plant the "already running" marker for this job and commit, as this
+ * Action, before the agent starts.
+ *
+ * Returns { collision, workflow } when the job already ran for this commit;
+ * otherwise { held, passFlag }: whether we hold a marker to release on
+ * failure, and whether to tell the CLI the marker is taken care of.
+ */
+function holdClaim(plan, settingsFile) {
+	const can = cliSupports()
+	if (!can.claimHeld || !can.claimCommand) {
+		warn(
+			"This version of the Test Companion CLI cannot hand its GitHub writes to the Action, so a live generate, automate or fix run may not be able to save its work. Update the CLI.",
+		)
+		return { held: false, passFlag: false }
+	}
+	// Preview writes nothing, the marker included. No commit, no marker.
+	if (plan.preview || !plan.context.sha) return { held: false, passFlag: true }
+	const args = [
+		"workflow",
+		"claim",
+		...(plan.workflow ? [plan.workflow] : []),
+		...(plan.event ? ["--event", plan.event] : []),
+		...contextArgs(plan.context),
+		"--config",
+		settingsFile,
+		"--sha",
+		plan.context.sha,
+	]
+	const r = spawnSync(TC_PATH, args, { encoding: "utf8", env: childEnvFor(env), timeout: 120_000 })
+	const got = readClaimResult(r.stdout, r.status)
+	if (got.result === "collision") return { collision: true, workflow: got.workflow }
+	if (got.result === "claimed") return { held: true, passFlag: true, args }
+	if (got.result === "error") {
+		const first = String(r.stderr ?? "")
+			.trim()
+			.split("\n")[0]
+		warn(
+			`Could not plant the "already running" marker${first ? ` (${first})` : ""}. Carrying on without it, so a second run on this commit is not stopped from repeating the work.`,
+		)
+	}
+	return { held: false, passFlag: true }
+}
+
+/** Give the marker back after a run that did not succeed, so a retry can run. */
+function releaseClaim(claim) {
+	const r = spawnSync(TC_PATH, [...claim.args, "--release"], { encoding: "utf8", env: childEnvFor(env), timeout: 60_000 })
+	if (r.status !== 0) {
+		warn('Could not remove this run\'s "already running" marker, so a retry on this commit may be told the job already ran.')
+	}
+}
+
+/**
+ * The node binary the agent's launcher runs with. Ours, unless it lives in
+ * the runner's home (the runner's own bundled node), which the agent cannot
+ * reach: then a copy goes in the agent's `in` folder.
+ */
+function nodeForAgent(sandbox) {
+	const home = String(env.HOME ?? "")
+	if (!home || !process.execPath.startsWith(`${home}/`)) return process.execPath
+	return handToAgent(sandbox, process.execPath, "node")
+}
+
+/**
+ * Run the CLI as the locked-down user, with the read-only GitHub relay up
+ * for the length of the run. Same result shape as runCapturingAnswer.
+ */
+async function runLockedDown(sandbox, args, runFiles) {
+	const extra = {}
+	if (cliSupports().prHandoff) extra.TC_WORKFLOW_PR_HANDOFF = runFiles.handoff
+	const agentEnv = agentEnvFrom(childEnvFor(env), sandbox, extra)
+	const node = nodeForAgent(sandbox)
+	const relay = await startRelay({
+		socketPath: sandbox.socket,
+		token: env.GH_TOKEN,
+		log: (line) => notice(`Test Companion's GitHub relay ${line}`),
+	}).catch((e) => {
+		warn(`The read-only GitHub relay did not start (${e?.message ?? e}), so the agent cannot read from GitHub in this run.`)
+		return undefined
+	})
+	try {
+		// Signed in to BrowserStack as the agent's own user, the same way the
+		// Sign in step did it for ours. Best effort: the CLI also reads the
+		// credentials from its environment.
+		const login = asAgentCommand({
+			node,
+			launcher: sandbox.launcher,
+			envFile: writeAgentEnv(sandbox, agentEnv, "login-env.json"),
+			cwd: sandbox.work,
+			command: `${sandbox.bin}/tc`,
+			args: ["auth", "login"],
+		})
+		spawnSync(login.command, login.args, { stdio: "inherit", timeout: 120_000, env: { PATH: "/usr/bin:/bin" } })
+
+		const cmd = asAgentCommand({
+			node,
+			launcher: sandbox.launcher,
+			envFile: writeAgentEnv(sandbox, agentEnv),
+			cwd: sandbox.work,
+			command: `${sandbox.bin}/tc`,
+			args,
+		})
+		return await runCapturingAnswer(cmd.command, cmd.args, { PATH: "/usr/bin:/bin" })
+	} finally {
+		await relay?.close()
+	}
+}
+
+/**
+ * Open the pull request automate or fix handed back, as this Action.
+ *
+ * The branch and its commits were made by the agent, so they get the same
+ * refusals as saving work: an untouched git config, and no `.github/` files
+ * or symlinks. Then the branch is pushed to a URL we build ourselves and the
+ * pull request is opened. Returns the line for the comment, or undefined
+ * when nothing was handed back.
+ */
+function openHandedOffPr(path, plan) {
+	const text = readAgentFile(path, 256 * 1024)
+	if (text === undefined) return undefined
+	const req = checkPrHandoff(text, { sha: plan.context.sha })
+	if (req.error) return `**Did not open a pull request:** ${req.error}.`
+	if (!GIT_BIN) return "**Could not open the pull request:** no trusted `git` was found on this runner."
+	const unexpected = unexpectedConfigKeys(git(CONFIG_READ_ARGS).raw)
+	if (unexpected.length) {
+		return `**Did not open a pull request:** the repository's git config carries ${unexpected.map((k) => `\`${k}\``).join(", ")}, which \`actions/checkout\` does not write.`
+	}
+	const tip = git(["rev-parse", "--verify", "--quiet", `refs/heads/${req.branch}^{commit}`])
+	if (!tip.ok || !tip.out) return `**Did not open a pull request:** the run did not leave a \`${req.branch}\` branch.`
+	const from = git(["merge-base", headBeforeRun || "HEAD", tip.out])
+	if (!from.ok) return `**Did not open a pull request:** \`${req.branch}\` does not share history with this commit.`
+	// --raw shows each file's new mode, so a symlink (120000) is caught from
+	// the commit itself rather than from whatever is on disk now.
+	const diff = git(["-c", "core.quotePath=false", "diff", "--raw", "--no-renames", "-z", from.out, tip.out])
+	if (!diff.ok) return `**Could not open the pull request:** ${diff.err || "could not list its changes"}.`
+	const fields = diff.raw.split("\0").filter(Boolean)
+	const links = new Set()
+	const paths = []
+	for (let i = 0; i + 1 < fields.length; i += 2) {
+		const meta = fields[i].split(" ")
+		paths.push(fields[i + 1])
+		if (meta[1] === "120000") links.add(fields[i + 1])
+	}
+	const { skip } = splitPushable(paths, { isSymlink: (p) => links.has(p) })
+	if (skip.length) {
+		return `**Did not open a pull request:** the branch changes files Test Companion never pushes: ${skip.map((f) => `\`${f}\``).join(", ")}.`
+	}
+	const target = pushUrlFor(REPO, env.GITHUB_SERVER_URL)
+	if (!target) return `**Could not open the pull request:** bad repository name "${REPO}".`
+	const pushed = git(["push", target, `${tip.out}:refs/heads/${req.branch}`], pushCredentialEnv(env.GH_TOKEN, target))
+	if (!pushed.ok) {
+		return /rejected|non-fast-forward|already exists/i.test(pushed.err)
+			? `**Already done:** \`${req.branch}\` already exists, so this job's pull request was opened by an earlier run.`
+			: `**Could not open the pull request:** ${pushed.err || "git push failed"}.`
+	}
+	const opened = ghRaw(["api", `repos/${REPO}/pulls`, "--method", "POST", "--input", "-"], {
+		head: req.branch,
+		base: req.base,
+		title: req.title,
+		body: req.body,
+	})
+	if (opened.status !== 0) {
+		return /already exists/i.test(`${opened.stdout}${opened.stderr}`)
+			? `**Already done:** a pull request for \`${req.branch}\` is already open.`
+			: `**Pushed \`${req.branch}\` but could not open the pull request:** ${String(opened.stderr ?? "").trim().split("\n")[0]}.`
+	}
+	let url = ""
+	try {
+		url = JSON.parse(opened.stdout)?.html_url ?? ""
+	} catch {
+		// Opened; the link is a nicety.
+	}
+	return `**Opened a pull request** with this run's changes${url ? `: ${url}` : ` from \`${req.branch}\``}.`
 }
 
 /** one check, never neutral.: each failing test on its own line. */
