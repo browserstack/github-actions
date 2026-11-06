@@ -1,0 +1,156 @@
+# Test Companion — copy this to .github/workflows/test-companion.yml
+#
+# Two secrets and you are done: BROWSERSTACK_USERNAME and BROWSERSTACK_ACCESS_KEY,
+# under Settings → Secrets and variables → Actions.
+#
+# WHAT RUNS is not decided here. It comes from testcompanion-pipeline.yml in your
+# repository, which you can edit freely without touching this file. That split is
+# deliberate: this file is awkward to change once it is in many repositories, so
+# keep it as it is and tune the pipeline file instead.
+#
+# Every trigger is listed from the start, including ones for jobs you have not
+# bound yet. A trigger that matches nothing costs one no-op job; adding a trigger
+# later costs a pull request in every repository.
+name: Test Companion
+
+on:
+    # Ask for something by commenting "@browserstack" on a pull request.
+    issue_comment:
+        types: [created]
+    # A pull request opening or receiving commits.
+    pull_request:
+        types: [opened, reopened, synchronize, closed]
+    push:
+        branches: [main]
+    # React to one of your own workflows finishing red. Replace "CI" with its name.
+    workflow_run:
+        workflows: ["CI"]
+        types: [completed]
+    schedule:
+        - cron: "0 2 * * *"
+    # Run any job by hand from the Actions tab.
+    workflow_dispatch:
+        inputs:
+            workflow:
+                description: "Which job to run (see `tc workflow list`)"
+                required: true
+                default: generate
+            preview:
+                description: "Report what would happen and change nothing"
+                type: boolean
+                default: true
+
+concurrency:
+    # One run per pull request, or per triggering event where there is no pull
+    # request.
+    #
+    # `github.event.pull_request.number` is empty for issue_comment, push,
+    # schedule and workflow_run, so keying on it alone collapsed ALL of those
+    # onto one group named after the default branch: a comment on PR A, a
+    # comment on PR B, the nightly schedule and a red-build run all queued
+    # together. GitHub keeps one pending run per group, so a reviewer's
+    # @browserstack request could be cancelled by an unrelated push.
+    #
+    # issue_comment carries the PR number as `issue.number`; everything else
+    # falls back to the run id, which is unique, so those events never share a
+    # group with each other.
+    # A CLOSED PULL REQUEST GETS ITS OWN GROUP. It exists to act on a run that
+    # is already going. Sharing the work group with that run, and queueing
+    # rather than cancelling, meant it waited behind the very run it was sent
+    # to end and only started once that had finished by itself.
+    #
+    # A comment that STARTS with "@browserstack stop" goes there too. Stop is
+    # no longer a command, and the reply to it says so, but in the work group
+    # it could bump a queued `go` out of the queue. Only the start of the
+    # comment counts: "@browserstack test the stop button" is a real request,
+    # and it waits its turn like any other.
+    group: >-
+        test-companion-${{ github.event.pull_request.number
+        || github.event.issue.number
+        || github.run_id }}${{
+        (github.event.action == 'closed'
+        || startsWith(github.event.comment.body, '@browserstack stop'))
+        && '-control' || '' }}
+    # Queue rather than cancel: a run already in flight has spent credits, and
+    # the newer one waits its turn instead of superseding it. Control events
+    # are in their own group, so this no longer delays them.
+    cancel-in-progress: false
+
+jobs:
+    test-companion:
+        runs-on: ubuntu-latest
+        timeout-minutes: 35
+        # Don't boot a runner for a conversation we are not part of.
+        #
+        # Without this, EVERY comment on every pull request started a job that
+        # cloned the repository, installed the CLI and signed in to
+        # BrowserStack, only to decide "not addressed to us" and stop. On a
+        # busy repository that is most of the runs.
+        #
+        # This is a quick, loose first filter, not the real decision. These
+        # expressions can only test whether the text CONTAINS something, so a
+        # comment holding an email address such as someone@browserstack.com
+        # still gets through. The Action then reads the comment properly, sees
+        # it was not addressed to it, and stops without posting anything on
+        # the pull request. The cost is one short job in the Actions tab. Do
+        # not try to tighten this line: anything stricter than "contains" here
+        # would also drop real requests.
+        #
+        # The last two lines are the bare approval: a proposal says "reply
+        # go", and people reply without a mention. String comparison in these
+        # expressions is case-insensitive, so `Go` is covered.
+        if: >-
+            github.event_name != 'issue_comment'
+            || contains(github.event.comment.body, '@browserstack')
+            || startsWith(github.event.comment.body, 'go')
+            || startsWith(github.event.comment.body, 'approve')
+        # Keep this block, App or not. Without it the workflow token falls back
+        # to your repository's default, which can be write access to
+        # everything, and Test Companion still uses that token when the App
+        # cannot be reached.
+        permissions:
+            contents: write # branches and commits for fix / reconcile jobs
+            pull-requests: write # the one comment, and opening a pull request
+            checks: write # the "Test Companion" check
+            actions: write # reading the red run, and cancelling one when a PR closes
+        steps:
+            # v4.4.0. Pinned to a commit because a tag can be repointed by
+            # whoever owns it, and this step runs in YOUR job with YOUR token.
+            # Safe to bump whenever you like — it is your workflow now.
+            - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+              with:
+                  fetch-depth: 0 # jobs that look at what changed need history
+                  # The workflow token would otherwise be left in .git/config,
+                  # where any shell command the agent chooses to run can read
+                  # it — and it carries `contents: write`. Test Companion does
+                  # not need it there: it authenticates its own push.
+                  persist-credentials: false
+
+            # A fixed release. Version tags in this repository cover every
+            # action in it, so there is no floating tag for Test Companion
+            # alone. Move to a newer release when you choose, or let
+            # Dependabot propose it. For the strongest pin, replace the tag
+            # with the release's full commit SHA.
+            # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+            - uses: browserstack/github-actions/test-companion@v1.1.0
+              with:
+                  username: ${{ secrets.BROWSERSTACK_USERNAME }}
+                  access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+                  # PIN THE CLI once you know which version you want. Without
+                  # a pin the CLI upgrades itself the first time it runs on a
+                  # release day: your pipeline spends time on a download, and
+                  # two runs a day apart are not the same software.
+                  #
+                  # Both lines or neither. A version with no checksum is
+                  # REFUSED — "refusing an unverified pinned install" — and the
+                  # job stops before it reports anything. Take both from the
+                  # release you tested with.
+                  # cli-version: "1.2.0"
+                  # cli-sha256: "<sha256 of that release for linux-amd64>"
+                  # With the App installed, uncomment these and delete the
+                  # permissions block above.
+                  # app-id: ${{ secrets.TEST_COMPANION_APP_ID }}
+                  # app-private-key: ${{ secrets.TEST_COMPANION_APP_PRIVATE_KEY }}
+                  # Manual runs only; event-driven runs read the pipeline file.
+                  workflow: ${{ inputs.workflow }}
+                  preview: ${{ inputs.preview }}

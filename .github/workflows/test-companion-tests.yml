@@ -1,0 +1,61 @@
+# Runs the Test Companion Action's own unit tests.
+#
+# The Action runs on customers' machines with their credentials, so its tests
+# have to run on every change to it.
+#
+# The `paths` filter is safe only while this check is NOT required. A required
+# check with a paths filter never reports on a pull request that misses the
+# filter, and then blocks that pull request from merging for ever. If this is
+# ever made required, remove the filter.
+name: Test Companion tests
+
+on:
+    pull_request:
+        branches: [master]
+        paths:
+            - "test-companion/**"
+            - ".github/workflows/test-companion-tests.yml"
+    push:
+        branches: [master]
+        paths:
+            - "test-companion/**"
+
+permissions:
+    contents: read
+
+# One run per pull request or branch. A newer push makes the older run's
+# result irrelevant, so it is cancelled rather than left to finish.
+concurrency:
+    group: test-companion-tests-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    unit-tests:
+        name: Test Companion unit tests
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  # The tests need no git credentials, so none are left on disk.
+                  persist-credentials: false
+
+            # The Action has no dependencies: Node's standard library plus `gh`.
+            # There is nothing to install.
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+              with:
+                  node-version: "22"
+
+            # The exit code alone is not enough. When a test file throws while it
+            # loads (a missing import, say), `node --test` prints "fail 0" and
+            # exits 0, even though none of that file's tests ran. The only sign
+            # is a `not ok` line, so fail on that as well.
+            - name: Run the unit tests
+              working-directory: test-companion
+              run: |
+                  set -o pipefail
+                  node --test --test-reporter=tap test/*.test.mjs | tee test-output.tap
+                  if grep -nE '^\s*not ok' test-output.tap; then
+                      echo "::error::A test failed or a test file did not load. See the 'not ok' lines above."
+                      exit 1
+                  fi
