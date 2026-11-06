@@ -1,4 +1,4 @@
-# Test Companion — copy this to.github/workflows/test-companion.yml
+# Test Companion — copy this to .github/workflows/test-companion.yml
 #
 # Two secrets and you are done: BROWSERSTACK_USERNAME and BROWSERSTACK_ACCESS_KEY,
 # under Settings → Secrets and variables → Actions.
@@ -14,7 +14,7 @@
 name: Test Companion
 
 on:
-    # Ask for something by commenting "@browserstack." on a pull request.
+    # Ask for something by commenting "@browserstack" on a pull request.
     issue_comment:
         types: [created]
     # A pull request opening or receiving commits.
@@ -58,12 +58,18 @@ concurrency:
     # is already going. Sharing the work group with that run, and queueing
     # rather than cancelling, meant it waited behind the very run it was sent
     # to end and only started once that had finished by itself.
+    #
+    # A comment that STARTS with "@browserstack stop" goes there too. Stop is
+    # no longer a command, and the reply to it says so, but in the work group
+    # it could bump a queued `go` out of the queue. Only the start of the
+    # comment counts: "@browserstack test the stop button" is a real request,
+    # and it waits its turn like any other.
     group: >-
         test-companion-${{ github.event.pull_request.number
         || github.event.issue.number
         || github.run_id }}${{
         (github.event.action == 'closed'
-        || contains(github.event.comment.body, 'stop'))
+        || startsWith(github.event.comment.body, '@browserstack stop'))
         && '-control' || '' }}
     # Queue rather than cancel: a run already in flight has spent credits, and
     # the newer one waits its turn instead of superseding it. Control events
@@ -98,9 +104,10 @@ jobs:
             || contains(github.event.comment.body, '@browserstack')
             || startsWith(github.event.comment.body, 'go')
             || startsWith(github.event.comment.body, 'approve')
-        # With the Test Companion GitHub App installed, this whole block can be
-        # deleted: the App's installation token carries these permissions
-        # itself. Pass app-id and app-private-key below instead.
+        # Keep this block, App or not. Without it the workflow token falls back
+        # to your repository's default, which can be write access to
+        # everything, and Test Companion still uses that token when the App
+        # cannot be reached.
         permissions:
             contents: write # branches and commits for fix / reconcile jobs
             pull-requests: write # the one comment, and opening a pull request
@@ -119,12 +126,13 @@ jobs:
                   # not need it there: it authenticates its own push.
                   persist-credentials: false
 
-            # A floating major tag, deliberately, and the one place in this
-            # file that stays unpinned: @v1 is how you receive fixes to Test
-            # Companion without editing this file. Pinning it to a commit
-            # would freeze you on whatever shipped the day you copied this.
+            # A fixed release. Version tags in this repository cover every
+            # action in it, so there is no floating tag for Test Companion
+            # alone. Move to a newer release when you choose, or let
+            # Dependabot propose it. For the strongest pin, replace the tag
+            # with the release's full commit SHA.
             # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
-            - uses: browserstack/github-actions/test-companion@v1
+            - uses: browserstack/github-actions/test-companion@v1.1.0
               with:
                   username: ${{ secrets.BROWSERSTACK_USERNAME }}
                   access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}

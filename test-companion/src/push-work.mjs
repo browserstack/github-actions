@@ -169,12 +169,27 @@ const NEVER_COMMIT = [
 	/\.log$/i,
 ]
 
-export function splitPushable(paths) {
+/**
+ * Also refused:
+ *
+ * - Anything under `.github/`. That folder tells GitHub what to RUN: workflows,
+ *   the repository's own reusable actions, and who must review what. GitHub
+ *   already rejects workflow edits from our tokens, but not the rest, and an
+ *   action file changed on a branch runs with that branch's secrets.
+ * - Symlinks. A link can point anywhere on the runner, and committing one
+ *   puts a path chosen by the agent into the customer's tree.
+ *
+ * `isSymlink` is asked per path, so this stays testable without a disk.
+ */
+export function splitPushable(paths, { isSymlink = () => false } = {}) {
 	const push = []
 	const skip = []
 	for (const path of paths ?? []) {
 		const segments = String(path).split("/")
-		const refused = segments.some((segment) => NEVER_COMMIT.some((pattern) => pattern.test(segment)))
+		const refused =
+			segments.some((segment) => NEVER_COMMIT.some((pattern) => pattern.test(segment))) ||
+			segments.some((segment) => segment.toLowerCase() === ".github") ||
+			isSymlink(path)
 		;(refused ? skip : push).push(path)
 	}
 	return { push, skip }

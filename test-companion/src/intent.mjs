@@ -18,7 +18,7 @@
 export const INTENT = Object.freeze({
 	/** Run a Test Companion job. `workflow` names it, or is null for "whatever is bound". */
 	WORKFLOW: "workflow",
-	/** Asked us to stop. Nothing stops any more — item 7 — but the word is still answered. */
+	/** Asked us to stop. Nothing stops any more, but the word is still answered. */
 	STOP: "stop",
 	/** Approve a waiting proposal, which starts the real run. */
 	GO: "go",

@@ -15,6 +15,11 @@ comes back as one comment and one check.
 What runs is decided by `testcompanion-pipeline.yml` in your repository, not by
 the workflow file.
 
+**Runner requirements:** a Linux runner (GitHub's `ubuntu-latest` works as is)
+with Node 20 or later and the `gh` command installed system-wide, in `/usr/bin`
+or `/usr/local/bin`. Test Companion will not run a `gh` from anywhere the job
+itself could have written to.
+
 Use the starter file itself rather than writing your own. Besides the triggers,
 it carries safeguards that are easy to leave out:
 
@@ -39,7 +44,7 @@ unverified pinned install" — and the job stops before it reports anything. Tak
 both from the release you tested with.
 
 ```yaml
-      - uses: browserstack/github-actions/test-companion@v1
+      - uses: browserstack/github-actions/test-companion@v1.1.0
         with:
           username: ${{ secrets.BROWSERSTACK_USERNAME }}
           access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
@@ -58,7 +63,7 @@ both from the release you tested with.
 | `build-effect` | no | Whether this step goes red. `fail-on-break` (the default) only when the run itself broke, could not start or hit a limit, not when tests failed. `report` never. `fail` on anything that is not a success, test failures included. The Test Companion check always reports truthfully either way |
 | `workflow` | no | Manual runs only; event-driven runs read the pipeline file |
 | `preview` | no | Report what would happen and change nothing |
-| `app-id` / `app-private-key` | no | Use the Test Companion GitHub App's identity |
+| `app-id` / `app-private-key` | no | Use the GitHub App's identity. Keep the workflow's `permissions:` block anyway: the workflow token is still the fallback |
 
 ## Approving a plan
 
@@ -71,6 +76,14 @@ own plans by that account and a hidden marker. So a different workflow that
 copies outside text into a comment could imitate a plan. A reply of `go` only
 ever approves a plan for the pull request's current commit. With the App, Test
 Companion posts under its own account, which no other workflow can use.
+
+## How the CLI is installed
+
+Each run downloads the CLI installer from
+`test-companion.browserstack.com/cli/install.sh`. The installer script itself
+is not checked against a fixed checksum, so a run trusts that address. Pinning
+`cli-version` with `cli-sha256` (above) makes the installer refuse any CLI
+build other than the one you tested.
 
 ## What runs is not decided here
 

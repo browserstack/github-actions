@@ -20,6 +20,8 @@ If you want to test your open source project on BrowserStack, then [sign-up here
   
 * [setup-local](./setup-local): This Action downloads and starts the appropriate BrowserStackLocal binary, thereby creating a secure tunnel connection from the GitHub Actions runner environment to the BrowserStack device cloud. This secure tunnel will be used by the remote browsers in BrowserStack to access your web application hosted in the GitHub Actions runner environment. **You do not need this Action if the application to be tested is accessible over the public internet.**
 
+* [test-companion](./test-companion): Ask BrowserStack Test Companion for test work from a pull request. Comment `@browserstack test this PR` and it proposes the tests it would write, then writes them once someone with write access replies `go`. Needs a Linux runner. See its [README](./test-companion/README.md) for setup.
+
 ## Prerequisites
 * You should set your BrowserStack Username and Access Key as GitHub Secrets, i.e. `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY` respectively.
 

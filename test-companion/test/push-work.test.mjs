@@ -744,7 +744,7 @@ describe("gh itself must be the real gh, with settings nobody planted", () => {
 })
 
 /**
- * Found by live run 41049398591, which refused to save with a list of
+ * Found by a live run, which refused to save with a list of
  * fifteen "unexpected" keys — every one of them a flag WE pass in
  * GIT_SAFE_ARGS.
  *
@@ -807,5 +807,35 @@ describe("the push carries the run's test files and nothing else", () => {
 	test("not knowing where HEAD was is not permission to push", () => {
 		assert.equal(agentCommitted(undefined, "bbb222"), true, "unknown must fail closed")
 		assert.equal(agentCommitted("", "bbb222"), true)
+	})
+})
+
+/**
+ * `.github/` tells GitHub what to run, and a symlink can point anywhere on the
+ * runner. Neither is test work, so neither is pushed.
+ */
+describe("splitPushable refuses .github and symlinks", () => {
+	test("anything under .github is skipped", () => {
+		const { push, skip } = splitPushable([
+			".github/actions/setup/action.yml",
+			".github/CODEOWNERS",
+			".github/workflows/ci.yml",
+			"packages/web/.GitHub/x.yml",
+			"tests/login.spec.ts",
+		])
+		assert.deepEqual(push, ["tests/login.spec.ts"])
+		assert.equal(skip.length, 4)
+	})
+
+	test("a file merely named like it is kept", () => {
+		const { push } = splitPushable(["tests/github.spec.ts", "src/.githubrc.test.ts"])
+		assert.deepEqual(push, ["tests/github.spec.ts", "src/.githubrc.test.ts"])
+	})
+
+	test("a symlink is skipped", () => {
+		const isSymlink = (p) => p === "tests/fixtures/link"
+		const { push, skip } = splitPushable(["tests/fixtures/link", "tests/a.spec.ts"], { isSymlink })
+		assert.deepEqual(push, ["tests/a.spec.ts"])
+		assert.deepEqual(skip, ["tests/fixtures/link"])
 	})
 })

@@ -19,9 +19,9 @@ inputs:
     app-id:
         description: >-
             Test Companion GitHub App id. With it, comments and the check come from
-            "Test Companion" rather than github-actions[bot], and the permissions
-            block below can be deleted. Optional — without it the workflow's own
-            token is used.
+            the App rather than github-actions[bot]. Keep the workflow's
+            permissions block either way: the workflow token is still the
+            fallback. Optional — without it the workflow's own token is used.
         required: false
     app-private-key:
         description: >-
@@ -213,7 +213,7 @@ runs:
               # being signed in. The first version of this check passed for
               # that reason, skipped the login, and left the CLI — which does
               # NOT get the token — still unauthenticated. The run then failed
-              # exactly as before (live run 41445565651). What matters here is
+              # exactly as before. What matters here is
               # whether a credential is STORED, not whether this shell happens
               # to hold one.
               if env -u GH_TOKEN -u GITHUB_TOKEN gh auth status >/dev/null 2>&1; then
@@ -252,7 +252,7 @@ runs:
                 # which is the right setting, and what the starter ships
                 # there is no credential for it, so a live `fix` or `generate`
                 # died in under a second at the claim, before doing any work
-                # (live run 41463749519). Preview never hit it, which is why
+                # Preview never hit it, which is why
                 # this went unnoticed.
                 #
                 # No token is added to any environment variable: git asks gh,
@@ -367,6 +367,10 @@ runs:
         - name: Apply the build effect
           if: always() && steps.run.outputs.should-fail == 'true'
           shell: bash
+          # Through env, never pasted into the script: a step output written
+          # straight into `run:` becomes part of the shell code.
+          env:
+              OUTCOME: ${{ steps.run.outputs.outcome }}
           run: |
-              echo "::error::Test Companion: ${{ steps.run.outputs.outcome }}"
+              echo "::error::Test Companion: ${OUTCOME}"
               exit 1

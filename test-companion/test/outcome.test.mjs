@@ -120,7 +120,7 @@ describe("stepShouldFail — build effect", () => {
 	// REVERSED by. While `report` was the
 	// default, "a misconfiguration must never redden a build" was the safe
 	// direction. The default is now fail-on-break, so a typo landing you on a
-	// quieter setting than a fresh install is the silent pass item 6 is about.
+	// quieter setting than a fresh install is exactly the silent pass to avoid.
 	// The whole rule lives in build-effect.test.mjs now; this is the hinge.
 	test("anything unrecognised behaves as the default", () => {
 		assert.equal(stepShouldFail(undefined, OUTCOMES.RUN_BROKE), true)
@@ -164,7 +164,7 @@ describe("resolveOutcome — an unbound event is skipped, not broken", () => {
  * actually happened.
  *
  * Found live: an approved `fix` died in under a second before doing any work
- * (the dedupe claim had no credential, run 41463749519), and the result comment
+ * (the dedupe claim had no credential), and the result comment
  * still carried the consumed marker. Every later `go` on that commit was then
  * refused — "already been approved and run on this commit" — including after a
  * fresh proposal was put up. The only way out was a new commit.

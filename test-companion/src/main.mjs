@@ -10,7 +10,7 @@
  * Zero dependencies — Node's standard library plus `gh`, which is preinstalled
  * on every GitHub runner and is already how this product talks to GitHub.
  */
-import { readFileSync, appendFileSync, writeFileSync, existsSync, rmSync, readdirSync, accessSync, mkdtempSync, constants } from "node:fs"
+import { readFileSync, appendFileSync, writeFileSync, existsSync, rmSync, readdirSync, accessSync, mkdtempSync, lstatSync, constants } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -46,6 +46,7 @@ import {
 	flattenPages,
 	hasApproverEdits,
 	renderProposalBody,
+	isApprovableJob,
 	findSupersededProposal,
 	checkRequestFor,
 	inFlightCheckId,
@@ -180,16 +181,16 @@ function gh(args, body) {
  */
 let botLogin = "github-actions[bot]"
 
-/** HEAD before the agent ran, so a commit it made can be told from ours (M7). */
+/** HEAD before the agent ran, so a commit it made can be told from ours. */
 let headBeforeRun = ""
 
-/** Set when this run is carrying out an approved proposal, so the plan is marked spent (M5). */
+/** Set when this run is carrying out an approved proposal, so the plan is marked spent. */
 let consumedMarker = ""
 
 /**
  * The proposal this run is carrying out, so the report can link it.
  *
- * : approving one job no longer finishes off the
+ * Approving one job no longer finishes off the
  * others on that commit, so two plans really can be waiting and "approved" on
  * its own no longer says which one this is.
  */
@@ -217,7 +218,7 @@ function fetchAndCheckout(sha, branch) {
 function appInstallationToken() {
 	const creds = appCredentials(env)
 	if (!creds) return undefined
-	// B3. `creds` holds its own copy, so the key can leave
+	// `creds` holds its own copy, so the key can leave
 	// the environment the moment it has been read. Everything this process
 	// starts from here on inherits that environment — including the agent,
 	// which runs with --yolo and chooses its own commands — and a signing key
@@ -248,13 +249,17 @@ function appInstallationToken() {
 		return undefined
 	}
 	let installationId
+	let appLogin
 	try {
 		const installation = JSON.parse(found.stdout)
 		installationId = installation?.id
-		// M2: what WE post as. An App comments as
+		// What WE post as. An App comments as
 		// `<slug>[bot]`, and knowing that is what lets us tell our own
 		// proposal from another App's.
-		if (installation?.app_slug) botLogin = `${installation.app_slug}[bot]`
+		// Remembered here, but only adopted once a token is actually minted
+		// (below). Adopted early, a failed mint left us posting as
+		// github-actions[bot] while looking for our plans under the App's name.
+		appLogin = installation?.app_slug ? `${installation.app_slug}[bot]` : undefined
 	} catch {
 		return undefined
 	}
@@ -275,16 +280,18 @@ function appInstallationToken() {
 			input: JSON.stringify(body),
 		})
 
-	// An installation granted fewer permissions than we ask for refuses the
-	// whole request, so the second attempt drops the permission list and keeps
-	// the repository scope — which is the half actually requires. Better a
-	// token scoped to one repository than a fall back to the workflow token.
-	let minted = mint(scope)
+	// No retry with a smaller request. An installation granted fewer
+	// permissions than we ask for refuses the whole request, and the old
+	// retry dropped the permission list, which asks for EVERYTHING the
+	// installation holds. If the App ever gained a permission, that retry
+	// would hand it to a run that never needed it. The workflow token is
+	// the safer fallback.
+	const minted = mint(scope)
 	if (minted.status !== 0) {
-		minted = mint({ repositories: scope.repositories })
-	}
-	if (minted.status !== 0) {
-		warn("Could not mint a GitHub App token; using the workflow token instead.")
+		warn(
+			"Could not get a GitHub App token with the permissions Test Companion needs; using the workflow token instead. " +
+				"If the App's permissions were changed, an organisation owner may need to accept them.",
+		)
 		return undefined
 	}
 
@@ -299,6 +306,7 @@ function appInstallationToken() {
 	// credentials are masked in the log. Before the token is used for
 	// anything, so there is no window where it could be echoed unmasked.
 	console.log(`::add-mask::${token}`)
+	if (appLogin) botLogin = appLogin
 	return token
 }
 
@@ -392,7 +400,7 @@ function git(args, extraEnv = {}) {
 	})
 	// `raw` is deliberate. `git status --porcelain` puts a SPACE in the first
 	// column for an unstaged modification, and trimming the whole output eats
-	// it on the first line — which cost run 40845669513 ten passing tests.
+	// it on the first line, which once lost ten passing tests.
 	// Anything parsing columns reads `raw`; everything else wants `out`.
 	return { ok: r.status === 0, out: (r.stdout ?? "").trim(), raw: r.stdout ?? "", err: (r.stderr ?? "").trim() }
 }
@@ -457,13 +465,14 @@ function finishSkipped(reason, detail) {
 		"not-bound": "That job is not bound to pull request comments in this repository.",
 		"nothing-to-approve": "Nothing is waiting for approval on this commit.",
 		"proposal-not-found": "That reply named a plan that is not waiting on this commit.",
+		"proposal-job-not-enabled": "That plan named a job this repository has not enabled, so it was not run.",
 		"proposal-expired": "That proposal was more than a day old and has been dropped.",
 		proposed: "Proposed, and waiting for someone to reply go.",
 		"setup-requested": "Opened a pull request adding the settings file.",
 	}[reason]
 	const msg = human ?? `Nothing to do (${reason}).`
 	notice(`Test Companion: ${msg}`)
-	// B1. The "in progress" check goes up before the CLI
+	// The "in progress" check goes up before the CLI
 	// runs, so the run is cancellable while it is going. Skipping out from
 	// under it left "Test Companion" pending for ever — and `no-binding` is
 	// most events, so for most repositories that was most runs.
@@ -618,8 +627,8 @@ async function main() {
 			inTeam: askTeam ? isOnTeam(who, askTeam) : undefined,
 		})
 		if (!allowed) {
-			//  wants a one-line reply, not a line in a log the person who
-			// asked will never open.
+			// A refusal wants a one-line reply, not a line in a log the person
+			// who asked will never open.
 			//
 			// Unless they never addressed us. An unaddressed comment reaches
 			// here only because it was a bare "go", and answering a bystander's
@@ -644,8 +653,9 @@ async function main() {
 		const comments = flattenPages(gh(["api", `repos/${REPO}/issues/${plan.context.pr}/comments`, "--paginate", "--slurp"]))
 		let waiting = findProposal(comments, plan.context.sha, Date.now(), botLogin)
 
+		const enabledJobs = (bindingsDoc?.bindings ?? []).filter((b) => b.enabled).map((b) => b.workflow)
 		const intent = readIntent(plan.context.instructions, {
-			workflows: (bindingsDoc?.bindings ?? []).filter((b) => b.enabled).map((b) => b.workflow),
+			workflows: enabledJobs,
 			proposalWaiting: Boolean(waiting),
 		})
 
@@ -699,7 +709,7 @@ async function main() {
 		const bindings = bindingsDoc
 		const binding = pickBinding(bindings, intent.workflow)
 
-		//  asks for any BOUND workflow. Saying so now beats a preview run,
+		// A comment may only ask for a BOUND workflow. Saying so now beats a preview run,
 		// a proposal, a "go", and only then "no binding for pr_comment".
 		if (intent.workflow && bindings && !binding) {
 			replyOnPr(
@@ -721,8 +731,8 @@ async function main() {
 			// Already approved, or already stopped. Checked BEFORE the
 			// superseded reading, which otherwise reaches for any older plan
 			// still in the thread and tells the person their branch moved on
-			// when it did not — seen on run 41067235005, where the commit was
-			// the same one the plan had just been approved and run against.
+			// when it did not, on the very commit the plan had just been
+			// approved and run against.
 			const used = proposalAlreadyUsed(comments, plan.context.sha, botLogin, plan.workflow)
 			if (used) {
 				replyOnPr(
@@ -778,12 +788,21 @@ async function main() {
 			// GO intent names no workflow, so without this the CLI resolved one
 			// from the event alone — whichever binding came first in the file
 			// and a `fix` proposal could run something else, live, with --yolo.
-			if (waiting?.workflow) plan.workflow = waiting.workflow
+			if (waiting?.workflow) {
+				if (!isApprovableJob(waiting.workflow, enabledJobs)) {
+					replyOnPr(
+						plan.context.pr,
+						"That plan names a job this repository does not have enabled, so I have not run it. Ask again and I will put up a fresh one.",
+					)
+					finishSkipped("proposal-job-not-enabled")
+				}
+				plan.workflow = waiting.workflow
+			}
 
 			// Adopt the check the PROPOSAL run left in progress. This run is a
 			// different process with an empty memo, so without the lookup it
 			// posts a SECOND check and the proposal's one stays pending beside
-			// it for the life of the branch (M5). The sweep already does this;
+			// it for the life of the branch. The sweep already does this;
 			// the approval path did not.
 			const pending = inFlightCheckId(
 				gh(["api", `repos/${REPO}/commits/${plan.context.sha}/check-runs?per_page=100`])?.check_runs,
@@ -929,8 +948,7 @@ async function main() {
 		// From whichever source THIS trigger actually has. A comment names an
 		// issue, so `pull` was fetched to resolve a head sha; a pull_request
 		// event carries the head on its own payload and nothing is fetched.
-		// Reading only `pull` refused every pull_request-triggered push
-		// (run 40857884973, on a branch in this very repository).
+		// Reading only `pull` refused every pull_request-triggered push.
 		sameRepo: isSameRepo(prForTicket?.head?.repo?.full_name, REPO),
 		branch: plan.context.branch,
 		headAuthorEmail: git(["log", "-1", "--format=%ae"]).out,
@@ -964,7 +982,7 @@ async function main() {
 		)
 	}
 
-	// Where HEAD was before the agent touched anything (M7).
+	// Where HEAD was before the agent touched anything.
 	headBeforeRun = git(["rev-parse", "HEAD"]).out
 	notice(`tc ${args.join(" ")}`)
 	// Both files are written by `tc` itself, and the result file only when the
@@ -1142,7 +1160,7 @@ async function main() {
 	postCheck(checkOutcome, view, checkSha(plan.context, summary, env.GITHUB_SHA), annotations)
 	// Mark the plan spent only if a run actually happened. A run that broke
 	// before doing anything used to spend it anyway, which left the commit
-	// permanently unapprovable — see approvalWasSpent (live run 41463749519).
+	// permanently unapprovable. See approvalWasSpent.
 	// On the PROPOSAL, before the comment: the proposal outlives every later
 	// run, and the shared comment does not.
 	if (approvalWasSpent(outcome)) markPlanSpent(approvedPlan?.id, consumedMarker)
@@ -1172,7 +1190,7 @@ async function main() {
 function saveWork(saving, plan) {
 	if (!saving.ok) return undefined
 	const branch = plan.context.branch
-	// M7. We push HEAD, so a commit the AGENT made rides
+	// We push HEAD, so a commit the AGENT made rides
 	// along unfiltered — source, lockfiles, `.github/` — and a workflow-file
 	// change fails the whole push with an error nobody can read. Our own
 	// commit happens below, after this check, so a HEAD that moved during the
@@ -1214,7 +1232,16 @@ function saveWork(saving, plan) {
 	// spec.
 	const status = git(["-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all"])
 	if (!status.ok) return undefined
-	const { push, skip } = splitPushable(changedPaths(status.raw))
+	const { push, skip } = splitPushable(changedPaths(status.raw), {
+		isSymlink: (p) => {
+			try {
+				return lstatSync(p).isSymbolicLink()
+			} catch {
+				// Gone (a deletion) or unreadable: not a link we would be adding.
+				return false
+			}
+		},
+	})
 	if (push.length === 0) return undefined
 
 	// Named paths, never `git add -A`: the agent ran shell commands of its own
@@ -1316,7 +1343,7 @@ function rememberCheck(sha, id) {
  * A cancel call rather than a flag the next run would notice: asking GitHub to
  * cancel is the only thing that stops work already underway. The one caller
  * left is a pull request closed without merging; `stop` was the other, and it
- * was removed (item 7).
+ * was removed.
  */
 function cancelRunsOn(sha) {
 	// Our own check runs on this commit, NOT `actions/runs?head_sha=`. A run
@@ -1359,7 +1386,7 @@ function cancelForClosedPr(payload) {
 	const { cancelled, forbidden } = cancelRunsOn(sha)
 	if (cancelled > 0) {
 		// Cancelling leaves the run's check in progress, and a check that never
-		// resolves blocks anyone who made it required — the B1 failure.
+		// resolves blocks anyone who made it required.
 		// `stopRuns` used to complete it and went with `stop`; nothing replaced
 		// it, so a pull request closed mid-run kept a pending check that came
 		// back if it was reopened.
@@ -1477,14 +1504,13 @@ function sweepExpiredProposals() {
 		if (!proposalNeedsDropping(comments, sha, Date.now(), botLogin)) continue
 		// The same question, asked again for the ANSWER rather than the yes/no:
 		// the dropped marker has to name the job, or dropping one stale plan
-		// would finish off every other plan on that commit (item 5).
+		// would finish off every other plan on that commit.
 		const stale = findProposal(comments, sha, Date.now(), botLogin)
 		// A proposal written before the job was recorded has no workflow, and a
 		// marker with no workflow means the WHOLE COMMIT under the legacy rule
 		// in SPENT_MARKER — so sweeping one old plan would kill every current
-		// one beside it, which is the thing item 5 set out to stop. Leave it;
-		// it is already expired, so it cannot be approved either way
-		//
+		// one beside it, which is the thing per-job plans set out to stop. Leave it;
+		// it is already expired, so it cannot be approved either way.
 		if (!stale?.workflow) {
 			notice(`Test Companion: left an untagged stale proposal on #${pr.number} rather than sweeping the whole commit.`)
 			continue
@@ -1593,10 +1619,10 @@ function postComment(pr, view) {
 	// PAGE, so the output of a pull request with more than 30 comments is
 	// `[...][...]`, JSON.parse throws, gh returns null and `existing` becomes
 	// []. Every run then posted a NEW comment instead of editing its own, which
-	// is the single-comment guarantee in (review finding, ).
+	// broke the single-comment guarantee.
 	const existing = flattenPages(gh(["api", `repos/${REPO}/issues/${pr}/comments`, "--paginate", "--slurp"]))
 	const choice = chooseCommentAction(existing, botLogin)
-	// M5: an approved proposal must stop looking like one.
+	// An approved proposal must stop looking like one.
 	// Without this a second `go` reran the job, and a day later the sweep told
 	// the person their approved plan had gone unanswered.
 	const body = { body: renderComment(view) + (view.consumedMarker ? `\n${view.consumedMarker}` : "") }
@@ -1630,7 +1656,7 @@ try {
 		// The commit we already posted the in-progress check on, NOT the
 		// event's sha: on a comment run GITHUB_SHA is the default branch's
 		// commit, so this used to post a second check on main and leave the
-		// pull request's one pending (B1).
+		// pull request's one pending.
 		postCheck(
 			OUTCOMES.COULD_NOT_RUN,
 			{ outcome: OUTCOMES.COULD_NOT_RUN, summary: {}, runUrl: RUN_URL },

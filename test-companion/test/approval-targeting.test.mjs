@@ -184,7 +184,7 @@ describe("naming a plan does not need the mention", () => {
 	 *
 	 * Still narrow. `go` followed by a plan reference and nothing else is
 	 * unmistakably aimed at us; "Approved, but rename the login case" is still
-	 * an ordinary review comment and still needs the mention (M3, ).
+	 * an ordinary review comment and still needs the mention.
 	 */
 	const comment = (body) => ({
 		action: "created",
@@ -229,11 +229,11 @@ describe("naming a plan does not need the mention", () => {
 
 describe("naming a plan is not editing it", () => {
 	/**
-	 *  (kritansh20, ). `hasApproverEdits("go ")`
+	 * `hasApproverEdits("go ")`
 	 * was true, because the bare-approval pattern allowed no plan reference.
 	 * That is not just a wrong line in the report: renderApprovedPlan uses the
 	 * same answer to append "# Changes the approver made … these win" to the
-	 * plan the agent is handed. So the feature added by item 5 injected its own
+	 * plan the agent is handed. So the per-job approval feature injected its own
 	 * comment id into the plan as an authoritative instruction.
 	 */
 	test("go #id is a bare approval", () => {

@@ -104,7 +104,7 @@ describe("action.yml — git's credential helper is cleaned up", () => {
 })
 
 /**
- *  (kritansh20, ). The cleanup must not damage a
+ * The cleanup must not damage a
  * self-hosted runner's own git configuration.
  */
 describe("action.yml — the cleanup only removes what this job added", () => {
