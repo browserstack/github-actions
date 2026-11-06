@@ -65,6 +65,16 @@ inputs:
             Companion check always reports truthfully regardless.
         required: false
         default: "fail-on-break"
+    allow-unisolated:
+        description: >
+            Run even when the agent cannot be locked down. Test Companion runs its
+            AI agent as a separate user with no admin rights, so it cannot reach
+            this job's tokens and secrets. That needs a Linux runner where the job
+            has password-free sudo, which GitHub's own runners have. On a runner
+            without it, the run stops unless this is "true", in which case the
+            agent runs as the job's own user and CAN reach them.
+        required: false
+        default: "false"
     github-token:
         description: >
             Token used to post the check and the comment. Override only to post as a
@@ -184,12 +194,12 @@ runs:
         # inherits: childEnvFor keeps only an allowlist, and the agent's own
         # shell commands must not be able to read the token out of env.
         #
-        # This does put the token in gh's config, where `gh auth token` would
-        # print it. That is the same exposure the IDE already has, where the
-        # user's own gh is signed in — so this brings CI level with the
-        # editor rather than below it. The tighter fix (hand the token only
-        # to the gh process, and scrub it from agent shells) needs a brain
-        # change and a CLI release; this does not.
+        # This puts the token in gh's config, inside this job's temp folder.
+        # The agent runs as a separate, locked-down user that cannot reach
+        # that folder: its own gh talks to a read-only relay instead (see
+        # sandbox-policy.mjs). This sign-in is for the Action's own use, such
+        # as planting the "already running" marker before the run. Only an
+        # unisolated run (allow-unisolated) leaves it within the agent's reach.
         - name: Sign gh in, so a failed build can be read
           shell: bash
           env:
@@ -292,6 +302,7 @@ runs:
               TC_ACTION_SELF_WORKFLOW: ${{ inputs.self-workflow-name }}
               TC_ACTION_APP_ID: ${{ inputs.app-id }}
               TC_ACTION_APP_PRIVATE_KEY: ${{ inputs.app-private-key }}
+              TC_ACTION_ALLOW_UNISOLATED: ${{ inputs.allow-unisolated }}
           run: node "${{ github.action_path }}/src/main.mjs"
 
         - name: Attach the report
