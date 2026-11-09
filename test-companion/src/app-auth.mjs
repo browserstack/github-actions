@@ -1,9 +1,9 @@
 /**
  * Signing in as the Test Companion GitHub App.
  *
- * Two effects: the comment and the tick come from "Test Companion" rather
- * than github-actions[bot], and the team can delete the permissions block
- * from their workflow because an installation token carries the App's own.
+ * The comment, the check and the commits come from the App's own account
+ * rather than github-actions[bot]. The workflow's permissions block stays:
+ * the workflow token is still the fallback when the App cannot be reached.
  *
  * It does not run anything — a run still happens on the customer's machine
  * with their credentials. This only changes who GitHub thinks is talking.

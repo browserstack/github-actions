@@ -147,8 +147,9 @@ jobs:
                   # release you tested with.
                   # cli-version: "1.2.0"
                   # cli-sha256: "<sha256 of that release for linux-amd64>"
-                  # With the App installed, uncomment these and delete the
-                  # permissions block above.
+                  # With the App installed, uncomment these. Keep the
+                  # permissions block above either way: the workflow token is
+                  # still the fallback when the App cannot be reached.
                   # app-id: ${{ secrets.TEST_COMPANION_APP_ID }}
                   # app-private-key: ${{ secrets.TEST_COMPANION_APP_PRIVATE_KEY }}
                   # Manual runs only; event-driven runs read the pipeline file.
