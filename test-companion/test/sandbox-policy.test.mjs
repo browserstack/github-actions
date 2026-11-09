@@ -161,6 +161,40 @@ describe("telling a GraphQL read from a write", () => {
 		}
 	})
 
+	/**
+	 * Found in review: strings were removed before comments, so a `"` inside a
+	 * comment opened a fake string that swallowed the next line, and a
+	 * mutation written there was passed on with the real token.
+	 */
+	test("a quote inside a comment cannot hide a mutation", () => {
+		const bypass = JSON.stringify({
+			query: 'query Q { viewer { login } } # "\nmutation M { addComment(input: {}) { clientMutationId } } # "',
+			operationName: "M",
+		})
+		assert.equal(isReadOnlyGraphql(bypass), false)
+		assert.equal(relayDecision({ method: "POST", host: "api.github.com", path: "/graphql", body: bypass }).allow, false)
+		assert.equal(isReadOnlyGraphql(q('query Q { a } # "\rmutation M { b }')), false, "a carriage return ends a comment too")
+	})
+
+	test("strings and comments are read the way GraphQL reads them", () => {
+		assert.equal(isReadOnlyGraphql(q('query Q { a(x: """ # not a comment """) }')), true)
+		assert.equal(isReadOnlyGraphql(q('query Q { a(x: """mutation""") }')), true, "a keyword inside a block string is text")
+		assert.equal(isReadOnlyGraphql(q('query Q { a(x: "he said \\"hi\\" # ") }')), true, "an escaped quote does not end a string")
+		assert.equal(isReadOnlyGraphql(q('query Q { a(x: "open) }')), false, "a string that never closes")
+		assert.equal(isReadOnlyGraphql(q('query Q { a(x: "one\ntwo") }')), false, "a plain string cannot span lines")
+		assert.equal(isReadOnlyGraphql(q('query Q { a(x: """never closes) }')), false)
+	})
+
+	test("the mutation keyword is refused at any depth, as a second check", () => {
+		assert.equal(isReadOnlyGraphql(q("query Q { a { mutation } }")), false)
+	})
+
+	test("GraphQL is never passed on as a GET, whose query would skip the check", () => {
+		assert.equal(relayDecision({ method: "GET", host: "api.github.com", path: "/graphql?query=mutation%7Bx%7D" }).allow, false)
+		assert.equal(relayDecision({ method: "HEAD", host: "api.github.com", path: "/graphql" }).allow, false)
+		assert.equal(relayDecision({ method: "GET", host: "api.github.com", path: "/graphql-not-really" }).allow, true)
+	})
+
 	test("a batch is a read only if every request in it is", () => {
 		assert.equal(isReadOnlyGraphql(JSON.stringify([{ query: "{ a }" }, { query: "{ b }" }])), true)
 		assert.equal(isReadOnlyGraphql(JSON.stringify([{ query: "{ a }" }, { query: "mutation { b }" }])), false)

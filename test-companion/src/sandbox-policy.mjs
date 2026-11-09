@@ -159,6 +159,9 @@ export function relayDecision({ method, host, path, body }) {
 	const p = String(path ?? "")
 	const api = h === "api.github.com"
 	if (!p.startsWith("/")) return { allow: false, why: "a path must start with /" }
+	// GraphQL only ever goes through the POST check below. A GET to /graphql
+	// would carry its query in the URL, past that check.
+	if (api && /^\/graphql(\/|\?|$)/.test(p) && m !== "POST") return { allow: false, why: "GraphQL is only passed on as a checked POST" }
 	if (api && (m === "GET" || m === "HEAD")) return { allow: true, auth: true }
 	if (api && m === "POST" && (p === "/graphql" || p.startsWith("/graphql?"))) {
 		return isReadOnlyGraphql(body)
@@ -181,9 +184,21 @@ export function relayDecision({ method, host, path, body }) {
  *
  * A GraphQL document is a list of operations. Each starts with `query`,
  * `mutation` or `subscription`, or with `{` (shorthand for a query), and may
- * also hold `fragment` definitions. We strip strings and comments so a word
- * inside them cannot fool us, then look at what starts each top-level
- * definition. Anything we cannot read cleanly counts as a write.
+ * also hold `fragment` definitions.
+ *
+ * The document is read ONCE, left to right, the way GraphQL itself reads it:
+ * a `#` starts a comment only outside a string, and a `"` starts a string only
+ * outside a comment. Removing strings and comments in two separate passes gets
+ * this wrong: a `"` inside a comment then looks like the start of a string,
+ * swallows the next line, and hides a mutation written there. That bypass was
+ * found in review.
+ *
+ * Two independent checks then have to agree it is a read:
+ * - no `mutation` or `subscription` keyword appears anywhere outside strings
+ *   and comments, at any depth;
+ * - every top-level definition starts with `query`, `fragment` or `{`.
+ *
+ * Anything we cannot read cleanly counts as a write.
  */
 export function isReadOnlyGraphql(body) {
 	let doc
@@ -196,48 +211,98 @@ export function isReadOnlyGraphql(body) {
 		return false
 	}
 	if (typeof doc !== "string" || doc.trim() === "") return false
-	const stripped = doc
-		.replace(/"""[\s\S]*?"""/g, '""')
-		.replace(/"(?:\\.|[^"\\])*"/g, '""')
-		.replace(/#[^\n\r]*/g, "")
+	const tokens = graphqlTokens(doc)
+	if (!tokens) return false
+
+	if (tokens.some((t) => t === "mutation" || t === "subscription")) return false
+
 	let depth = 0
-	let i = 0
-	while (i < stripped.length) {
-		const c = stripped[i]
-		if (c === "{") {
+	// Whether the next top-level token starts a new definition.
+	let expectDefinition = true
+	for (const t of tokens) {
+		if (t === "{") {
+			if (depth === 0 && expectDefinition) expectDefinition = false
 			depth++
-			i++
 			continue
 		}
-		if (c === "}") {
+		if (t === "}") {
 			depth--
 			if (depth < 0) return false
-			i++
+			if (depth === 0) expectDefinition = true
 			continue
 		}
-		if (depth === 0 && /[A-Za-z_]/.test(c)) {
-			const word = /^[A-Za-z_][A-Za-z0-9_]*/.exec(stripped.slice(i))[0]
-			if (word === "mutation" || word === "subscription") return false
-			if (word !== "query" && word !== "fragment" && !inDefinitionHead(stripped, i)) return false
-			i += word.length
-			continue
+		if (depth === 0 && expectDefinition) {
+			if (t !== "query" && t !== "fragment") return false
+			expectDefinition = false
 		}
-		i++
 	}
 	return depth === 0
 }
 
 /**
- * Inside `query Name($a: Int) @dir` or `fragment F on Type`, the words after
- * the keyword are names, types and directives, not new operations. True when
- * the nearest keyword before position i, at the top level, is query or
- * fragment and no `{` has opened since.
+ * The names and braces of a GraphQL document, with strings, comments, commas
+ * and whitespace skipped, read in one pass. Other punctuation is dropped: only
+ * names and braces decide what kind of document this is. Returns undefined for
+ * anything malformed, such as a string that never closes.
  */
-function inDefinitionHead(text, i) {
-	const before = text.slice(0, i)
-	const lastOpenOrClose = Math.max(before.lastIndexOf("{"), before.lastIndexOf("}"))
-	const head = before.slice(lastOpenOrClose + 1)
-	return /\b(query|fragment)\b/.test(head)
+function graphqlTokens(doc) {
+	const out = []
+	let i = 0
+	const n = doc.length
+	while (i < n) {
+		const c = doc[i]
+		if (c === "#") {
+			while (i < n && doc[i] !== "\n" && doc[i] !== "\r") i++
+			continue
+		}
+		if (c === '"') {
+			if (doc.startsWith('"""', i)) {
+				// Block string: ends at the next """ that is not escaped as \""".
+				i += 3
+				for (;;) {
+					if (i >= n) return undefined
+					if (doc.startsWith('\\"""', i)) {
+						i += 4
+						continue
+					}
+					if (doc.startsWith('"""', i)) {
+						i += 3
+						break
+					}
+					i++
+				}
+				continue
+			}
+			// Plain string: one line only, with backslash escapes.
+			i++
+			for (;;) {
+				if (i >= n) return undefined
+				const d = doc[i]
+				if (d === "\n" || d === "\r") return undefined
+				if (d === "\\") {
+					i += 2
+					continue
+				}
+				i++
+				if (d === '"') break
+			}
+			continue
+		}
+		if (c === "{" || c === "}") {
+			out.push(c)
+			i++
+			continue
+		}
+		if (/[A-Za-z_]/.test(c)) {
+			let j = i + 1
+			while (j < n && /[A-Za-z0-9_]/.test(doc[j])) j++
+			out.push(doc.slice(i, j))
+			i = j
+			continue
+		}
+		i++
+	}
+	return out
 }
 
 /**
