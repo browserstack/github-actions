@@ -77,7 +77,7 @@ class ActionInput {
    * @returns {{
    *  accessKey: String,
    *  localTesting: String,
-   *  localArgs: String,
+   *  localArgs: Array<String>,
    *  localIdentifier: String,
    *  localLoggingLevel: Number
    * }}

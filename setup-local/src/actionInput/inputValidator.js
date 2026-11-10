@@ -122,27 +122,15 @@ class InputValidator {
   }
 
   /**
-   * Quotes a token for the command line consumed by @actions/exec, which
-   * understands double quotes and backslash-escaped double quotes (other
-   * backslashes are passed through untouched).
-   * @param {String} token Single arg token
-   * @returns {String} Token safe to place in the command string
-   */
-  static _quoteArg(token) {
-    if (!/[\s"]/.test(token)) return token;
-    return `"${token.replace(/"/g, '\\"')}"`;
-  }
-
-  /**
    * Validates the local-args input. Removes any args which might conflict with
    * the input args taken from the action input for the Local Binary.
    * Every value following a flag is preserved, so flags taking multiple values
    * (e.g. --include-hosts host1 host2) are passed to the binary intact.
    * @param {String} inputLocalArgs Action input for 'local-args'
-   * @returns {String} Parsed args
+   * @returns {Array<String>} Parsed args, one element per argv entry
    */
   static validateLocalArgs(inputLocalArgs) {
-    if (!inputLocalArgs) return '';
+    if (!inputLocalArgs) return [];
 
     const tokens = InputValidator._tokenizeArgs(inputLocalArgs);
     const isFlag = (token) => /^-{1,2}[^-\d]/.test(token);
@@ -155,10 +143,10 @@ class InputValidator {
         const flagName = token.replace(/^-{1,2}/, '').split('=')[0];
         keepCurrentGroup = !RESTRICTED_LOCAL_ARGS.includes(flagName);
       }
-      if (keepCurrentGroup) keptTokens.push(InputValidator._quoteArg(token));
+      if (keepCurrentGroup) keptTokens.push(token);
     });
 
-    return keptTokens.join(' ');
+    return keptTokens;
   }
 }
 

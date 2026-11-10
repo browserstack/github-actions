@@ -98,20 +98,22 @@ class BinaryControl {
       localTesting: binaryAction,
     } = this.stateForBinary;
 
-    let argsString = `--key ${key} --only-automate --ci-plugin GitHubAction `;
+    // Built as an argv array (not a command string) so that values containing
+    // spaces/quotes/backslashes reach the binary verbatim, without re-parsing.
+    const args = ['--key', key, '--only-automate', '--ci-plugin', 'GitHubAction'];
 
     switch (binaryAction) {
       case LOCAL_TESTING.START: {
-        if (localArgs) argsString += `${localArgs} `;
-        if (localIdentifier) argsString += `--local-identifier ${localIdentifier} `;
+        if (localArgs && localArgs.length) args.push(...localArgs);
+        if (localIdentifier) args.push('--local-identifier', localIdentifier);
         if (verbose) {
           this._generateLogFileMetadata();
-          argsString += `--verbose ${verbose} --log-file ${this.logFilePath} `;
+          args.push('--verbose', `${verbose}`, '--log-file', this.logFilePath);
         }
         break;
       }
       case LOCAL_TESTING.STOP: {
-        if (localIdentifier) argsString += `--local-identifier ${localIdentifier} `;
+        if (localIdentifier) args.push('--local-identifier', localIdentifier);
         break;
       }
       default: {
@@ -119,7 +121,7 @@ class BinaryControl {
       }
     }
 
-    this.binaryArgs = argsString;
+    this.binaryArgs = args;
   }
 
   /**
@@ -130,8 +132,8 @@ class BinaryControl {
     let triggerOutput = '';
     let triggerError = '';
     await exec.exec(
-      `${LOCAL_BINARY_NAME} ${this.binaryArgs} --daemon ${operation}`,
-      [],
+      LOCAL_BINARY_NAME,
+      [...this.binaryArgs, '--daemon', operation],
       {
         listeners: {
           stdout: (data) => {

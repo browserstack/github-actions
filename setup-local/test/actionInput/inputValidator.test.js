@@ -1,7 +1,6 @@
 const core = require('@actions/core');
 const { expect } = require('chai');
 const sinon = require('sinon');
-const { argStringToArray } = require('@actions/exec/lib/toolrunner');
 const constants = require('../../config/constants');
 const InputValidator = require('../../src/actionInput/inputValidator');
 
@@ -80,55 +79,49 @@ describe('InputValidator class to validate individual fields of the action input
     context('Validates local args', () => {
       it('Removes the restricted/not-alowed args from the local-args input and returns the string', () => {
         const inputLocalArgs = '--key someKey --proxy-host hostname --someOtherKey someValue -z --daemon start --ci-plugin someName -k anotherKey --only-automate --log-file some/path/ --verbose level --local-identifier someIdentifier';
-        const expectedLocalArgs = '--proxy-host hostname --someOtherKey someValue -z';
-        expect(InputValidator.validateLocalArgs(inputLocalArgs)).to.eq(expectedLocalArgs);
+        const expectedLocalArgs = ['--proxy-host', 'hostname', '--someOtherKey', 'someValue', '-z'];
+        expect(InputValidator.validateLocalArgs(inputLocalArgs)).to.deep.eq(expectedLocalArgs);
       });
 
       ['', null, undefined].forEach((value) => {
-        it(`Returns empty string if the input is :${JSON.stringify(value)}`, () => {
-          expect(InputValidator.validateLocalArgs(value)).to.eq('');
+        it(`Returns an empty array if the input is :${JSON.stringify(value)}`, () => {
+          expect(InputValidator.validateLocalArgs(value)).to.deep.eq([]);
         });
       });
 
       it('Keeps every value of a flag that takes multiple values (quoted)', () => {
         const inputLocalArgs = '--include-hosts "hostA.example.com:443" "hostB.example.com:443" --force-local';
-        const expectedLocalArgs = '--include-hosts hostA.example.com:443 hostB.example.com:443 --force-local';
-        expect(InputValidator.validateLocalArgs(inputLocalArgs)).to.eq(expectedLocalArgs);
+        expect(InputValidator.validateLocalArgs(inputLocalArgs)).to.deep.eq([
+          '--include-hosts', 'hostA.example.com:443', 'hostB.example.com:443', '--force-local',
+        ]);
       });
 
       it('Keeps every value of a flag that takes multiple values (unquoted, multi-line)', () => {
         const inputLocalArgs = '--include-hosts hostA.example.com\n  hostB.example.com\n--exclude-hosts hostC hostD';
-        const expectedLocalArgs = '--include-hosts hostA.example.com hostB.example.com --exclude-hosts hostC hostD';
-        expect(InputValidator.validateLocalArgs(inputLocalArgs)).to.eq(expectedLocalArgs);
+        expect(InputValidator.validateLocalArgs(inputLocalArgs)).to.deep.eq([
+          '--include-hosts', 'hostA.example.com', 'hostB.example.com', '--exclude-hosts', 'hostC', 'hostD',
+        ]);
       });
 
       it('Removes the values of restricted args even when they have multiple values', () => {
         const inputLocalArgs = '--include-hosts hostA hostB --verbose 3 extra --local-identifier=abc --key=secret --proxy-port 8080';
-        const expectedLocalArgs = '--include-hosts hostA hostB --proxy-port 8080';
-        expect(InputValidator.validateLocalArgs(inputLocalArgs)).to.eq(expectedLocalArgs);
+        expect(InputValidator.validateLocalArgs(inputLocalArgs)).to.deep.eq([
+          '--include-hosts', 'hostA', 'hostB', '--proxy-port', '8080',
+        ]);
       });
 
       it('Drops tokens that appear before the first flag', () => {
-        expect(InputValidator.validateLocalArgs('stray value --force-local')).to.eq('--force-local');
+        expect(InputValidator.validateLocalArgs('stray value --force-local')).to.deep.eq(['--force-local']);
       });
 
       it('Keeps negative numbers as values rather than treating them as flags', () => {
-        expect(InputValidator.validateLocalArgs('--some-flag -1 --other')).to.eq('--some-flag -1 --other');
+        expect(InputValidator.validateLocalArgs('--some-flag -1 --other')).to.deep.eq(['--some-flag', '-1', '--other']);
       });
 
-      it('Re-quotes values containing whitespace or double quotes', () => {
-        const inputLocalArgs = `--folder "/path with spaces/dir" --name 'say "hi"'`;
-        const expectedLocalArgs = '--folder "/path with spaces/dir" --name "say \\"hi\\""';
-        expect(InputValidator.validateLocalArgs(inputLocalArgs)).to.eq(expectedLocalArgs);
-      });
-
-      it('Produces a string that @actions/exec splits back into the intended argv', () => {
-        const inputLocalArgs = `--include-hosts "hostA:443" "hostB:443" --folder "C:\\my dir\\site" --name 'say "hi"'`;
-        const parsed = argStringToArray(InputValidator.validateLocalArgs(inputLocalArgs));
-        expect(parsed).to.deep.eq([
-          '--include-hosts', 'hostA:443', 'hostB:443',
-          '--folder', 'C:\\my dir\\site',
-          '--name', 'say "hi"',
+      it('Keeps quoted values with spaces, quotes and backslashes as single verbatim args', () => {
+        const inputLocalArgs = `--folder "C:\\my dir\\" --name 'say "hi"' --other "it's"`;
+        expect(InputValidator.validateLocalArgs(inputLocalArgs)).to.deep.eq([
+          '--folder', 'C:\\my dir\\', '--name', 'say "hi"', '--other', "it's",
         ]);
       });
     });

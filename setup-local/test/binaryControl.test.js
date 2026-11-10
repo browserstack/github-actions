@@ -199,7 +199,7 @@ describe('Binary Control Operations', () => {
         it('with localArgs, localIdentifier, localLoggingLevel', () => {
           const stateForBinary = {
             accessKey: 'someKey',
-            localArgs: '--arg1 val1 --arg2 val2',
+            localArgs: ['--arg1', 'val1', '--arg2', 'val2'],
             localIdentifier: 'someIdentifier',
             localLoggingLevel: 1,
             localTesting: 'start',
@@ -214,55 +214,59 @@ describe('Binary Control Operations', () => {
             os.platform(),
             'BrowserStackLocal_someJobName_now.log',
           );
-          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction --arg1 val1 --arg2 val2 --local-identifier someIdentifier --verbose 1 --log-file ${expectedLogFilePath} `;
+          const expectedFinalArgs = [
+            '--key', 'someKey', '--only-automate', '--ci-plugin', 'GitHubAction',
+            '--arg1', 'val1', '--arg2', 'val2',
+            '--local-identifier', 'someIdentifier', '--verbose', '1', '--log-file', expectedLogFilePath,
+          ];
           const binaryControl = new BinaryControl(stateForBinary);
           binaryControl._generateArgsForBinary();
-          expect(binaryControl.binaryArgs).to.eq(expectedFinalArgs);
+          expect(binaryControl.binaryArgs).to.deep.eq(expectedFinalArgs);
         });
 
         it('with localArgs, localIdentifier', () => {
           const stateForBinary = {
             accessKey: 'someKey',
-            localArgs: '--arg1 val1 --arg2 val2',
+            localArgs: ['--arg1', 'val1', '--arg2', 'val2'],
             localIdentifier: 'someIdentifier',
             localLoggingLevel: 0,
             localTesting: 'start',
           };
 
-          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction --arg1 val1 --arg2 val2 --local-identifier someIdentifier `;
+          const expectedFinalArgs = ['--key', 'someKey', '--only-automate', '--ci-plugin', 'GitHubAction', '--arg1', 'val1', '--arg2', 'val2', '--local-identifier', 'someIdentifier'];
           const binaryControl = new BinaryControl(stateForBinary);
           binaryControl._generateArgsForBinary();
-          expect(binaryControl.binaryArgs).to.eq(expectedFinalArgs);
+          expect(binaryControl.binaryArgs).to.deep.eq(expectedFinalArgs);
         });
 
         it('with localArgs', () => {
           const stateForBinary = {
             accessKey: 'someKey',
-            localArgs: '--arg1 val1 --arg2 val2',
+            localArgs: ['--arg1', 'val1', '--arg2', 'val2'],
             localIdentifier: '',
             localLoggingLevel: 0,
             localTesting: 'start',
           };
 
-          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction --arg1 val1 --arg2 val2 `;
+          const expectedFinalArgs = ['--key', 'someKey', '--only-automate', '--ci-plugin', 'GitHubAction', '--arg1', 'val1', '--arg2', 'val2'];
           const binaryControl = new BinaryControl(stateForBinary);
           binaryControl._generateArgsForBinary();
-          expect(binaryControl.binaryArgs).to.eq(expectedFinalArgs);
+          expect(binaryControl.binaryArgs).to.deep.eq(expectedFinalArgs);
         });
 
         it('with the default args', () => {
           const stateForBinary = {
             accessKey: 'someKey',
-            localArgs: '',
+            localArgs: [],
             localIdentifier: '',
             localLoggingLevel: 0,
             localTesting: 'start',
           };
 
-          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction `;
+          const expectedFinalArgs = ['--key', 'someKey', '--only-automate', '--ci-plugin', 'GitHubAction'];
           const binaryControl = new BinaryControl(stateForBinary);
           binaryControl._generateArgsForBinary();
-          expect(binaryControl.binaryArgs).to.eq(expectedFinalArgs);
+          expect(binaryControl.binaryArgs).to.deep.eq(expectedFinalArgs);
         });
       });
 
@@ -270,31 +274,31 @@ describe('Binary Control Operations', () => {
         it('with localIdentifier', () => {
           const stateForBinary = {
             accessKey: 'someKey',
-            localArgs: '',
+            localArgs: [],
             localIdentifier: 'someIdentifier',
             localLoggingLevel: 0,
             localTesting: 'stop',
           };
 
-          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction --local-identifier someIdentifier `;
+          const expectedFinalArgs = ['--key', 'someKey', '--only-automate', '--ci-plugin', 'GitHubAction', '--local-identifier', 'someIdentifier'];
           const binaryControl = new BinaryControl(stateForBinary);
           binaryControl._generateArgsForBinary();
-          expect(binaryControl.binaryArgs).to.eq(expectedFinalArgs);
+          expect(binaryControl.binaryArgs).to.deep.eq(expectedFinalArgs);
         });
 
         it('without localIdentifier', () => {
           const stateForBinary = {
             accessKey: 'someKey',
-            localArgs: '',
+            localArgs: [],
             localIdentifier: '',
             localLoggingLevel: 0,
             localTesting: 'stop',
           };
 
-          const expectedFinalArgs = `--key someKey --only-automate --ci-plugin GitHubAction `;
+          const expectedFinalArgs = ['--key', 'someKey', '--only-automate', '--ci-plugin', 'GitHubAction'];
           const binaryControl = new BinaryControl(stateForBinary);
           binaryControl._generateArgsForBinary();
-          expect(binaryControl.binaryArgs).to.eq(expectedFinalArgs);
+          expect(binaryControl.binaryArgs).to.deep.eq(expectedFinalArgs);
         });
       });
 
@@ -302,7 +306,7 @@ describe('Binary Control Operations', () => {
         it('Throws error in case its not start/stop', () => {
           const stateForBinary = {
             accessKey: 'someKey',
-            localArgs: '',
+            localArgs: [],
             localIdentifier: 'someIdentifier',
             localLoggingLevel: 0,
             localTesting: 'someOperation',
@@ -322,7 +326,7 @@ describe('Binary Control Operations', () => {
       beforeEach(() => {
         sinon.stub(exec, 'exec');
         binaryControl = new BinaryControl();
-        binaryControl.binaryArgs = 'someArgs ';
+        binaryControl.binaryArgs = ['someArgs'];
       });
 
       afterEach(() => {
@@ -331,7 +335,7 @@ describe('Binary Control Operations', () => {
 
       it('Start Operation', async () => {
         const response = await binaryControl._triggerBinary(LOCAL_TESTING.START);
-        sinon.assert.calledWith(exec.exec, `${LOCAL_BINARY_NAME} someArgs  --daemon start`);
+        sinon.assert.calledWith(exec.exec, LOCAL_BINARY_NAME, ['someArgs', '--daemon', 'start']);
         expect(response).to.eql({
           output: '',
           error: '',
@@ -340,7 +344,7 @@ describe('Binary Control Operations', () => {
 
       it('Stop Operation', async () => {
         const response = await binaryControl._triggerBinary(LOCAL_TESTING.STOP);
-        sinon.assert.calledWith(exec.exec, `${LOCAL_BINARY_NAME} someArgs  --daemon stop`);
+        sinon.assert.calledWith(exec.exec, LOCAL_BINARY_NAME, ['someArgs', '--daemon', 'stop']);
         expect(response).to.eql({
           output: '',
           error: '',
