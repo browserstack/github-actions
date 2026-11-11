@@ -6,32 +6,11 @@ import { dirname, join } from "node:path"
 
 const actionYml = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "action.yml"), "utf8")
 
-/** The composite steps, split on the step marker so each carries its own env. */
+// The composite steps, split on the step marker so each carries its own env.
 const steps = actionYml.split(/\n {8}- name: /).slice(1)
 const nameOf = (s) => s.split("\n")[0].trim()
 
 describe("action.yml — every step that runs tc must pin it", () => {
-	/**
-	 * Found live on 2026-10-29, the day tc 1.1.9 shipped.
-	 *
-	 * The pin was set on the Run step only. But `Sign in` runs `tc auth login`
-	 * FIRST, unpinned, so the CLI self-upgraded there — and the Run step then
-	 * correctly reported a mismatch against the very binary the pin existed to
-	 * preserve:
-	 *
-	 *  tc is pinned to version 1.1.8 but the installed binary is 1.1.9
-	 *
-	 * So asking for a pinned version MADE THE RUN FAIL, which is the exact
-	 * opposite of what promises. The spec lists as "Done, but NEVER
-	 * EXECUTED"; this is what was hiding in it.
-	 *
-	 * `tc --version` is exempt: upgrade.shouldSkip returns true for it, because
-	 * swapping the binary before reporting its version would defeat the point
-	 * of asking.
-	 */
-	// Directly (`tc auth login`) or indirectly — the Run step shells out to
-	// main.mjs, which spawns tc for the workflow run and for `workflow
-	// bindings`. Both need the pin; only one of them says "tc" in the YAML.
 	const runsTc = (body) => {
 		const withoutVersionChecks = body.replace(/^.*--version.*$/gm, "")
 		return /(^|[\s"'`/])tc\s/m.test(withoutVersionChecks) || /main\.mjs/.test(withoutVersionChecks)
@@ -55,18 +34,7 @@ describe("action.yml — every step that runs tc must pin it", () => {
 	})
 })
 
-/**
- * A live run's dedupe claim is a real `git push` to origin, and the workflow
- * sets `persist-credentials: false`, so git has no credential for it. Pointing
- * git at gh's stored credential fixes that without putting a token in any
- * environment variable.
- *
- * The teardown is the part worth pinning. The helper goes in the GLOBAL git
- * config, which outlives the job on a self-hosted runner, and it points at a
- * config dir the cleanup deletes. Left behind, the next job on that runner
- * gets a helper that answers nothing and a git command that stops to ask for
- * a password instead of failing.
- */
+// The helper goes in the global git config, which outlives the job on a self-hosted runner.
 describe("action.yml — git's credential helper is cleaned up", () => {
 	test("git is pointed at gh's credential", () => {
 		assert.match(actionYml, /gh auth setup-git/, "a live run's dedupe claim has no credential to push with")
@@ -78,10 +46,7 @@ describe("action.yml — git's credential helper is cleaned up", () => {
 
 	test("whatever sets the helper also unsets it", () => {
 		if (!/gh auth setup-git/.test(actionYml)) return
-		// `--unset` WITH A VALUE PATTERN, not `--unset-all`. The blanket form
-		// removed every helper for that URL, including ones the runner's owner
-		// set up before us, and ran even when our own setup-git had failed
-		//
+		// Not `--unset-all`: that also removes helpers the runner's owner set up.
 		assert.match(
 			actionYml,
 			/--unset "credential:\/\/\$host\.helper"|--unset "credential\.https:\/\/\$host\.helper"/,
@@ -94,8 +59,6 @@ describe("action.yml — git's credential helper is cleaned up", () => {
 		assert.match(teardown.slice(0, 200), /if: always\(\)/)
 	})
 
-	// Set up after the login succeeds, not before: there is nothing stored to
-	// hand git until then.
 	test("the helper is set up only on the successful-login path", () => {
 		const login = actionYml.indexOf("gh auth login --with-token")
 		const setup = actionYml.indexOf("gh auth setup-git")
@@ -103,10 +66,6 @@ describe("action.yml — git's credential helper is cleaned up", () => {
 	})
 })
 
-/**
- * The cleanup must not damage a
- * self-hosted runner's own git configuration.
- */
 describe("action.yml — the cleanup only removes what this job added", () => {
 	test("it never uses the blanket --unset-all on a credential helper", () => {
 		assert.doesNotMatch(
@@ -121,12 +80,7 @@ describe("action.yml — the cleanup only removes what this job added", () => {
 	})
 })
 
-/**
- * `gh auth setup-git` writes TWO values per host: an
- * empty helper that clears any general helper inherited from a broader scope,
- * and then its own. Removing only the second leaves the runner's own helper
- * disabled for that host.
- */
+// `gh auth setup-git` writes two values per host: an empty helper, then its own.
 describe("action.yml — the cleanup removes both of setup-git's entries", () => {
 	test("the empty helper is unset too", () => {
 		assert.match(actionYml, /--unset "credential[^"]*\.helper" '\^\$'/, "an empty helper keeps a general one disabled")

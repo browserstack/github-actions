@@ -3,14 +3,6 @@ import assert from "node:assert/strict"
 import { OUTCOMES, emojiFor } from "../src/outcome.mjs"
 import { renderJobSummary } from "../src/report.mjs"
 
-/**
- * The outcome should be readable at a glance.
- *
- * "## Test Companion — Run broke" and "## Test Companion — Succeeded" look the
- * same in a crowded pull request thread, and the one that needs attention is
- * the one that blends in.
- */
-
 describe("every outcome has a mark of its own", () => {
 	test("no two outcomes share one", () => {
 		const marks = Object.values(OUTCOMES).map(emojiFor)
@@ -25,7 +17,6 @@ describe("every outcome has a mark of its own", () => {
 
 	test("an outcome we do not know does not break the heading", () => {
 		// A newer CLI could report something this Action has never heard of.
-		// A missing mark is a cosmetic loss; a crash is a lost report.
 		assert.equal(emojiFor("Something new"), "")
 		assert.equal(emojiFor(undefined), "")
 	})

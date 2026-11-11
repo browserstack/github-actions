@@ -1,58 +1,24 @@
-/**
- * What the run leaves behind.
- *
- * Only the rendering and the decisions live here, with no network calls, so the
- * awkward parts are testable without a runner: whether a preview run is marked
- * as one, and whether a second run adds a second comment or edits the first.
- * The GitHub calls themselves are a thin layer in main.mjs over `gh`, which is
- * preinstalled on every runner and already how this product talks to GitHub.
- */
+/** Rendering and decisions for the run's comment, check and job summary. No network calls. */
 import { CAPABILITIES, isApprovalOnly } from "./intent.mjs"
 import { emojiFor } from "./outcome.mjs"
 
-/**
- * The outcome with its mark in front — never instead of the words, so a reader
- * with images off, or a screen reader, still gets the whole outcome. An
- * outcome with no mark reads exactly as it did before.
- */
 const withMark = (outcome) => {
 	const mark = emojiFor(outcome)
 	return mark ? `${mark} ${outcome}` : String(outcome ?? "")
 }
 
 /**
- * How a later run finds the comment it wrote earlier: ONE comment, edited in
- * place, not a new one per run. An HTML comment so a reader never sees it.
- */
-/**
- * Is this comment one WE wrote?
- *
- * "Any bot" is not good enough. Another App on the repository, or
- * `github-actions[bot]` driven by any other workflow, could post a comment
- * carrying our proposal marker — and a maintainer's `go` would then feed that
- * body to a live `--yolo` run as the approved plan. No write access needed,
- * just a workflow, and plenty of repositories run one on a fork's pull
- * request.
- *
- * Fails CLOSED: with no login to compare against, nothing is ours. The worst
- * case is proposing again; the alternative is running someone else's text.
+ * Only comments posted by our own bot login count. Another App or workflow
+ * could post our markers, and a `go` would then run their text as the plan.
  */
 export const isOurs = (comment, us) => Boolean(us) && comment?.user?.type === "Bot" && comment?.user?.login === us
 
+// Hidden marker so later runs edit one comment instead of posting new ones.
 export const COMMENT_MARKER = "<!-- test-companion-run -->"
 
 const previewRun = (summary) => summary?.preview === "true"
 
-/**
- * What the run produced, in the words a reviewer actually wants.
- *
- * Returns nothing for a run that generates no cases (rca, fix, verdict): a
- * row reading "0 generated" on one of those looks like something went wrong.
- *
- * The case that matters most is cases generated and NONE saved. As a bare
- * pair of numbers, "12 generated · 0 saved" reads as success to a skimming
- * reader — a run can produce 27 cases, report "Succeeded", and lose them all.
- */
+// Flags generated-but-unsaved cases loudly; bare counts read as success.
 function producedLines(summary, resultArtifact) {
 	const generated = Number(summary.cases_generated ?? 0)
 	const saved = Number(summary.cases_saved ?? 0)
@@ -75,43 +41,22 @@ function producedLines(summary, resultArtifact) {
 	return [lines.join(" "), ""]
 }
 
-/**
- * How many failing tests the report names before it stops.
- *
- * A suite that loses a hundred tests turns the check into a wall of text
- * nobody reads. The first few plus a count is more useful than all of them,
- * and every one is still annotated on the diff.
- */
 const FAILURES_LISTED = 20
 
 /**
- * Make text that came from outside safe to put in our own comment.
- *
- * The answer and the failing-test names are the only parts of the comment
- * this Action did not write. On a fork's pull request both are
- * attacker-influenceable, and even without malice a log line can contain one
- * of our markers — which are HTML comments, so one arriving inside borrowed
- * text is read back as our own control data.
- *
- * Only the OPENING delimiter needs breaking; without it `-->` is three
- * characters of prose. `&lt;!--` still renders as `<!--`, so a quoted log
- * line is unchanged for the person reading it.
- *
- * Idempotent: the output contains no `<!--` for a second pass to find.
+ * Break `<!--` in text we did not write (agent answer, test names), so it
+ * cannot plant one of our HTML-comment markers. Renders the same.
  */
 function inertMarkers(text) {
 	return String(text).replace(/<!--/g, "&lt;!--")
 }
 
-/** The failing tests, named, with where they are when that is known. */
 function failureLines(failedTests) {
 	const failures = failedTests ?? []
 	if (failures.length === 0) return []
 
 	const lines = ["**Failed:**", ""]
 	for (const t of failures.slice(0, FAILURES_LISTED)) {
-		// A number or nothing: `line` is borrowed from the same report as the
-		// rest and went in raw, which neutralising its two siblings had missed.
 		const n = Number(t.line)
 		const at = Number.isInteger(n) && n > 0 ? `:${n}` : ""
 		const where = t.file ? ` — \`${inertMarkers(t.file)}${at}\`` : ""
@@ -124,7 +69,6 @@ function failureLines(failedTests) {
 	return lines
 }
 
-/** The run page's summary — written for every run, including the bad ones. */
 export function renderJobSummary({
 	workflow,
 	outcome,
@@ -143,30 +87,19 @@ export function renderJobSummary({
 	warnings = [],
 } = {}) {
 	const lines = []
-	// The mark goes in front of the words, never instead of them: a reader with
-	// images off, or a screen reader, still gets the whole outcome.
 	lines.push(`## Test Companion — ${withMark(outcome)}`)
 	lines.push("")
 
-	// both asking and approving need write access, so one person doing
-	// both is not an escalation — but a reviewer reading the result should be
-	// able to see that no second pair of eyes was involved.
 	if (String(approvalNote ?? "").trim()) {
 		lines.push(`>${inertMarkers(approvalNote)}`)
 		lines.push("")
 	}
 
-	// The run could not plant its duplicate-protection flag and went ahead
-	// anyway. The CLI records it in the report as `dedupe:`; without this the
-	// only trace was the raw job log, and the comment — which is what the
-	// customer reads — said nothing.
 	if (String(summary.dedupe ?? "").trim()) {
 		lines.push(`> \u26a0\ufe0f Ran without duplicate protection: ${inertMarkers(summary.dedupe)}`)
 		lines.push("")
 	}
 
-	// a write that was configured and could not happen must be said out
-	// loud — a silent skip reads as "there was nothing to write".
 	for (const w of warnings) {
 		if (String(w ?? "").trim()) {
 			lines.push(`> \u26a0\ufe0f ${inertMarkers(w)}`)
@@ -175,13 +108,7 @@ export function renderJobSummary({
 	}
 
 	if (previewRun(summary)) {
-		// Say that a preview wrote nothing. Without this a clean-looking report
-		// reads as "the work landed".
-		// Not "nothing was written": preview refuses Test Companion's own write
-		// TOOLS, and deliberately allows `execute_command` because that is how
-		// tests run (preview-tool-policy.ts). A shell command the agent chose can
-		// still edit a file or push, so claiming nothing was written overstates
-		// the guarantee.
+		// Preview blocks Test Companion's own write tools, not shell commands the agent runs.
 		lines.push(
 			"> **Preview** — Test Companion refused every one of its own write tools, so it created, changed and saved nothing itself. Shell commands the agent ran are not covered by that.",
 		)
@@ -193,17 +120,9 @@ export function renderJobSummary({
 		["Trigger", summary.event],
 		["Outcome", withMark(outcome)],
 		["Took", summary.duration],
-		// Credits, not dollars: it is the unit the bill and the pipeline file's
-		// own ceiling are written in, so a figure in dollars would not line up
-		// with the limit the run was given.
 		["Cost", summary.credits ? `${summary.credits} credits` : ""],
 		["CLI", cliVersion],
-		// Which request this is the answer to. The comment is edited in place,
-		// so without this a reader cannot tell whose question it answers.
 		["Asked by", askedBy ? (askedAt ? `[@${askedBy}](${askedAt})` : `@${askedBy}`) : ""],
-		// WHICH plan this run carried out. With two plans waiting on one commit,
-		// "approved" on its own does not say which was approved — and after
-		// two CAN wait, because approving one no longer finishes off the other.
 		["Plan", approvedPlan?.url ? `[#${approvedPlan.id}](${approvedPlan.url})` : ""],
 	].filter(([, v]) => v)
 
@@ -211,10 +130,6 @@ export function renderJobSummary({
 	for (const [k, v] of rows) lines.push(`| ${k} | ${inertMarkers(v)} |`)
 	lines.push("")
 
-	// For `rca` and `verdict` this IS the report — they produce no artefact, only
-	// an explanation. It goes directly under the table, above the run links,
-	// because it is the thing the person who commented actually asked for.
-	// Everything else leaves the view untouched: no answer, nothing rendered.
 	if (String(answer ?? "").trim()) {
 		lines.push(inertMarkers(String(answer).trim()), "")
 	}
@@ -222,12 +137,6 @@ export function renderJobSummary({
 	lines.push(...failureLines(failedTests))
 	lines.push(...producedLines(summary, resultArtifact))
 
-	// what the approved run actually saved, and where. The run writes
-	// on a runner that is deleted minutes later, so this line is the only
-	// record a reviewer gets of what an agent changed in their branch.
-	// Neutralised like every other borrowed field: it carries file names the
-	// agent created and git's own error text, and a file named like a marker
-	// would otherwise plant one in our trusted comment.
 	if (String(workNote ?? "").trim()) {
 		lines.push(inertMarkers(workNote), "")
 	}
@@ -236,12 +145,10 @@ export function renderJobSummary({
 		lines.push(`**Why it stopped:** \`${inertMarkers(summary.error_type)}\``, "")
 	}
 	if (Object.keys(summary).length === 0) {
-		// Being explicit beats an empty page: an absent report is itself a finding.
 		lines.push("_The run left no report file. That usually means it was cancelled or could not start._", "")
 	}
 	if (runUrl) lines.push(`[Full run](${runUrl})`)
 
-	// the accessibility and visual lines, when the settings asked for them.
 	if (extraChecks.length > 0) {
 		lines.push("")
 		for (const l of extraChecks) lines.push(l)
@@ -250,59 +157,26 @@ export function renderJobSummary({
 	return lines.join("\n")
 }
 
-/**
- * The longest body GitHub will accept on an issue comment.
- *
- * Over this the API rejects the call outright, so the run reports NOTHING
- * no table, no answer, no link. Worse than the missing answer that reading
- * every job's closing words set out to fix.
- */
+// GitHub's limit on an issue comment body; over it the API rejects the whole comment.
 export const COMMENT_LIMIT = 65536
 
-/** Where the whole thing can still be read when the comment could not hold it. */
 function cutShortNote(runUrl) {
 	const where = runUrl ? `the [run page](${runUrl})` : "the run's summary"
 	return `\n\n_Cut short to fit a comment. The full version is on ${where}._`
 }
 
-/**
- * The pull request comment — the same content, plus the marker.
- *
- * The answer is the one field with no natural bound: `generate` describing
- * thirty test cases runs to tens of thousands of characters. It is cut before
- * anything else, because the table, the links and the marker are what make the
- * comment work at all — and the marker in particular is how the next run finds
- * this comment to edit. Lose it and every run posts a new one.
- */
 export function renderComment(args) {
 	return renderWithin(args, COMMENT_LIMIT, `\n\n${COMMENT_MARKER}`)
 }
 
-/**
- * GitHub's cap on a check run's `output.summary`.
- *
- * One short of the comment limit, and it bites harder: an over-long comment
- * fails to post, which is visible, while an over-long summary 422s the check
- * API. gh turns that into a warning and returns null, so the "Running" check
- * posted before the run is never completed and sits `in_progress` on the head
- * commit for ever — blocking anyone who made it required.
- */
+// GitHub's cap on a check run's summary; over it the check is never completed.
 export const CHECK_SUMMARY_LIMIT = 65535
 
-/** The same report, cut to fit a check run's summary. */
 export function renderCheckSummary(args) {
 	return renderWithin(args, CHECK_SUMMARY_LIMIT, "")
 }
 
-/**
- * Render the report so that it fits, cutting the ANSWER first.
- *
- * Three sinks render the same view and each needs its own bound: the comment,
- * the check run's summary, and the proposal reply. The answer is the one
- * field with no natural limit — `generate` describing thirty cases runs to
- * tens of thousands of characters — so it is cut first and the table, the
- * links and the marker survive.
- */
+/** Render within `limit`, cutting the agent's answer first so the table, links and marker survive. */
 function renderWithin(args, limit, tail) {
 	const body = renderJobSummary(args)
 	if (body.length + tail.length <= limit) return body + tail
@@ -310,65 +184,34 @@ function renderWithin(args, limit, tail) {
 	const note = cutShortNote(args?.runUrl)
 	const answer = inertMarkers(String(args?.answer ?? "").trim())
 	if (answer) {
-		// Measure the rest by rendering it with a one-character answer, so this
-		// stays exact if the layout around it ever changes.
 		const overhead = renderJobSummary({ ...args, answer: "x" }).length - 1
 		const room = limit - overhead - tail.length - note.length
 		if (room > 0) {
-			// Back up to a line break where there is one nearby: cutting inside
-			// a code fence leaves it unterminated and the rest of the comment
-			// renders as code.
+			// Cut at a nearby line break, so a code fence is less likely to be left open.
 			const cut = answer.slice(0, room)
 			const nl = cut.lastIndexOf("\n")
 			const kept = nl > room / 2 ? cut.slice(0, nl) : cut
 			return renderJobSummary({ ...args, answer: kept + note }) + tail
 		}
 	}
-	// Over the limit with no answer at all — a run with thousands of failing
-	// tests does this. Trim the rendered body itself; the marker still goes on.
 	const rest = renderJobSummary({ ...args, answer: undefined })
 	return rest.slice(0, Math.max(0, limit - tail.length - note.length)) + note + tail
 }
 
-/**
- * Edit our comment, or write the first one.
- *
- * Only a comment WE wrote counts. Matching on the marker alone would let a
- * person quoting our comment in their reply capture the thread, after which
- * every run would overwrite their words.
- */
+// Only our own marked comment; a person quoting it must not capture the thread.
 export function chooseCommentAction(comments, us) {
 	const ours = (comments ?? []).filter((c) => isOurs(c, us) && (c.body ?? "").includes(COMMENT_MARKER))
 	if (ours.length === 0) return { action: "create" }
-	// Oldest, so repeated runs converge on one comment even if a duplicate
-	// somehow appeared.
 	const oldest = ours.reduce((a, b) => (a.id <= b.id ? a : b))
 	return { action: "update", id: oldest.id }
 }
 
-/**
- * Which commit the "Test Companion" check is attached to.
- *
- * On a pull_request event GITHUB_SHA is the ephemeral MERGE commit, not the
- * branch head. A check posted there does not appear on the pull request and
- * cannot satisfy branch protection — which is exactly what the first live run
- * did. The event's own head sha, which the planner already extracted, is the
- * one a reviewer sees.
- */
+// On pull_request, GITHUB_SHA is the merge commit; the check must go on the head sha.
 export function checkSha(planContext = {}, summary = {}, githubSha) {
 	return planContext.sha || summary.sha || githubSha
 }
 
-/**
- * Someone without write access asked for a run.
- *
- * One line, naming who can ask, posted where the question was — the job
- * summary is not somewhere the person who commented ever looks.
- *
- * No COMMENT_MARKER, here or below. A refusal is not a run report, and
- * chooseCommentAction edits the OLDEST marked comment — so a marked refusal
- * would become the place every later run wrote its results.
- */
+// No COMMENT_MARKER on refusals, or chooseCommentAction would reuse them for run reports.
 export function renderNotAuthorized(login, askTeam) {
 	const team = String(askTeam ?? "").trim()
 	return team
@@ -376,20 +219,11 @@ export function renderNotAuthorized(login, askTeam) {
 		: `@${login} — only someone with write access to this repository can ask Test Companion for a run.`
 }
 
-/** We could not place the request —: reply with what we can do, run nothing. */
 export function renderUnknownRequest() {
 	const lines = CAPABILITIES.map(({ ask, does }) => `- **${ask}** — ${does}`)
 	return [`I could not tell which job that was asking for, so nothing ran. Here is what I can do:`, "", ...lines].join("\n")
 }
 
-/**
- * What to say to somebody who asked us to stop.
- *
- * `stop` used to cancel the run in flight and drop the waiting plan. Both are
- * gone, so this answers both halves: GitHub cancels a run, and a plan nobody
- * answers expires by itself. Saying only the first would leave someone
- * wondering what became of the plan they were trying to drop.
- */
 export function renderStopRemoved() {
 	return [
 		"`stop` is no longer something I do.",
@@ -400,82 +234,38 @@ export function renderStopRemoved() {
 	].join("\n")
 }
 
-/** a proposal nobody answers is dropped after 24 hours. */
 export const PROPOSAL_WINDOW_MS = 24 * 60 * 60 * 1000
 
-/**
- * How a waiting proposal is recognised later.
- *
- * Keyed to the COMMIT, which is what makes "new commits replace the
- * proposal" true without anything having to sweep: once the branch moves, the
- * old proposal simply stops being found, so a "go" can never approve work that
- * was proposed against different code.
- */
+// Keyed to the commit, so a new push makes an old proposal unapprovable.
 export function proposalMarkerFor(sha, requester, workflow) {
 	const by = String(requester ?? "").trim()
-	// The JOB travels with the proposal. Without it, approving a `fix`
-	// proposal ran whatever binding happened to be first in the pipeline file,
-	// because the GO path sets no workflow and the CLI then resolves one from
-	// the event alone. is "what you saw is what runs".
 	const job = String(workflow ?? "").trim()
 	return `<!-- test-companion-proposal sha=${sha}${by ? ` by=${by}` : ""}${job ? ` workflow=${job}` : ""} -->`
 }
 
-/**
- * The ONE pattern for a proposal marker. Several readers need it, and when
- * there were several patterns they drifted.
- *
- * Groups: 1 = requester, 2 = workflow. Both optional, so markers written
- * before either field existed stay readable.
- *
- * LITERAL, with the sha captured rather than interpolated. Built per-search
- * from the sha, it would have to be regex-escaped or it would quietly match
- * OTHER commits — `a.c*d+` also finds `abcccd`, so a plan for one commit
- * could be approved against another. Comparing captured text with `===`
- * removes the rule instead of restating it.
- */
+// Groups: 1 = sha, 2 = requester, 3 = workflow. The sha is captured and compared,
+// never built into the regex.
 const MARKER = /<!-- test-companion-proposal sha=([^\s>]+)(?: by=([^\s>]+))?(?: workflow=([^\s>]+))? -->/
 
-/** The marker's fields, or undefined when the comment has none. */
-//
-// The LAST marker, because ours is always the last line of the comment. The
-// plan above it is escaped (renderProposalBody), but if anything ever slips
-// through unescaped, the first match would be the planted one, and a planted
-// marker can name a different job for `go` to run.
+// The last marker, since ours ends the comment and anything earlier could be planted.
 const readMarker = (body) => {
 	const all = [...String(body ?? "").matchAll(new RegExp(MARKER.source, "g"))]
 	const found = all.at(-1)
 	return found ? { sha: found[1], requester: found[2], workflow: found[3] } : undefined
 }
 
-/**
- * The commit a check we already posted belongs to.
- *
- * The "in progress" check goes up BEFORE the CLI runs, on the PULL REQUEST's
- * head, so anything finishing the run afterwards has to complete THAT check
- * on THAT commit. Reaching for the event's own sha is wrong on a comment run,
- * where GITHUB_SHA is the default branch's: the second check lands on main
- * and the pull request's stays pending for ever.
- */
+// The commit our in-progress check went on (the PR head), which on a comment run is not GITHUB_SHA.
 export function checkSubjectFor(made, fallbackSha) {
 	for (const sha of made?.keys?.() ?? []) return sha
 	return fallbackSha
 }
 
-/**
- * Whether the job a proposal names may be run by a `go`.
- *
- * Only a job this repository has enabled. The name came out of a comment, and
- * it goes onto the CLI's command line, so anything else is refused: a job the
- * settings never bound, or something shaped like an option (`--config=…`).
- * Exact match against the settings' own list does both.
- */
+// Exact match against enabled jobs; the name reaches the CLI's command line.
 export function isApprovableJob(workflow, enabledWorkflows) {
 	const job = String(workflow ?? "")
 	return job !== "" && !job.startsWith("-") && (enabledWorkflows ?? []).includes(job)
 }
 
-/** The proposal comment: what the run would do, and how to let it. */
 export function renderProposal(body, sha, requester, workflow) {
 	return [
 		body,
@@ -486,57 +276,27 @@ export function renderProposal(body, sha, requester, workflow) {
 	].join("\n")
 }
 
-/**
- * Has the plan for this commit already been used, and how?
- *
- * Distinguishes "used up" from "proposed against an earlier commit": with
- * nothing waiting, the caller would otherwise reach for a superseded proposal
- * still in the thread and report the wrong reason.
- *
- * Returns "approved", "dropped", or undefined when the superseded reading is
- * the right one after all.
- */
+/** "approved", "dropped", or undefined when no plan on this commit was used. */
 export function proposalAlreadyUsed(comments, sha, us, workflow) {
 	const want = String(sha ?? "").trim()
 	const job = String(workflow ?? "").trim()
-	// No job asked about means "any plan on this commit", which is what the
-	// caller wants when the reply named no job either.
 	const here = spentPlans(comments, us).filter((m) => m.sha === want && (!m.workflow || !job || m.workflow === job))
 	if (here.some((m) => m.kind === "consumed")) return "approved"
 	if (here.some((m) => m.kind === "dropped")) return "dropped"
 	return undefined
 }
 
-/**
- * The proposal waiting on this commit, if there is one.
- *
- * Only a comment WE wrote counts, for the same reason chooseCommentAction
- * checks: otherwise a person quoting our proposal in their reply could approve
- * their own request.
- *
- * Fails CLOSED on an unreadable timestamp — treated as expired, so the worst
- * case is a fresh proposal rather than approving one of unknown age.
- */
+// Only our own comments count; an unreadable timestamp counts as expired.
 export function findProposal(comments, sha, now = Date.now(), us, opts = {}) {
-	// `by=` and `workflow=` are both optional, so proposals written before
-	// either was recorded stay approvable rather than becoming stuck.
 	const want = String(sha ?? "").trim()
-	// Spent, either way round: approved and run, or dropped by `stop` or
-	// by the sweep. Checked before anything else, so neither a second `go` nor
-	// the sweep can act on a plan that is already finished with.
-	//
-	// PER JOB, not per commit. A plan a
-	// marker does not name is still waiting, however many OTHER plans on this
-	// commit have been used up.
+	// Spent plans are tracked per job, so using one leaves the others on this commit waiting.
 	const spent = spentPlans(comments, us).filter((m) => m.sha === want)
 	if (spent.some((m) => !m.workflow)) return undefined
 	const spentJobs = new Set(spent.map((m) => m.workflow))
 
 	let ours = (comments ?? []).filter((c) => isOurs(c, us) && readMarker(c.body)?.sha === want)
 	ours = ours.filter((c) => !spentJobs.has(readMarker(c.body)?.workflow ?? ""))
-	// `go ` names ONE plan. With two waiting there is otherwise nothing in
-	// what was typed that picks between them, and the newest wins by default
-	// fine when there is one, a coin toss when there are two.
+	// `go <id>` picks one plan when several are waiting.
 	const named = String(opts?.id ?? "").trim()
 	if (named) ours = ours.filter((c) => String(c.id) === named)
 	if (ours.length === 0) return undefined
@@ -545,47 +305,21 @@ export function findProposal(comments, sha, now = Date.now(), us, opts = {}) {
 	const mark = readMarker(newest.body)
 	return {
 		id: newest.id,
-		// So the run's own comment can link the plan it carried out.
 		url: newest.html_url,
 		expired: !(age <= PROPOSAL_WINDOW_MS),
 		requester: mark?.requester,
-		// The job the person actually read and approved. Undefined on a
-		// proposal written before the marker carried one.
 		workflow: mark?.workflow,
-		// The run has to READ the approved plan to carry it out, so the
-		// body travels with the decision rather than being fetched again.
 		body: newest.body ?? "",
 	}
 }
 
-/**
- * The plan an approved run must carry out.
- *
- * A reply of "go" may carry edits to the case list, and the edits win:
- * someone looked at the proposal and changed it before approving.
- * Handing the run only the original proposal would quietly discard that.
- *
- * The proposal's own marker is stripped. It is bookkeeping, and leaving it in
- * invites the run to read it as an instruction.
- */
-/**
- * Did the approver change anything, or just say go?
- *
- * Worth knowing separately from the plan itself: edits made at approval time
- * were reviewed by nobody but the approver, and on a self-approved run by
- * nobody at all. That combination is reported rather than refused — see
- * decideGate — but it cannot be reported if it is not detected.
- */
 export function hasApproverEdits(replyText) {
 	const reply = String(replyText ?? "").trim()
 	if (!reply) return false
-	// A bare approval is not an edit, and neither is one that names WHICH plan
-	// `go `. Presenting either as an edit would have the run looking for
-	// an instruction nobody gave, and renderApprovedPlan would hand the agent
-	// the comment id itself under "these win".
 	return !isApprovalOnly(reply)
 }
 
+// Edits in the `go` reply win over the proposal.
 export function renderApprovedPlan(proposalBody, replyText) {
 	const plan = String(proposalBody ?? "")
 		.replace(/<!-- test-companion-proposal[^>]*-->/g, "")
@@ -599,23 +333,7 @@ export function renderApprovedPlan(proposalBody, replyText) {
 	return parts.join("\n")
 }
 
-/**
- * How a dropped proposal is remembered.
- *
- * The sweep that drops proposals runs nightly. Without a record, it would post
- * a fresh "Action required" check and a fresh comment on the same dead proposal
- * every night for as long as the pull request stayed open.
- */
-/**
- * A proposal has been APPROVED and run.
- *
- * Without this record the proposal stays "waiting" after it has been carried
- * out: a second `go` runs the job again, and the sweep later reports the
- * approved plan as unanswered.
- *
- * Separate from the dropped marker because they are different events and the
- * reply text differs, but both mean the same thing here — this plan is spent.
- */
+// Spent-plan markers, so neither a second `go` nor the nightly sweep acts on a finished plan.
 export function proposalConsumedMarkerFor(sha, workflow) {
 	return `<!-- test-companion-proposal-consumed sha=${String(sha ?? "")}${jobField(workflow)} -->`
 }
@@ -624,28 +342,12 @@ export function proposalDroppedMarkerFor(sha, workflow) {
 	return `<!-- test-companion-proposal-dropped sha=${String(sha ?? "")}${jobField(workflow)} -->`
 }
 
-/**
- * The job travels with a spent plan too.
- *
- * Keyed on the commit alone, one approval would finish off every plan on that
- * commit: approving `fix` would leave a waiting `generate` plan unapprovable
- * until somebody pushed.
- */
 function jobField(workflow) {
 	const job = String(workflow ?? "").trim()
 	return job ? ` workflow=${job}` : ""
 }
 
-/**
- * Every record in this thread of a plan being finished with, and what for.
- *
- * ONE pattern matching both kinds, for the same reason MARKER is one.
- *
- * `workflow=` is absent on markers written before the job was recorded. Those
- * mean the whole commit, which is what they meant when written — reading them
- * as "no particular job" would let an upgrade re-run work somebody had
- * already approved.
- */
+// A marker without `workflow=` covers every plan on the commit.
 const SPENT_MARKER = /<!-- test-companion-proposal-(consumed|dropped) sha=([^\s>]+)(?: workflow=([^\s>]+))? -->/g
 
 function spentPlans(comments, us) {
@@ -659,55 +361,17 @@ function spentPlans(comments, us) {
 	return out
 }
 
-/**
- * Is there a proposal on this commit that has run out of time and not yet
- * been dropped?
- *
- * An in-progress check is only safe if something is guaranteed to end it. A
- * proposal nobody answers would otherwise leave the check on "in progress"
- * forever, blocking anyone who made it required.
- */
+// An expired plan holds an in-progress check that would otherwise never complete.
 export function proposalNeedsDropping(comments, sha, now = Date.now(), us) {
-	// findProposal already leaves out anything dropped or approved, per job, so
-	// an expired plan coming back from it is by definition one nobody has
-	// finished with. The separate dropped-marker check this used to do was the
-	// same question asked twice, and the second asking was commit-wide — which
-	// is exactly what per-job plans had to stop.
 	return Boolean(findProposal(comments, sha, now, us)?.expired)
 }
 
-/**
- * The items out of a `gh api --paginate --slurp` response.
- *
- * `--slurp` returns an ARRAY OF PAGES, not a flat array of items, and it wraps
- * even when there is only one page. Verified against gh 2.91.0: twelve pages at
- * per_page=2, and still `[[...]]` at per_page=100.
- *
- * Without this, chooseCommentAction is handed an array of arrays, matches
- * nothing, returns "create" every time, and every run posts a NEW comment
- * the single-comment guarantee in, broken by the fix meant to protect it.
- * `--slurp` was added to stop `[...][...]` from failing JSON.parse, which it
- * does; the shape it produces instead was the part that got missed.
- *
- * Objects are not arrays, so flat leaves an already-flat list alone. That
- * keeps this correct if gh ever changes its mind.
- */
+// `gh api --paginate --slurp` returns an array of pages, even for a single page.
 export function flattenPages(slurped) {
 	return Array.isArray(slurped) ? slurped.flat() : []
 }
 
-/**
- * The accessibility and visual lines on the check.
- *
- * Both are silent unless the settings asked for them, and both read their
- * numbers from the run's summary file. Those keys — accessibility_new,
- * accessibility_total, visual_changes, visual_url — are the contract between
- * the run and this report.
- *
- * A check that was asked for and produced no number says so, rather than
- * rendering nothing: an absent line reads as "clean", and claiming a pass for
- * a check that never ran is the worst of the three outcomes.
- */
+// A requested check with no number says so; a missing line would read as clean.
 export function renderExtraChecks(summary = {}, { wcag, visual } = {}) {
 	const lines = []
 	const level = String(wcag ?? "").trim()
@@ -737,61 +401,29 @@ export function renderExtraChecks(summary = {}, { wcag, visual } = {}) {
 	return lines
 }
 
-/**
- * May accessibility turn the check red?
- *
- * Only when the settings say so, and only for violations THIS CHANGE
- * introduced. Failing a pull request for the state of a page it never touched
- * is how a gate gets switched off for good, and a gate nobody runs protects
- * nothing.
- *
- * A run that reported no number has not failed: absence is not a violation.
- */
+// Only violations this change introduced, and only when configured.
 export function accessibilityFailsCheck(summary = {}, { wcag, failOnNew } = {}) {
 	if (!String(wcag ?? "").trim() || !failOnNew) return false
 	const introduced = Number(summary.accessibility_new)
 	return Number.isFinite(introduced) && introduced > 0
 }
 
-/**
- * The body of a proposal.
- *
- * The first live run posted a proposal containing only a report header. The
- * run had designed nine test cases and verified each one by probing the
- * implementation; none of it reached the comment, because the proposal was
- * only ever handed the job summary.
- *
- * A proposal with no plan in it cannot be reviewed, which makes approving it
- * meaningless — so an absent plan says so out loud rather than rendering a
- * confident-looking empty proposal.
- */
+// A proposal with no plan says so rather than looking approvable.
 export function renderProposalBody({ summary, plan, sizeNote } = {}) {
 	const parts = []
-	// The size warning goes above the list, where it can still change what the
-	// reviewer approves.
 	if (String(sizeNote ?? "").trim()) parts.push(sizeNote, "")
-	// Escaped, both of them. The plan is written by the agent, so it can carry
-	// a hidden `<!-- test-companion-proposal … -->` that the person approving
-	// never sees, naming a different job for their `go` to run.
+	// The plan is agent-written; escape markers so it cannot redirect a `go`.
 	const safeSummary = inertMarkers(String(summary ?? ""))
 	if (safeSummary.trim()) parts.push(safeSummary, "")
 
 	const body = inertMarkers(String(plan ?? "").trim())
-	// The answer is now caught off the run's own output and rendered in the
-	// summary above, for every job. For the verbs whose result file holds that
-	// SAME closing text — `test-pr` proposing is one — appending it here
-	// printed the whole explanation twice. Compared on
-	// squashed whitespace, because the two copies travel by different routes
-	// and need not agree on line breaks.
+	// Skip the plan when the summary above already contains the same text.
 	const squash = (t) =>
 		String(t ?? "")
 			.replace(/\s+/g, " ")
 			.trim()
 	const alreadyAbove = body !== "" && squash(safeSummary).includes(squash(body))
-	// Only `test-pr` writes a separate plan file. For every other job the
-	// proposal run is a PREVIEW run — it does the work and writes nothing
-	// so its report above IS what is being approved. Saying "there is nothing
-	// here to approve" told the reader to re-run something that had worked.
+	// Without a plan file, the preview report above is what is being approved.
 	const noPlan = String(summary ?? "").trim()
 		? "_The report above is what this run would do. Nothing has been written._"
 		: "_This run did not produce a plan — there is nothing here to approve. The run log will say why; re-run once that is fixed._"
@@ -799,73 +431,29 @@ export function renderProposalBody({ summary, plan, sizeNote } = {}) {
 	return parts.join("\n")
 }
 
-/**
- * A proposal on this pull request that a newer commit has left behind.
- *
- * The marker keys a proposal to a commit, so a new commit silently replaces it.
- * That is the right safety behaviour: a plan written against code that has
- * since changed must never be carried out. But silence is the wrong way to
- * say it.
- *
- * Observed live on 2026-10-29: someone replied "go" after the branch moved and
- * was told "No @test-companion mention, so nothing was asked of Test
- * Companion." They had given a valid approval word, and the actual reason was
- * sitting in the comment history.
- *
- * Only our own comments count, so a person quoting the marker cannot
- * manufacture one.
- */
+// A proposal left behind by a newer commit, so a late `go` can be told why it no longer applies.
 export function findSupersededProposal(comments, sha, us) {
 	const current = String(sha ?? "").trim()
-	// Same reader as findProposal, so the two cannot drift again.
 	const stale = (comments ?? []).filter((c) => {
 		if (!isOurs(c, us)) return false
 		const found = readMarker(c.body)
 		return Boolean(found) && found.sha !== current
 	})
 	if (stale.length === 0) return undefined
-	// Newest wins: with several old plans, the one they most plausibly meant is
-	// the last one we put up.
 	const newest = stale.reduce((a, b) => ((a.id ?? 0) >= (b.id ?? 0) ? a : b))
 	const found = readMarker(newest.body)
 	return { sha: found?.sha, requester: found?.requester, id: newest.id }
 }
 
-/**
- * Create the "Test Companion" check, or update the one this run already made:
- * one check, never neutral.
- *
- * Every call used to POST. A single run posts up to three times — in progress
- * before the work, the result after it, and the catch-all on a crash — so a
- * pull request collected two or three checks of the same name, and a proposal
- * left ITS in-progress one pending forever because nothing ever completed it.
- * That is the "blocked by a check that never arrives" failure the design is
- * meant to avoid.
- *
- * Keyed by commit: a run can legitimately check two (the head early on, and
- * whatever the report names later), and those are different checks, not an
- * update of one another.
- */
+// One check per commit per run: PATCH the one we made, POST otherwise.
 export function checkRequestFor(sha, made) {
 	const existing = made?.get?.(sha)
 	return existing ? { method: "PATCH", path: `check-runs/${existing}` } : { method: "POST", path: "check-runs" }
 }
 
-/**
- * The check a PREVIOUS run left in progress on this commit, if there is one.
- *
- * checkRequestFor only knows what THIS process created. The nightly sweep runs
- * in a different process with an empty memo, so it posted a fresh "Action
- * required" check and left the proposal run's in-progress one pending for the
- * life of the branch — the exact "blocked by a check that never arrives"
- * failure the sweep exists to prevent.
- *
- * Only ours, and only one still running: a completed check is already
- * answered, and another tool's check is none of our business.
- */
+// An in-progress check left by an earlier run, so the sweep completes it instead of adding another.
 export function inFlightCheckId(checks, checkName = "Test Companion") {
 	const ours = (checks ?? []).filter((c) => c?.name === checkName && c?.status !== "completed")
 	if (ours.length === 0) return undefined
-	// Newest, so a stale one from an older run cannot win.
 	return ours.reduce((a, b) => ((a.id ?? 0) >= (b.id ?? 0) ? a : b)).id
 }

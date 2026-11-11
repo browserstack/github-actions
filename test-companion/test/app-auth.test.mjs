@@ -6,7 +6,7 @@ import { appCredentials, jwtClaims, signJwt, installationTokenRequest } from "..
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 })
 const pem = privateKey.export({ type: "pkcs1", format: "pem" })
 
-describe("appCredentials — Release 4", () => {
+describe("appCredentials", () => {
 	test("both halves are needed", () => {
 		assert.equal(appCredentials({ TC_ACTION_APP_ID: "1", TC_ACTION_APP_PRIVATE_KEY: "k" })?.appId, "1")
 		assert.equal(appCredentials({ TC_ACTION_APP_ID: "1" }), undefined)
@@ -20,18 +20,14 @@ describe("appCredentials — Release 4", () => {
 	})
 })
 
-describe("jwtClaims — Release 4", () => {
+describe("jwtClaims", () => {
 	const now = 1_800_000_000
 
 	test("issued by the app", () => {
 		assert.equal(jwtClaims("12345", now).iss, "12345")
 	})
 
-	/**
-	 * GitHub rejects a JWT whose iat is in the future, and runner clocks drift.
-	 * Backdating by a minute is the documented workaround; without it a run
-	 * fails with "issued at is in the future" on an otherwise correct setup.
-	 */
+	// GitHub rejects a JWT whose iat is in the future, and runner clocks drift.
 	test("issued a minute ago, to survive clock drift", () => {
 		assert.equal(jwtClaims("1", now).iat, now - 60)
 	})
@@ -44,7 +40,7 @@ describe("jwtClaims — Release 4", () => {
 	})
 })
 
-describe("signJwt — Release 4", () => {
+describe("signJwt", () => {
 	test("three base64url parts", () => {
 		const parts = signJwt({ appId: "1", privateKey: pem, now: 1_800_000_000 }).split(".")
 		assert.equal(parts.length, 3)
@@ -72,19 +68,11 @@ describe("signJwt — Release 4", () => {
 })
 
 describe("installationTokenRequest", () => {
-	/**
-	 * the Action uses the App's identity "FOR THAT REPO ONLY". An
-	 * installation token minted with no body carries every permission the
-	 * installation holds, across every repository it covers — so a run in one
-	 * repository would hold write access to all of an organisation's.
-	 */
 	test("scoped to this repository alone", () => {
 		assert.deepEqual(installationTokenRequest("acme/shop").repositories, ["shop"])
 	})
 
 	test("the owner is not part of the repository name", () => {
-		// The API wants bare names; "acme/shop" is rejected as not found, which
-		// would silently fall back to the workflow token.
 		assert.deepEqual(installationTokenRequest("acme/deep-name").repositories, ["deep-name"])
 	})
 
@@ -95,8 +83,6 @@ describe("installationTokenRequest", () => {
 	})
 
 	test("a malformed repository asks for nothing rather than everything", () => {
-		// Falling back to an unscoped request would be the worst reading of a
-		// value we could not parse.
 		assert.equal(installationTokenRequest("not-a-repo"), undefined)
 		assert.equal(installationTokenRequest(""), undefined)
 		assert.equal(installationTokenRequest(undefined), undefined)

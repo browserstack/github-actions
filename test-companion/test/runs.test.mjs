@@ -19,12 +19,6 @@ describe("chooseRunsToCancel", () => {
 		assert.deepEqual(chooseRunsToCancel([inProgress(1, { status: "queued" })], { selfRunId: "99", headSha: "abc123" }), [1])
 	})
 
-	/**
-	 * The one that would hurt. The run handling the "stop" comment is itself an
-	 * in-flight run on that commit, so a naive filter cancels the very job doing
-	 * the cancelling — and the person is told nothing, because the process that
-	 * owed them a reply is gone.
-	 */
 	test("never cancels itself", () => {
 		assert.deepEqual(chooseRunsToCancel([inProgress(99)], { selfRunId: "99", headSha: "abc123" }), [])
 	})
@@ -43,10 +37,7 @@ describe("chooseRunsToCancel", () => {
 		assert.deepEqual(chooseRunsToCancel([inProgress(1, { head_sha: "deadbee" })], { selfRunId: "99", headSha: "abc123" }), [])
 	})
 
-	/**
-	 * "Stop" means stop Test Companion, not stop the repository's own build. A
-	 * comment must never be a way to cancel someone else's CI.
-	 */
+	// "Stop" means stop Test Companion, not stop the repository's own build.
 	test("leaves other workflows alone when we know our own name", () => {
 		const theirs = inProgress(1, { name: "Build and deploy" })
 		assert.deepEqual(chooseRunsToCancel([theirs], { selfRunId: "99", headSha: "abc123", workflowName: "Test Companion" }), [])
@@ -64,23 +55,6 @@ describe("chooseRunsToCancel", () => {
 })
 
 describe("runIdsFromChecks — finding OUR in-flight runs on a commit", () => {
-	/**
-	 * The defect this replaces. cancelRunsOn asked GitHub for
-	 * `actions/runs?head_sha=<the pull request's head>`, but a run started by
-	 * an ISSUE_COMMENT carries the DEFAULT BRANCH's sha — that is what GitHub
-	 * checks out for that event. The query matched nothing, so `stop` replied
-	 * "nothing is running" with a run plainly in flight, and closing a pull
-	 * request did not stop its run either. Both verified live on 2026-10-29.
-	 *
-	 * A run's own `pull_requests` field is NOT the answer: for an
-	 * issue_comment run it reports the pull request whose HEAD is the
-	 * checked-out branch, which is a different pull request entirely. Observed:
-	 * a run for reporting number 18.
-	 *
-	 * So the handle is our own check run. It is posted on the pull request's
-	 * head commit, it carries the run id in external_id, and nobody else
-	 * writes it.
-	 */
 	const check = (id, status, name = "Test Companion") => ({ name, status, external_id: String(id) })
 
 	test("returns the run ids of our in-flight checks", () => {
@@ -97,7 +71,6 @@ describe("runIdsFromChecks — finding OUR in-flight runs on a commit", () => {
 		assert.deepEqual(runIdsFromChecks([check(111, "completed")], { selfRunId: "999" }), [])
 	})
 
-	/** "Stop" means stop Test Companion, never the repository's own build. */
 	test("somebody else's check is left alone", () => {
 		assert.deepEqual(runIdsFromChecks([check(111, "in_progress", "CI / build")], { selfRunId: "999" }), [])
 	})
@@ -118,17 +91,7 @@ describe("runIdsFromChecks — finding OUR in-flight runs on a commit", () => {
 })
 
 describe("latestFailedRun — which build 'explain the failure' means", () => {
-	/**
-	 * `rca`, `fix` and `verdict` need to know WHICH build failed. On a
-	 * build_failed trigger GitHub hands us the run and the Action passes
-	 * `run.html_url` straight through. From a pull request COMMENT nobody
-	 * hands us one, so those three failed on the first comment with "Could
-	 * not run" — while CAPABILITIES advertises all three by name.
-	 *
-	 * Nothing about that needed deciding: the same answer is a lookup. The
-	 * newest failed workflow run on the pull request's head commit is the
-	 * build a person means when they say "explain the failure".
-	 */
+	// `rca`, `fix` and `verdict` need to know which build failed.
 	const run = (id, conclusion, name = "CI", status = "completed") => ({
 		id,
 		name,
@@ -148,7 +111,6 @@ describe("latestFailedRun — which build 'explain the failure' means", () => {
 		assert.equal(latestFailedRun(undefined, {}), undefined)
 	})
 
-	/** Explaining our OWN failure is a mirror, not an answer. */
 	test("never picks a Test Companion run", () => {
 		const got = latestFailedRun([run(9, "failure", "Test Companion"), run(3, "failure", "CI")], {
 			selfWorkflowName: "Test Companion",
@@ -161,7 +123,6 @@ describe("latestFailedRun — which build 'explain the failure' means", () => {
 		assert.equal(got, "https://github.com/acme/shop/actions/runs/3")
 	})
 
-	/** A run still going has not failed yet. */
 	test("ignores runs that have not finished", () => {
 		const got = latestFailedRun([run(9, null, "CI", "in_progress"), run(3, "failure")], {})
 		assert.equal(got, "https://github.com/acme/shop/actions/runs/3")

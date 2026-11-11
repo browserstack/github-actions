@@ -1,29 +1,12 @@
 /**
- * Signing in as the Test Companion GitHub App.
- *
- * The comment, the check and the commits come from the App's own account
- * rather than github-actions[bot]. The workflow's permissions block stays:
- * the workflow token is still the fallback when the App cannot be reached.
- *
- * It does not run anything — a run still happens on the customer's machine
- * with their credentials. This only changes who GitHub thinks is talking.
- *
- * Zero dependencies: Node's crypto signs the JWT and `gh` exchanges it. The
- * private key never leaves this process and never reaches the agent's
- * environment — childEnvFor is an allowlist and these names are not on it.
+ * Signing in as the GitHub App, so comments, checks and commits come from the
+ * App rather than github-actions[bot]. The workflow token is the fallback.
  */
 import { createSign } from "node:crypto"
 
-/** base64url, which is what JWT uses — base64 with three characters swapped. */
 const b64url = (input) => Buffer.from(input).toString("base64url")
 
-/**
- * The App's credentials, or nothing.
- *
- * Both halves are required: an id with no key cannot sign, a key with no id
- * cannot say who it is. Either alone falls back to the workflow token
- * silently, because a repository that never set this up is the normal case.
- */
+/** The App's id and key, or undefined unless both are set. */
 export function appCredentials(env = {}) {
 	const appId = String(env.TC_ACTION_APP_ID ?? "").trim()
 	const privateKey = String(env.TC_ACTION_APP_PRIVATE_KEY ?? "").trim()
@@ -31,23 +14,15 @@ export function appCredentials(env = {}) {
 	return { appId, privateKey }
 }
 
-/** How long a JWT lives. GitHub refuses anything over ten minutes. */
+// GitHub refuses a JWT that lives over ten minutes.
 const JWT_LIFETIME_SECONDS = 540
 
-/**
- * The claims GitHub expects on an App JWT.
- *
- * `iat` is backdated a minute on purpose. GitHub rejects a token whose issued-at
- * is in the future, runner clocks drift, and the failure reads "issued at is in
- * the future" on an otherwise perfectly configured workflow. Backdating is the
- * documented workaround.
- */
+/** `iat` is backdated a minute because runner clocks drift and GitHub rejects a future `iat`. */
 export function jwtClaims(appId, nowSeconds) {
 	const iat = Math.floor(nowSeconds) - 60
 	return { iat, exp: iat + JWT_LIFETIME_SECONDS, iss: String(appId) }
 }
 
-/** A signed App JWT. RS256 is the only algorithm GitHub accepts here. */
 export function signJwt({ appId, privateKey, now = Date.now() / 1000 }) {
 	const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }))
 	const payload = b64url(JSON.stringify(jwtClaims(appId, now)))
@@ -56,27 +31,14 @@ export function signJwt({ appId, privateKey, now = Date.now() / 1000 }) {
 }
 
 /**
- * What to ask for when minting an installation token: this repository only.
- *
- * A token minted with no body carries every permission the installation
- * holds across every repository it covers, so a run in one repository would
- * hold write access to all of an organisation's.
- *
- * The four permissions the starter asks for and this Action uses:
- *  contents — branches and commits for the fix and reconcile jobs
- *  pull_requests — the one comment, and opening a pull request
- *  checks — the "Test Companion" check
- *  actions — reading the red run, and cancelling one when a PR closes
- *
- * Returns undefined for a repository we cannot parse, rather than falling
- * back to an unscoped request.
+ * Scope the installation token to this repository: without a body it covers
+ * every repository the App is installed on.
  */
 export function installationTokenRequest(repo) {
 	const parts = String(repo ?? "").split("/")
 	if (parts.length !== 2 || !parts[0] || !parts[1]) return undefined
 	return {
-		// Bare names: the API rejects "owner/name" here as not found, which
-		// would silently fall back to the workflow token.
+		// Bare name: the API rejects "owner/name" here.
 		repositories: [parts[1]],
 		permissions: {
 			contents: "write",

@@ -2,7 +2,7 @@ import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { createAnswerCapture, runCapturingAnswer, MAX_PARTIAL_LINE } from "../src/answer.mjs"
 
-/** One `answer` event as the CLI prints it under --json. */
+// One `answer` event as the CLI prints it under --json.
 const said = (text) => JSON.stringify({ event: "answer", text }) + "\n"
 
 describe("createAnswerCapture", () => {
@@ -37,9 +37,6 @@ describe("createAnswerCapture", () => {
 		assert.equal(cap.answer(), "split down the middle")
 	})
 
-	// Agent prose is full of em dashes and arrows. Decoding each chunk on its
-	// own splits one of those in half and the JSON no longer parses, so the
-	// answer silently disappears on exactly the runs that have most to say.
 	test("a multi-byte character split across two chunks is not corrupted", () => {
 		const buf = Buffer.from(said("preview — nothing was written"), "utf8")
 		const cut = buf.indexOf(Buffer.from("—", "utf8")) + 1
@@ -102,7 +99,6 @@ describe("createAnswerCapture", () => {
 	})
 
 	// A command the agent chose can print megabytes with no newline in it.
-	// Buffering that forever would take the runner down with us.
 	test("a runaway line with no newline does not grow without bound", () => {
 		const cap = createAnswerCapture()
 		for (let i = 0; i < 40; i++) cap.push("x".repeat(100_000))
@@ -114,15 +110,9 @@ describe("createAnswerCapture", () => {
 	})
 })
 
-/**
- * The capture is only worth anything wired to a real process: chunk
- * boundaries, encoding and the close/drain race are exactly what unit-testing
- * a parser on strings cannot show. main.mjs is the untested I/O shell by
- * design (see imports.test.mjs), so the spawn lives here where it can be run.
- */
 describe("runCapturingAnswer", () => {
 	const node = process.execPath
-	/** A stand-in for `tc`: prints the lines it is given, then exits. */
+	// A stand-in for `tc`: prints the lines it is given, then exits.
 	const fake = (script) => [node, ["-e", script]]
 
 	test("it returns the child's exit status", async () => {
@@ -151,14 +141,8 @@ describe("runCapturingAnswer", () => {
 		assert.equal(r.answer, "tests are still red")
 	})
 
-	// A long answer arrives in many pipe-sized pieces, split anywhere
-	// including through a multi-byte character.
 	test("an answer larger than the pipe buffer survives being split up", async () => {
-		// The child BUILDS the payload; it is not passed in as an argument.
-		// Linux caps a single argv entry at 128KB (MAX_ARG_STRLEN) however
-		// large ARG_MAX is, so embedding 180KB of text here spawned fine on
-		// macOS and failed with E2BIG on every Linux runner — which is where
-		// CI runs. Caught by this test's first trip through CI, on.
+		// The child builds the payload; it is not passed in as an argument.
 		const text = "— ".repeat(60_000) + "END"
 		const [cmd, args] = fake(
 			`const t = "— ".repeat(60000) + "END"; process.stdout.write(JSON.stringify({event:"answer",text:t})+"\\n")`,
@@ -183,8 +167,7 @@ describe("runCapturingAnswer", () => {
 		assert.ok(seen.join("").includes('"event":"answer"'), "the child's output never reached our stdout")
 	})
 
-	// `tc` not installed. The old spawnSync gave status null here and the
-	// caller turned it into 1; throwing instead would lose the whole report.
+	// `tc` not installed.
 	test("a command that does not exist resolves instead of throwing", async () => {
 		const r = await runCapturingAnswer("tc-does-not-exist-anywhere", [], process.env)
 		assert.equal(r.status, null)

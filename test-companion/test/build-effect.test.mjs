@@ -3,20 +3,9 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { OUTCOMES, stepShouldFail, BUILD_EFFECTS } from "../src/outcome.mjs"
 
-/**
- * A run that BROKE should redden the build.
- *
- * It never did unless a repository opted in, which meant every bad outcome so
- * far passed silently. That is not what anyone looking at a green tick would
- * assume.
- *
- * The line is drawn at whether the RUN worked, not at whether the tests
- * passed. A test failure is a result; making it block the build is a much
- * bigger decision than this one, and `fail` is still there for anyone who
- * wants it.
- */
+// A run that broke should redden the build.
 
-/** The run itself did not work. */
+// The run itself did not work.
 const BROKEN = [OUTCOMES.RUN_BROKE, OUTCOMES.COULD_NOT_RUN, OUTCOMES.STOPPED_AT_LIMIT]
 
 describe("the default reddens a broken run and nothing else", () => {
@@ -36,23 +25,11 @@ describe("the default reddens a broken run and nothing else", () => {
 	})
 
 	test("saying nothing means the default", () => {
-		// The step is what a repository gets without reading the setting, so it
-		// has to BE the default rather than merely document one.
 		assert.equal(stepShouldFail(undefined, OUTCOMES.RUN_BROKE), true)
 		assert.equal(stepShouldFail("", OUTCOMES.RUN_BROKE), true)
 		assert.equal(stepShouldFail(undefined, OUTCOMES.TESTS_FAILED), false)
 	})
 
-	/**
-	 * This reverses the old rule, deliberately.
-	 *
-	 * It used to be "anything unrecognised behaves as report", on the reasoning
-	 * that reddening builds is the one direction a misconfiguration must not
-	 * fail in. That reasoning made sense while report WAS the default. Now that
-	 * it is not, a typo buying you a quieter setting than everybody else gets
-	 * is exactly the silent pass to avoid — and a misspelling leaves you exactly
-	 * where a fresh install would be, which is defensible.
-	 */
 	test("a misspelling lands on the default, not on the quietest setting", () => {
 		assert.equal(stepShouldFail("reprot", OUTCOMES.RUN_BROKE), true)
 		assert.equal(stepShouldFail("FAIL_HARD", OUTCOMES.RUN_BROKE), true)
@@ -67,8 +44,6 @@ describe("the two explicit settings keep their meaning", () => {
 	})
 
 	test("an existing off keeps working as report", () => {
-		// Undocumented from now on, but a workflow already saying it must not
-		// start failing builds because we stopped advertising the word.
 		for (const o of Object.values(OUTCOMES)) {
 			assert.equal(stepShouldFail("off", o), false, `${o} reddened the step under off`)
 		}
@@ -107,11 +82,6 @@ describe("the input documents what it does", () => {
 })
 
 describe("an unrecognised value explains the reddening it causes", () => {
-	/**
-	 * Reversing the fail-closed rule
-	 * means `build-effect: none` / `warn` / `false` starts reddening builds.
-	 * That is the right default, but it should say why.
-	 */
 	test("it warns, naming the value and the default", () => {
 		const said = []
 		const real = process.stdout.write.bind(process.stdout)

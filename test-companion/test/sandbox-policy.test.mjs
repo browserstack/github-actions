@@ -18,10 +18,7 @@ import { startRelay } from "../src/relay.mjs"
 const layout = sandboxLayout()
 const q = (query) => JSON.stringify({ query, variables: {} })
 
-/**
- * The agent's environment points at its own folders, never ours. Ours hold a
- * signed-in gh and the job's temp files.
- */
+// The agent's environment points at its own folders, never ours.
 describe("the agent's environment", () => {
 	const ours = {
 		PATH: "/home/runner/.local/bin:/opt/hostedtoolcache/node/22/x64/bin:/usr/bin",
@@ -55,10 +52,7 @@ describe("the agent's environment", () => {
 	})
 })
 
-/**
- * sudo logs the command line it runs, and on a self-hosted runner that log
- * outlives the job. Nothing secret may be on it.
- */
+// sudo logs the command line it runs, and on a self-hosted runner that log outlives the job.
 describe("the command that starts the agent", () => {
 	const cmd = asAgentCommand({
 		node: "/usr/local/bin/node",
@@ -161,11 +155,6 @@ describe("telling a GraphQL read from a write", () => {
 		}
 	})
 
-	/**
-	 * Found in review: strings were removed before comments, so a `"` inside a
-	 * comment opened a fake string that swallowed the next line, and a
-	 * mutation written there was passed on with the real token.
-	 */
 	test("a quote inside a comment cannot hide a mutation", () => {
 		const bypass = JSON.stringify({
 			query: 'query Q { viewer { login } } # "\nmutation M { addComment(input: {}) { clientMutationId } } # "',
@@ -202,10 +191,7 @@ describe("telling a GraphQL read from a write", () => {
 	})
 })
 
-/**
- * The agent's run writes this file and the agent can change it, so nothing in
- * it is taken on trust.
- */
+// The agent's run writes this file and the agent can change it, so nothing in it is taken on trust.
 describe("a pull request handed back by the CLI", () => {
 	const sha = "a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0"
 	const good = { workflow: "fix", sha, branch: `tc/fix/${sha}`, base: "main", title: "tc fix", body: "b" }
@@ -275,11 +261,6 @@ describe("reading what `tc workflow claim` printed", () => {
 	})
 })
 
-/**
- * The relay end to end, with GitHub replaced by a stub: the agent's request
- * comes in over the socket with a placeholder token, and only allowed ones
- * go out, carrying the real pass.
- */
 describe("the relay, over its socket", () => {
 	const socketPath = `/tmp/tc-relay-test-${process.pid}.sock`
 	const send = (method, path, body, host = "api.github.com") =>
