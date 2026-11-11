@@ -18,7 +18,7 @@ import {
 	appCredentials,
 	signJwt,
 	installationTokenRequest,
-	ghFailureReason,
+	appApi,
 	installationLookupMessage,
 } from "./app-auth.mjs"
 import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent } from "./outcome.mjs"
@@ -168,7 +168,7 @@ function fetchAndCheckout(sha, branch) {
 }
 
 /** A repo-scoped App installation token, or undefined to fall back to the workflow token. */
-function appInstallationToken() {
+async function appInstallationToken() {
 	const creds = appCredentials(env)
 	if (!creds) return undefined
 	// Remove the key from the environment so nothing started later, the agent included, inherits it.
@@ -183,25 +183,22 @@ function appInstallationToken() {
 	}
 
 	// The JWT authenticates the App; only the installation token can touch a repository.
-	const asApp = (args) => runGh(args, { token: jwt })
+	const asApp = (path, opts) => appApi(path, { jwt, apiUrl: env.GITHUB_API_URL, ...opts })
 
-	const found = asApp(["api", `repos/${REPO}/installation`])
-	if (found.status !== 0) {
+	const found = await asApp(`repos/${REPO}/installation`)
+	if (!found.ok) {
 		const { level, text } = installationLookupMessage(found)
-		;(level === "warning" ? warn : notice)(text)
+		if (level === "warning") warn(text)
+		else notice(text)
 		return undefined
 	}
-	let installationId
-	let appLogin
-	try {
-		const installation = JSON.parse(found.stdout)
-		installationId = installation?.id
-		// Adopted only once a token is minted, so a failed mint can't leave us looking under the wrong login.
-		appLogin = installation?.app_slug ? `${installation.app_slug}[bot]` : undefined
-	} catch {
+	const installationId = found.data?.id
+	// Adopted only once a token is minted, so a failed mint can't leave us looking under the wrong login.
+	const appLogin = found.data?.app_slug ? `${found.data.app_slug}[bot]` : undefined
+	if (!installationId) {
+		warn("Test Companion: GitHub's reply about the App's installation had no ID; using the workflow token.")
 		return undefined
 	}
-	if (!installationId) return undefined
 
 	// Scoped to this repository; an empty request gets every repository the installation covers.
 	const scope = installationTokenRequest(REPO)
@@ -210,29 +207,21 @@ function appInstallationToken() {
 		return undefined
 	}
 
-	const mint = (body) =>
-		runGh(["api", `app/installations/${installationId}/access_tokens`, "--method", "POST", "--input", "-"], {
-			token: jwt,
-			input: JSON.stringify(body),
-		})
-
 	// No retry with a smaller request: dropping the permission list asks for everything the installation holds.
-	const minted = mint(scope)
-	if (minted.status !== 0) {
+	const minted = await asApp(`app/installations/${installationId}/access_tokens`, { method: "POST", body: scope })
+	if (!minted.ok) {
 		warn(
-			`Could not get a GitHub App token with the permissions Test Companion needs (${ghFailureReason(minted)}); using the workflow token instead. ` +
+			`Test Companion: could not get a GitHub App token with the permissions it needs (${minted.reason}); using the workflow token instead. ` +
 				"If the App's permissions were changed, an organisation owner may need to accept them.",
 		)
 		return undefined
 	}
 
-	let token
-	try {
-		token = JSON.parse(minted.stdout)?.token
-	} catch {
+	const token = minted.data?.token
+	if (!token) {
+		warn("Test Companion: GitHub's reply had no App token; using the workflow token.")
 		return undefined
 	}
-	if (!token) return undefined
 
 	// Mask before first use.
 	console.log(`::add-mask::${token}`)
@@ -388,7 +377,7 @@ async function main() {
 	}
 
 	// Act as the App when installed, before anything else talks to GitHub.
-	const appToken = appInstallationToken()
+	const appToken = await appInstallationToken()
 	if (appToken) {
 		env.GH_TOKEN = appToken
 		notice("Test Companion: acting as the GitHub App.")

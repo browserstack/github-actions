@@ -24,21 +24,36 @@ export function jwtClaims(appId, nowSeconds) {
 }
 
 /**
- * GitHub's reason a `gh api` call failed, e.g. "Bad credentials (HTTP 401)", for the log.
- * gh's error output holds only the response message, never the token it sent.
+ * Call the GitHub API as the App. Not through gh: gh sends `Authorization: token`,
+ * and GitHub accepts an App's JWT only as `Authorization: Bearer`.
+ * Returns { ok, status, data, reason }; `reason` is GitHub's message, never the JWT.
  */
-export function ghFailureReason(result) {
-	const line = String(result?.stderr ?? "")
-		.split("\n")
-		.map((l) => l.trim())
-		.find(Boolean)
-	return line ? line.replace(/^gh:\s*/, "") : "no detail from GitHub"
+export async function appApi(path, { jwt, method = "GET", body, apiUrl, fetchImpl = fetch } = {}) {
+	const base = String(apiUrl || "https://api.github.com").replace(/\/+$/, "")
+	let response
+	try {
+		response = await fetchImpl(`${base}/${path}`, {
+			method,
+			headers: {
+				Authorization: `Bearer ${jwt}`,
+				Accept: "application/vnd.github+json",
+				"X-GitHub-Api-Version": "2022-11-28",
+				...(body === undefined ? {} : { "Content-Type": "application/json" }),
+			},
+			body: body === undefined ? undefined : JSON.stringify(body),
+		})
+	} catch (e) {
+		return { ok: false, status: 0, data: undefined, reason: `could not reach GitHub: ${e?.message ?? e}` }
+	}
+	const data = await response.json().catch(() => undefined)
+	const reason = response.ok ? "" : `${data?.message || response.statusText || "no detail from GitHub"} (HTTP ${response.status})`
+	return { ok: response.ok, status: response.status, data, reason }
 }
 
 /** What to log when looking up the App's installation on this repository fails. */
 export function installationLookupMessage(result) {
-	const reason = ghFailureReason(result)
-	if (/\bHTTP 404\b/.test(reason)) {
+	const reason = result?.reason || "no detail from GitHub"
+	if (result?.status === 404) {
 		return { level: "notice", text: "Test Companion: the GitHub App is not installed on this repository; using the workflow token." }
 	}
 	return {

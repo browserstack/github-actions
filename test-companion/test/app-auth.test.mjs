@@ -6,7 +6,7 @@ import {
 	jwtClaims,
 	signJwt,
 	installationTokenRequest,
-	ghFailureReason,
+	appApi,
 	installationLookupMessage,
 } from "../src/app-auth.mjs"
 
@@ -96,24 +96,58 @@ describe("installationTokenRequest", () => {
 	})
 })
 
-describe("App sign-in failures say why", () => {
-	test("GitHub's reason is taken from gh's error output", () => {
-		assert.equal(ghFailureReason({ stderr: "gh: Bad credentials (HTTP 401)\n" }), "Bad credentials (HTTP 401)")
+describe("appApi", () => {
+	const fakeFetch = (status, json, seen) => async (url, init) => {
+		Object.assign(seen, { url, init })
+		return { ok: status >= 200 && status < 300, status, statusText: "", json: async () => json }
+	}
+
+	test("sends the JWT as Bearer, which GitHub requires for an App", async () => {
+		const seen = {}
+		const r = await appApi("repos/o/r/installation", { jwt: "J", fetchImpl: fakeFetch(200, { id: 7 }, seen) })
+		assert.equal(seen.init.headers.Authorization, "Bearer J")
+		assert.equal(seen.url, "https://api.github.com/repos/o/r/installation")
+		assert.deepEqual(r, { ok: true, status: 200, data: { id: 7 }, reason: "" })
 	})
 
-	test("an empty error output still gives a reason", () => {
-		assert.equal(ghFailureReason({ stderr: "" }), "no detail from GitHub")
-		assert.equal(ghFailureReason(undefined), "no detail from GitHub")
+	test("uses the server's API address when given", async () => {
+		const seen = {}
+		await appApi("x", { jwt: "J", apiUrl: "https://ghe.example/api/v3/", fetchImpl: fakeFetch(200, {}, seen) })
+		assert.equal(seen.url, "https://ghe.example/api/v3/x")
 	})
 
+	test("sends a JSON body on POST", async () => {
+		const seen = {}
+		await appApi("x", { jwt: "J", method: "POST", body: { a: 1 }, fetchImpl: fakeFetch(201, {}, seen) })
+		assert.equal(seen.init.method, "POST")
+		assert.equal(seen.init.body, '{"a":1}')
+		assert.equal(seen.init.headers["Content-Type"], "application/json")
+	})
+
+	test("a failure carries GitHub's message and status, never the JWT", async () => {
+		const r = await appApi("x", { jwt: "SECRET-JWT", fetchImpl: fakeFetch(401, { message: "Bad credentials" }, {}) })
+		assert.equal(r.ok, false)
+		assert.equal(r.reason, "Bad credentials (HTTP 401)")
+		assert.doesNotMatch(r.reason, /SECRET-JWT/)
+	})
+
+	test("a network failure is reported, not thrown", async () => {
+		const r = await appApi("x", { jwt: "J", fetchImpl: async () => { throw new Error("ECONNRESET") } })
+		assert.equal(r.ok, false)
+		assert.equal(r.status, 0)
+		assert.match(r.reason, /ECONNRESET/)
+	})
+})
+
+describe("installationLookupMessage", () => {
 	test("only a 404 means the App is not installed", () => {
-		const m = installationLookupMessage({ stderr: "gh: Not Found (HTTP 404)" })
+		const m = installationLookupMessage({ status: 404, reason: "Not Found (HTTP 404)" })
 		assert.equal(m.level, "notice")
 		assert.match(m.text, /not installed on this repository/)
 	})
 
 	test("any other failure is a warning that carries GitHub's reason", () => {
-		const m = installationLookupMessage({ stderr: "gh: A JSON web token could not be decoded (HTTP 401)" })
+		const m = installationLookupMessage({ status: 401, reason: "A JSON web token could not be decoded (HTTP 401)" })
 		assert.equal(m.level, "warning")
 		assert.match(m.text, /A JSON web token could not be decoded \(HTTP 401\)/)
 		assert.doesNotMatch(m.text, /not installed/)
