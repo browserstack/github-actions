@@ -14,7 +14,13 @@ import { canIsolate, prepareSandbox, stopSandbox, handToAgent, writeAgentEnv, re
 import { agentEnvFrom, asAgentCommand, checkPrHandoff, readClaimResult } from "./sandbox-policy.mjs"
 import { startRelay } from "./relay.mjs"
 import { runCapturingAnswer } from "./answer.mjs"
-import { appCredentials, signJwt, installationTokenRequest } from "./app-auth.mjs"
+import {
+	appCredentials,
+	signJwt,
+	installationTokenRequest,
+	ghFailureReason,
+	installationLookupMessage,
+} from "./app-auth.mjs"
 import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent } from "./outcome.mjs"
 import {
 	renderJobSummary,
@@ -181,7 +187,8 @@ function appInstallationToken() {
 
 	const found = asApp(["api", `repos/${REPO}/installation`])
 	if (found.status !== 0) {
-		notice("Test Companion: the GitHub App is not installed on this repository; using the workflow token.")
+		const { level, text } = installationLookupMessage(found)
+		;(level === "warning" ? warn : notice)(text)
 		return undefined
 	}
 	let installationId
@@ -213,7 +220,7 @@ function appInstallationToken() {
 	const minted = mint(scope)
 	if (minted.status !== 0) {
 		warn(
-			"Could not get a GitHub App token with the permissions Test Companion needs; using the workflow token instead. " +
+			`Could not get a GitHub App token with the permissions Test Companion needs (${ghFailureReason(minted)}); using the workflow token instead. ` +
 				"If the App's permissions were changed, an organisation owner may need to accept them.",
 		)
 		return undefined
