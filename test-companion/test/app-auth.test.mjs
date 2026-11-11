@@ -1,7 +1,14 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { generateKeyPairSync, createVerify } from "node:crypto"
-import { appCredentials, jwtClaims, signJwt, installationTokenRequest } from "../src/app-auth.mjs"
+import {
+	appCredentials,
+	jwtClaims,
+	signJwt,
+	installationTokenRequest,
+	ghFailureReason,
+	installationLookupMessage,
+} from "../src/app-auth.mjs"
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 })
 const pem = privateKey.export({ type: "pkcs1", format: "pem" })
@@ -86,5 +93,29 @@ describe("installationTokenRequest", () => {
 		assert.equal(installationTokenRequest("not-a-repo"), undefined)
 		assert.equal(installationTokenRequest(""), undefined)
 		assert.equal(installationTokenRequest(undefined), undefined)
+	})
+})
+
+describe("App sign-in failures say why", () => {
+	test("GitHub's reason is taken from gh's error output", () => {
+		assert.equal(ghFailureReason({ stderr: "gh: Bad credentials (HTTP 401)\n" }), "Bad credentials (HTTP 401)")
+	})
+
+	test("an empty error output still gives a reason", () => {
+		assert.equal(ghFailureReason({ stderr: "" }), "no detail from GitHub")
+		assert.equal(ghFailureReason(undefined), "no detail from GitHub")
+	})
+
+	test("only a 404 means the App is not installed", () => {
+		const m = installationLookupMessage({ stderr: "gh: Not Found (HTTP 404)" })
+		assert.equal(m.level, "notice")
+		assert.match(m.text, /not installed on this repository/)
+	})
+
+	test("any other failure is a warning that carries GitHub's reason", () => {
+		const m = installationLookupMessage({ stderr: "gh: A JSON web token could not be decoded (HTTP 401)" })
+		assert.equal(m.level, "warning")
+		assert.match(m.text, /A JSON web token could not be decoded \(HTTP 401\)/)
+		assert.doesNotMatch(m.text, /not installed/)
 	})
 })

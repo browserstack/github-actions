@@ -23,6 +23,32 @@ export function jwtClaims(appId, nowSeconds) {
 	return { iat, exp: iat + JWT_LIFETIME_SECONDS, iss: String(appId) }
 }
 
+/**
+ * GitHub's reason a `gh api` call failed, e.g. "Bad credentials (HTTP 401)", for the log.
+ * gh's error output holds only the response message, never the token it sent.
+ */
+export function ghFailureReason(result) {
+	const line = String(result?.stderr ?? "")
+		.split("\n")
+		.map((l) => l.trim())
+		.find(Boolean)
+	return line ? line.replace(/^gh:\s*/, "") : "no detail from GitHub"
+}
+
+/** What to log when looking up the App's installation on this repository fails. */
+export function installationLookupMessage(result) {
+	const reason = ghFailureReason(result)
+	if (/\bHTTP 404\b/.test(reason)) {
+		return { level: "notice", text: "Test Companion: the GitHub App is not installed on this repository; using the workflow token." }
+	}
+	return {
+		level: "warning",
+		text:
+			`Test Companion: could not sign in as the GitHub App (${reason}); using the workflow token. ` +
+			"Check that app-id is the App's numeric ID and app-private-key is a key generated for that App.",
+	}
+}
+
 export function signJwt({ appId, privateKey, now = Date.now() / 1000 }) {
 	const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }))
 	const payload = b64url(JSON.stringify(jwtClaims(appId, now)))
