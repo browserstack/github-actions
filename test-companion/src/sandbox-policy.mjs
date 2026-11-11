@@ -1,40 +1,14 @@
 /**
- * The rules for running the agent as a separate, locked-down user.
- *
- * Why this exists. The agent runs shell commands it chooses, and anything in
- * the pull request, the build logs or the app can try to steer it. On a
- * GitHub-hosted runner it used to run as the same user as this Action, and a
- * test on a real runner showed what that means:
- *
- * - any program can read the startup environment of another program run by
- *   the same user, so the agent could read the token and the App key out of
- *   this Action's own process, even though we never passed them to it;
- * - the job's user has admin rights with no password, and with them the
- *   agent found secrets in the memory of the runner's own worker process.
- *
- * Running it as a different user with no admin rights closes both: Linux
- * does not let one user read another's processes or private files.
- *
- * Everything here is a pure function. The commands that act on the machine
- * live in sandbox.mjs.
+ * Pure rules for running the agent as a separate user without sudo. As the
+ * runner's own user it could read our secrets from /proc/<pid>/environ, or via
+ * sudo from the runner worker's memory.
  */
 
-/** The locked-down user the agent runs as. */
 export const AGENT_USER = "tc-agent"
 
 /**
- * Where the agent works. Outside every home folder on purpose: the runner's
- * home holds the job's temp files, gh's signed-in config and the runner's own
- * credentials, so the agent is never given a way into it.
- *
- * - `work` is the checked-out repository, mounted here so the agent never
- *   needs to walk through the runner's home to reach it.
- * - `in` holds files we hand the agent (the settings, an approved plan).
- *   Ours; the agent can only read it.
- * - `out` holds the files the agent's run writes for us (the report, the
- *   result, a pull request to open). The agent's; we read it carefully.
- * - `relay` holds the socket the agent's `gh` talks to.
- * - `tmp` is the agent's own temp folder.
+ * Outside the runner's home, which holds gh's config and runner credentials.
+ * `in` is ours (agent reads), `out` is the agent's (we read carefully).
  */
 export function sandboxLayout(root = "/var/tmp/tc-agent", home = `/home/${AGENT_USER}`) {
 	return {
@@ -51,15 +25,7 @@ export function sandboxLayout(root = "/var/tmp/tc-agent", home = `/home/${AGENT_
 	}
 }
 
-/**
- * The environment the agent's run gets: the usual allowlisted one, pointed at
- * the agent's own folders instead of ours.
- *
- * GH_CONFIG_DIR is the important override. Ours holds a real token; the
- * agent's holds a placeholder and the relay socket, so its `gh` reads work
- * and it never sees a pass. RUNNER_TEMP and TMPDIR are moved because ours are
- * inside the runner's home, which the agent cannot reach.
- */
+/** GH_CONFIG_DIR points at the agent's relay-only gh config, never ours. */
 export function agentEnvFrom(childEnv, layout, extra = {}) {
 	const env = { ...childEnv }
 	env.HOME = layout.home
@@ -68,9 +34,7 @@ export function agentEnvFrom(childEnv, layout, extra = {}) {
 	env.GH_CONFIG_DIR = layout.ghConfig
 	env.RUNNER_TEMP = layout.tmp
 	env.TMPDIR = layout.tmp
-	// The agent's own bin first: that is where its copy of the CLI lives. The
-	// rest of PATH is kept for the customer's toolchain (setup-node, Java,
-	// Python and so on install under /opt, which every user can read).
+	// The rest of PATH is kept for the customer's toolchain.
 	env.PATH = [layout.bin, ...String(childEnv.PATH ?? "/usr/bin:/bin").split(":").filter((p) => p && p !== layout.bin)].join(":")
 	env.GH_NO_UPDATE_NOTIFIER = "1"
 	env.GH_PROMPT_DISABLED = "1"
@@ -78,17 +42,8 @@ export function agentEnvFrom(childEnv, layout, extra = {}) {
 }
 
 /**
- * The command that runs `command args` as the agent user.
- *
- * `setpriv` swaps to the agent's user and group and drops every other group,
- * so nothing of the runner's identity comes along. `--reset-env` and `env -i`
- * start from an empty environment. `env -C` moves into the mounted checkout.
- *
- * The environment itself is NOT on this command line. sudo writes the command
- * line it runs to the machine's log, and on a self-hosted runner that log
- * outlives the job, so the BrowserStack key would sit in it. Instead the
- * launcher reads the environment from `envFile` (readable only by the agent's
- * user), deletes it, and starts the command with it.
+ * The environment is passed via `envFile`, not this command line, because
+ * sudo logs its command lines.
  */
 export function asAgentCommand({ node, launcher, envFile, cwd, command, args }) {
 	return {
@@ -115,11 +70,6 @@ export function asAgentCommand({ node, launcher, envFile, cwd, command, args }) 
 	}
 }
 
-/**
- * The launcher asAgentCommand runs: read the environment, delete its file,
- * start the command with it, and pass its exit code back. Output is
- * inherited, so the run's live log and answer capture work unchanged.
- */
 export const LAUNCHER_SOURCE = `import { readFileSync, rmSync } from "node:fs"
 import { spawn } from "node:child_process"
 const [envFile, command, ...args] = process.argv.slice(2)
@@ -132,24 +82,9 @@ child.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)))
 `
 
 /**
- * Whether the relay passes a request from the agent's `gh` on to GitHub.
- *
- * Reads only. Everything the agent legitimately needs from GitHub is a read:
- * a failed run's logs and artifacts, earlier runs, a pull request's details
- * and diff. Every write the run needs is done by this Action itself, after
- * the run, with checks the agent cannot skip.
- *
- * - GET and HEAD to the API are allowed. The pass the relay adds is scoped to
- *   this one repository, so the agent cannot read anyone else's code through
- *   it either.
- * - POST is allowed only to /graphql, and only for a query. gh reads pull
- *   requests through GraphQL, and GraphQL sends reads and writes the same way,
- *   so the body decides.
- * - GET to any other host is allowed WITHOUT the pass. Log and artifact
- *   downloads redirect to storage hosts with their own signed URLs, and
- *   gh sends the redirect through the relay too. The agent can reach the
- *   internet anyway, so passing these on gives it nothing new.
- * - Everything else is refused.
+ * Reads only; the Action does every write itself. GraphQL POSTs pass only for
+ * queries. Other hosts get GET without the token (log and artifact downloads
+ * redirect to signed storage URLs).
  */
 export function relayDecision({ method, host, path, body }) {
 	const m = String(method ?? "").toUpperCase()
@@ -159,8 +94,7 @@ export function relayDecision({ method, host, path, body }) {
 	const p = String(path ?? "")
 	const api = h === "api.github.com"
 	if (!p.startsWith("/")) return { allow: false, why: "a path must start with /" }
-	// GraphQL only ever goes through the POST check below. A GET to /graphql
-	// would carry its query in the URL, past that check.
+	// A GET to /graphql would carry its query in the URL, past the body check.
 	if (api && /^\/graphql(\/|\?|$)/.test(p) && m !== "POST") return { allow: false, why: "GraphQL is only passed on as a checked POST" }
 	if (api && (m === "GET" || m === "HEAD")) return { allow: true, auth: true }
 	if (api && m === "POST" && (p === "/graphql" || p.startsWith("/graphql?"))) {
@@ -169,8 +103,6 @@ export function relayDecision({ method, host, path, body }) {
 			: { allow: false, why: "only GraphQL queries are passed on, never mutations" }
 	}
 	if (!api && h && (m === "GET" || m === "HEAD")) {
-		// Never github.com itself: with a pass that would be the web UI, and
-		// without one there is nothing there the run needs.
 		if (h === "github.com" || h.endsWith(".github.com")) {
 			return { allow: false, why: `${h} is not passed on` }
 		}
@@ -180,31 +112,13 @@ export function relayDecision({ method, host, path, body }) {
 }
 
 /**
- * Whether a GraphQL request body only reads.
- *
- * A GraphQL document is a list of operations. Each starts with `query`,
- * `mutation` or `subscription`, or with `{` (shorthand for a query), and may
- * also hold `fragment` definitions.
- *
- * The document is read ONCE, left to right, the way GraphQL itself reads it:
- * a `#` starts a comment only outside a string, and a `"` starts a string only
- * outside a comment. Removing strings and comments in two separate passes gets
- * this wrong: a `"` inside a comment then looks like the start of a string,
- * swallows the next line, and hides a mutation written there. That bypass was
- * found in review.
- *
- * Two independent checks then have to agree it is a read:
- * - no `mutation` or `subscription` keyword appears anywhere outside strings
- *   and comments, at any depth;
- * - every top-level definition starts with `query`, `fragment` or `{`.
- *
- * Anything we cannot read cleanly counts as a write.
+ * Strings and comments are lexed in a single pass: separate passes let a `"`
+ * inside a `#` comment hide a mutation. Anything unparseable counts as a write.
  */
 export function isReadOnlyGraphql(body) {
 	let doc
 	try {
 		const parsed = JSON.parse(String(body ?? ""))
-		// A batch of several requests in one body: every one must be a query.
 		if (Array.isArray(parsed)) return parsed.length > 0 && parsed.every((one) => isReadOnlyGraphql(JSON.stringify(one)))
 		doc = parsed?.query
 	} catch {
@@ -217,7 +131,6 @@ export function isReadOnlyGraphql(body) {
 	if (tokens.some((t) => t === "mutation" || t === "subscription")) return false
 
 	let depth = 0
-	// Whether the next top-level token starts a new definition.
 	let expectDefinition = true
 	for (const t of tokens) {
 		if (t === "{") {
@@ -239,12 +152,7 @@ export function isReadOnlyGraphql(body) {
 	return depth === 0
 }
 
-/**
- * The names and braces of a GraphQL document, with strings, comments, commas
- * and whitespace skipped, read in one pass. Other punctuation is dropped: only
- * names and braces decide what kind of document this is. Returns undefined for
- * anything malformed, such as a string that never closes.
- */
+/** Names and braces only; undefined if malformed (e.g. an unclosed string). */
 function graphqlTokens(doc) {
 	const out = []
 	let i = 0
@@ -257,7 +165,6 @@ function graphqlTokens(doc) {
 		}
 		if (c === '"') {
 			if (doc.startsWith('"""', i)) {
-				// Block string: ends at the next """ that is not escaped as \""".
 				i += 3
 				for (;;) {
 					if (i >= n) return undefined
@@ -273,7 +180,6 @@ function graphqlTokens(doc) {
 				}
 				continue
 			}
-			// Plain string: one line only, with backslash escapes.
 			i++
 			for (;;) {
 				if (i >= n) return undefined
@@ -305,14 +211,7 @@ function graphqlTokens(doc) {
 	return out
 }
 
-/**
- * The CLI's request to open a pull request, checked before we act on it.
- *
- * The agent's run writes this file and the agent can change it, so nothing
- * in it is trusted: the branch must be the CLI's own naming for this job and
- * commit, the base must be a plain branch name, and the title and body are
- * capped. Returns the cleaned request, or { error } saying why it was refused.
- */
+/** Validates the agent-written PR request; none of it is trusted. */
 export function checkPrHandoff(text, { sha } = {}) {
 	let req
 	try {
@@ -335,7 +234,6 @@ export function checkPrHandoff(text, { sha } = {}) {
 	return { workflow, sha: commit, branch, base, title: title || `tc ${workflow}: ${commit}`, body }
 }
 
-/** A branch name with nothing git or a URL could read as something else. */
 export function isPlainBranchName(name) {
 	const n = String(name ?? "")
 	return (
@@ -352,11 +250,7 @@ export function isPlainBranchName(name) {
 	)
 }
 
-/**
- * What `tc workflow claim` printed, read defensively. The CLI is ours, but
- * an older one does not have the command at all, and anything unexpected
- * must read as "we do not hold a claim", never as "already done".
- */
+/** Anything unexpected (e.g. an older CLI) reads as "no claim held". */
 export function readClaimResult(stdout, status) {
 	let parsed
 	try {

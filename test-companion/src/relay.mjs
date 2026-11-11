@@ -1,26 +1,15 @@
 /**
- * The read-only GitHub relay the agent's `gh` talks to.
- *
- * The agent's gh is configured with `http_unix_socket` pointing here and a
- * placeholder token. gh then sends every request, as plain HTTP, to this
- * socket instead of to GitHub. The relay checks each one against
- * relayDecision, swaps the placeholder for the real pass on the ones that
- * may go through, and forwards them over HTTPS.
- *
- * So the agent can read what its jobs need (a failed run's logs, a pull
- * request's details) and never holds a pass that could write.
- *
- * Runs inside this Action's process, while the agent's run is going.
+ * Read-only GitHub relay for the agent's `gh` (via `http_unix_socket`). The
+ * real token is added here to allowed requests, so the agent never holds one.
  */
 import http from "node:http"
 import https from "node:https"
 import { chmodSync, rmSync } from "node:fs"
 import { relayDecision } from "./sandbox-policy.mjs"
 
-/** The most we read of a request body. GraphQL queries are small. */
 const MAX_BODY = 1024 * 1024
 
-/** Headers we never pass on: they belong to this hop, or would reveal ours. */
+// Hop-by-hop headers, plus the agent's placeholder authorization.
 const HOP_HEADERS = new Set([
 	"connection",
 	"keep-alive",
@@ -35,13 +24,6 @@ const HOP_HEADERS = new Set([
 	"content-length",
 ])
 
-/**
- * Start the relay on `socketPath`. `token` is the pass added to allowed API
- * requests. `log` receives one line per refused request, so a run that
- * fails because the agent tried a write says so.
- *
- * Resolves to { close }.
- */
 export function startRelay({ socketPath, token, log = () => {}, forward = forwardRequest }) {
 	rmSync(socketPath, { force: true })
 	const server = http.createServer((req, res) => {
@@ -81,8 +63,7 @@ export function startRelay({ socketPath, token, log = () => {}, forward = forwar
 	return new Promise((resolve, reject) => {
 		server.once("error", reject)
 		server.listen(socketPath, () => {
-			// Reachable by the agent's user. The folder around it is what limits
-			// who can get to it (see sandbox.mjs).
+			// Access is limited by the enclosing folder's permissions (sandbox.mjs).
 			chmodSync(socketPath, 0o666)
 			resolve({
 				close: () =>
@@ -95,7 +76,6 @@ export function startRelay({ socketPath, token, log = () => {}, forward = forwar
 	})
 }
 
-/** Send one checked request to GitHub over HTTPS and stream the answer back. */
 function forwardRequest({ host, method, path, headers, body }, res) {
 	const [hostname, port] = host.split(":")
 	const upstream = https.request(

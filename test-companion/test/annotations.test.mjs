@@ -11,8 +11,6 @@ const REPORT = [
 ].join("\n")
 
 describe("parseFailedTests — reading the report back", () => {
-	// parseSummary builds an object, so repeated keys collapse and only the
-	// last failing test would survive. These need their own reader.
 	test("keeps every failing test, not just the last one", () => {
 		assert.equal(parseFailedTests(REPORT).length, 3)
 	})
@@ -35,8 +33,6 @@ describe("parseFailedTests — reading the report back", () => {
 		assert.deepEqual(parseFailedTests(undefined), [])
 	})
 
-	// A name is whatever the reporter printed. It must never be read as a
-	// location, which is why the writer separates them with a tab.
 	test("a colon in the test name is not a location", () => {
 		const [t] = parseFailedTests("failed_test: handles a:b\treal.spec.ts:4")
 		assert.deepEqual(t, { name: "handles a:b", file: "real.spec.ts", line: 4 })
@@ -53,23 +49,18 @@ describe("buildAnnotations", () => {
 		assert.match(a.message, /Checkout > pays/)
 	})
 
-	// GitHub rejects an annotation with no line. A file with no line is still
-	// worth pointing at, so it goes on line 1 — and the message says so, rather
-	// than silently implying the failure is on the first line.
+	// GitHub rejects an annotation with no line.
 	test("falls back to the top of the file and says so", () => {
 		const [a] = buildAnnotations([{ name: "Checkout > refunds", file: "tests/checkout.spec.ts" }])
 		assert.equal(a.start_line, 1)
 		assert.match(a.message, /line .*(not|unknown)|which line/i)
 	})
 
-	// Nowhere to point means no annotation. Inventing a path would put a
-	// failure on a file that has nothing to do with it.
 	test("skips a test with no file, rather than guessing one", () => {
 		assert.deepEqual(buildAnnotations([{ name: "should log in" }]), [])
 	})
 
-	// GitHub accepts at most 50 annotations per request. A suite with 300
-	// failures must not silently lose the whole set to a rejected call.
+	// GitHub accepts at most 50 annotations per request.
 	test("never sends more than GitHub accepts", () => {
 		const many = Array.from({ length: 300 }, (_, i) => ({ name: `t${i}`, file: "a.spec.ts", line: i + 1 }))
 		assert.equal(buildAnnotations(many).length, MAX_ANNOTATIONS)
@@ -81,8 +72,6 @@ describe("buildAnnotations", () => {
 		assert.deepEqual(buildAnnotations(undefined), [])
 	})
 
-	// An absolute path, or one climbing out of the repository, annotates
-	// nothing on GitHub and may point at a file outside the checkout.
 	test("refuses a path that is not inside the repository", () => {
 		assert.deepEqual(buildAnnotations([{ name: "t", file: "/etc/passwd", line: 1 }]), [])
 		assert.deepEqual(buildAnnotations([{ name: "t", file: "../outside.spec.ts", line: 1 }]), [])

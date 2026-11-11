@@ -1,16 +1,8 @@
 /**
- * The first run, when nothing is configured yet.
- *
- * A repository with no testcompanion-pipeline.yml would otherwise get a red
- * build naming a file nobody has heard of. Instead it gets a clean pass and
- * the file it needs, ready to copy.
- *
- * Handled here rather than in the CLI: making `tc workflow run` succeed on a
- * missing config would swallow a real misconfiguration for every pipeline
- * already relying on that error.
+ * A repository with no pipeline file gets a clean pass and a starter file to
+ * copy, instead of a red build.
  */
 
-/** The pipeline file we hand someone who has none. */
 export const STARTER_PIPELINE = `# Test Companion — what runs, and when.
 #
 # Every entry below is a JOB BINDING: a workflow, the event that starts it, and
@@ -57,13 +49,6 @@ workflows:
       credits: 500
 `
 
-/**
- * The pull request that adds the starter settings file.
- *
- * The detected framework is recorded when we can tell what it is, and left out
- * when we cannot — a starter naming Cypress at a Playwright shop would claim an
- * understanding we do not have.
- */
 export function starterPipelineFor(framework) {
 	const name = String(framework ?? "").trim()
 	if (!name) return STARTER_PIPELINE
@@ -86,14 +71,7 @@ export function renderSetupPr(configPath, framework) {
 	}
 }
 
-/**
- * Where the pipeline file lives: the flag, then TC_PIPELINE_CONFIG, then the
- * repository root.
- *
- * Mirrors the CLI's own resolution exactly. Checking a different path than
- * the CLI reads would be worse than not checking: the Action would announce
- * "nothing is configured" to a repository that is.
- */
+/** The pipeline file path. Must match the CLI's own resolution. */
 export function pipelineConfigPath(configInput, env = {}) {
 	const flag = (configInput ?? "").trim()
 	if (flag) return flag
@@ -102,11 +80,6 @@ export function pipelineConfigPath(configInput, env = {}) {
 	return "testcompanion-pipeline.yml"
 }
 
-/**
- * What the job page says when there is no pipeline file. Deliberately free of
- * the words "error" and "failed": nothing went wrong, there is just nothing to
- * run yet.
- */
 export function renderNoPipelineReport(path) {
 	return [
 		"## Test Companion",
@@ -123,17 +96,9 @@ export function renderNoPipelineReport(path) {
 }
 
 /**
- * Which branch the settings file is read from: always the default branch.
- *
- * Read from the branch under test, a pull request could rewrite the rules for
- * its own run and be obeyed — switch itself from preview to live, delete its
- * spending limit, or point its Test Management writes elsewhere.
- *
- * Deliberate consequence: a pull request that ADDS the settings file for the
- * first time is not picked up until it merges.
+ * Settings are read from the default branch, so a pull request cannot change
+ * the rules for its own run.
  */
 export function settingsRef(payload = {}, env = {}) {
-	// Guessing "main" last is safe: the worst case is "no settings file", which
-	// is a clean skip, not a run obeying rules the pull request wrote.
 	return payload?.repository?.default_branch || env.GITHUB_DEFAULT_BRANCH || "main"
 }

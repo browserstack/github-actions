@@ -19,11 +19,6 @@ describe("findTicket", () => {
 		assert.equal(findTicket({ title: "SHOP-9: the real one", branch: "feat/SHOP-221-old" }), "SHOP-9")
 	})
 
-	/**
-	 * The trap. A Jira key and a standards reference are the same shape, so a
-	 * naive pattern turns "upgrade to UTF-8" into a run that tests against
-	 * ticket UTF-8 and reports it confidently in the first comment.
-	 */
 	test("a standards reference is not a ticket", () => {
 		for (const text of [
 			"switch to UTF-8",
@@ -59,9 +54,6 @@ describe("findTicket", () => {
 		assert.equal(findTicket({ title: "SHOP-221 and SHOP-222" }), "SHOP-221")
 	})
 
-	// The lookbehind makes the match start at the X, so this reads as the
-	// project XSHOP — which is a perfectly good key — rather than quietly
-	// slicing out of the middle of a word.
 	test("a longer project key is read whole, not sliced", () => {
 		assert.equal(findTicket({ title: "XSHOP-221" }), "XSHOP-221")
 	})

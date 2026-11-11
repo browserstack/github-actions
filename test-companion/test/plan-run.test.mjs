@@ -2,8 +2,6 @@ import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { planRun, TC_EVENTS, contextArgs, withPullRequestHead } from "../src/plan-run.mjs"
 
-// Minimal payload builders. Each returns the shape GitHub actually puts in
-// $GITHUB_EVENT_PATH for that event, trimmed to the fields we read.
 const pr = (over = {}) => ({
 	number: 412,
 	draft: false,
@@ -29,8 +27,6 @@ describe("comment trigger", () => {
 		assert.equal(r.context.pr, "412")
 	})
 
-	// The comment's wording is the user's instruction — it is the whole point of
-	// the trigger, so it has to reach the run rather than being thrown away.
 	test("carries what the person actually asked for", () => {
 		const r = plan("issue_comment", {
 			action: "created",
@@ -59,8 +55,7 @@ describe("comment trigger", () => {
 		assert.equal(r.skip.reason, "not-addressed-to-us")
 	})
 
-	// editing a comment must not start a run. Otherwise fixing a typo in
-	// a months-old comment re-runs the job.
+	// editing a comment must not start a run.
 	test("ignores an edited comment", () => {
 		const r = plan("issue_comment", {
 			action: "edited",
@@ -90,9 +85,6 @@ describe("pull request triggers", () => {
 			pull_request: pr({ merged: true, state: "closed", merge_commit_sha: "deadbee" }),
 		})
 		assert.equal(r.event, TC_EVENTS.PR_MERGED)
-		// The merge commit is the change that landed on the base branch; the head
-		// sha is the branch that no longer exists. Scoping to the wrong one makes
-		// the run look at code that was never merged.
 		assert.equal(r.context.sha, "deadbee")
 		assert.equal(r.context.branch, "main")
 	})
@@ -102,15 +94,12 @@ describe("pull request triggers", () => {
 		assert.equal(r.skip.reason, "closed-unmerged")
 	})
 
-	// a draft never starts a run on its own. A comment still can, which is
-	// why this check belongs here and not in the comment path.
+	// a draft never starts a run on its own.
 	test("a draft pull request does not start a run on its own", () => {
 		const r = plan("pull_request", { action: "opened", pull_request: pr({ draft: true }) })
 		assert.equal(r.skip.reason, "draft")
 	})
 
-	// . A fork PR runs with a read-only token and no secrets, so starting
-	// would fail confusingly partway. Refusing up front is the clean skip.
 	test("a pull request from a fork does not run", () => {
 		const r = plan("pull_request", {
 			action: "opened",
@@ -153,9 +142,6 @@ describe("red build trigger", () => {
 		assert.equal(r.skip.reason, "build-not-red")
 	})
 
-	// never explain a red run that is our own. Without this, a failing
-	// Test Companion check triggers a run to explain the failing Test Companion
-	// check, which triggers another one.
 	test("never explains its own failed run", () => {
 		const r = plan(
 			"workflow_run",
@@ -189,8 +175,6 @@ describe("other triggers", () => {
 		assert.equal(r.event, TC_EVENTS.SCHEDULE)
 	})
 
-	// a manual run names its own job and ignores the bindings entirely,
-	// which the CLI expresses as "no --event at all".
 	test("a manual run carries no event, so bindings are bypassed", () => {
 		const r = plan(
 			"workflow_dispatch",
@@ -209,9 +193,7 @@ describe("other triggers", () => {
 })
 
 describe("safety", () => {
-	// The CLI rejects a flag-like context value (CWE-88). A pull request title or
-	// comment is attacker-controlled on a public repo, so catch it before it is
-	// ever put on a command line.
+	// The CLI rejects a flag-like context value (CWE-88).
 	test("refuses a context value that looks like a flag", () => {
 		const r = plan("issue_comment", {
 			action: "created",
@@ -231,9 +213,6 @@ describe("safety", () => {
 })
 
 describe("workflow_run is a privileged trigger", () => {
-	// workflow_run runs in the BASE repo's context with full secrets, even when
-	// the run it reacts to came from a fork. That is the documented GitHub
-	// footgun: the fork check in the pull_request path does not cover this one.
 	test("a red run from a fork does not start a privileged run", () => {
 		const r = plan("workflow_run", {
 			action: "completed",
@@ -266,9 +245,6 @@ describe("workflow_run is a privileged trigger", () => {
 })
 
 describe("context values cannot inject extra keys", () => {
-	// context is a comma-separated k=v list, so a comment body containing a
-	// comma and an equals sign could otherwise append keys of its own, e.g.
-	// overriding the commit the run looks at.
 	test("strips separators out of free text", () => {
 		const r = plan("issue_comment", {
 			action: "created",
@@ -316,10 +292,6 @@ describe("workflow_run fails closed", () => {
 })
 
 describe("an explicitly named job", () => {
-	// Naming a job should win on ANY trigger, not just a manual one. Explicit
-	// beats implicit, and it gives a workflow file a way to pin one job without
-	// touching the pipeline file. Found while testing: the input was silently
-	// ignored on a pull_request event, which is a confusing no-op.
 	test("overrides the binding on an event-driven run", () => {
 		const r = plan("pull_request", { action: "opened", pull_request: pr() }, { inputs: { workflow: "generate" } })
 		assert.equal(r.workflow, "generate")
@@ -335,11 +307,6 @@ describe("an explicitly named job", () => {
 })
 
 describe("contextArgs — one flag per pair", () => {
-	// A single `--context a=1,b=2` is parsed by pflag with encoding/csv, which
-	// returns ErrBareQuote when an unquoted field contains a double quote. So a
-	// PR titled `Fix "Pay now" button` made flag parsing fail and the whole run
-	// reported "Could not run". One flag per pair takes pflag's single-pair
-	// path, which never reaches the CSV reader.
 	test("emits a separate --context flag for every pair", () => {
 		assert.deepEqual(contextArgs({ sha: "abc", pr: "412" }), ["--context", "sha=abc", "--context", "pr=412"])
 	})
@@ -369,10 +336,6 @@ describe("cleanContext strips quotes as well as separators", () => {
 })
 
 describe("a pull request does not send its title as the subject", () => {
-	// generateSubject in the CLI builds the commit-scoped prompt ("the change in
-	// PR #N, commit SHA … covering only what that change touches") ONLY when no
-	// subject is given. Sending the title meant `generate` on a pull request
-	// wrote cases for the title instead of the diff, which is.
 	test("pr_opened carries sha, branch and pr but no subject", () => {
 		const plan = planRun({
 			eventName: "pull_request",
@@ -385,12 +348,6 @@ describe("a pull request does not send its title as the subject", () => {
 	})
 })
 
-// P1 from review: a comment-triggered run worked on the WRONG TREE.
-//
-// The issue_comment plan carries `pr` but no `sha`, so checkSha fell back to
-// GITHUB_SHA — the default branch tip for that event — and the starter's
-// checkout took the default branch too. `@browserstack generate` on
-// therefore read main, and the check landed on main's latest commit.
 describe("withPullRequestHead — a comment run must name the PR's own commit", () => {
 	const plan = () => ({ event: "pr_comment", context: { pr: "42", instructions: "generate" } })
 	const head = (over = {}) => ({
@@ -430,19 +387,6 @@ describe("withPullRequestHead — a comment run must name the PR's own commit", 
 })
 
 describe("a bare approval reaches us", () => {
-	/**
-	 * Found by the first approved run. The proposal comment says "Reply **go**
-	 * to run this for real", a person replies exactly that, and the run skipped
-	 * with "No @browserstack mention, so nothing was asked of Test Companion".
-	 *
-	 * The proposal was instructing an action that could not work. says "a
-	 * reply of 'go'", and the PRD's own user story has the SDET replying "go"
-	 * with no mention at all.
-	 *
-	 * Narrow on purpose: the comment must OPEN with the approval word. An
-	 * unmentioned comment is still nothing to do with us in every other case,
-	 * and main.mjs drops this one too unless a proposal is actually waiting.
-	 */
 	const comment = (body) => ({
 		action: "created",
 		issue: { number: 7, pull_request: {} },
@@ -455,16 +399,6 @@ describe("a bare approval reaches us", () => {
 		assert.equal(out.approvalOnly, true)
 	})
 
-	/**
-	 * CHANGED. This used to be carried through, so
-	 * "edit the list while approving" worked with no mention. But
-	 * "Approved, but rename the login case" is an ordinary review comment on
-	 * any pull request, and unaddressed it started a live write run with the
-	 * trailing text as approver edits that win.
-	 *
-	 * Editing while approving still works — it just has to be addressed to us
-	 * now, and the proposal comment says so.
-	 */
 	test("go WITH EDITS needs the mention, or an ordinary review comment starts a run", () => {
 		const out = planRun({ eventName: "issue_comment", payload: comment("go, but drop case two"), repo: "acme/shop" })
 		assert.equal(out.skip?.reason ?? out.skip, "not-addressed-to-us")
@@ -482,8 +416,6 @@ describe("a bare approval reaches us", () => {
 		assert.equal(planRun({ eventName: "issue_comment", payload: comment("approved"), repo: "acme/shop" }).skip, undefined)
 	})
 
-	// The discriminator. "go" has to OPEN the comment, or ordinary chatter on a
-	// pull request starts runs.
 	test("ordinary chatter that merely contains the word is still ignored", () => {
 		for (const body of ["let's go to lunch", "I'll go over this tomorrow", "this is good to go once CI passes"]) {
 			const out = planRun({ eventName: "issue_comment", payload: comment(body), repo: "acme/shop" })
@@ -504,19 +436,6 @@ describe("a bare approval reaches us", () => {
 })
 
 describe("pull_request_target is a privileged trigger — it must fail CLOSED", () => {
-	/**
-	 * `pull_request_target` runs in the BASE repository's context with full
-	 * secrets, even when the pull request comes from a fork. That is the
-	 * documented way these workflows get compromised, and this fork check is the
-	 * only thing in front of it: unlike `pull_request`, the credentials ARE
-	 * present, so main.mjs's no-credentials skip never fires.
-	 *
-	 * GitHub sets `head.repo` to null when the fork has been DELETED. The old
-	 * check required head.repo.full_name to be truthy before it would refuse, so
-	 * a deleted fork sailed through — open a pull request from a fork, delete
-	 * the fork, and the run executes attacker-authored code with the base
-	 * repository's credentials and --yolo.
-	 */
 	const targetEvent = (head) => ({
 		action: "opened",
 		pull_request: { number: 7, draft: false, head },
@@ -569,8 +488,6 @@ describe("pull_request_target is a privileged trigger — it must fail CLOSED", 
 		assert.equal(out.context.sha, "abc")
 	})
 
-	// GitHub treats repository names case-insensitively; workflow_run already
-	// compares this way and pull_request did not.
 	test("a case difference is the same repository, not a fork", () => {
 		const out = planRun({
 			eventName: "pull_request_target",
@@ -582,19 +499,6 @@ describe("pull_request_target is a privileged trigger — it must fail CLOSED", 
 })
 
 describe("the flag guard sees the FINAL value, not the raw one", () => {
-	/**
-	 * `looksLikeAFlag` used to run
-	 * BEFORE `cleanContext`, which calls `stripSeparators` and turns `,`, `=`
-	 * and `"` into spaces before trimming. So a value crafted to look safe
-	 * beforehand became flag-like afterwards and the gate never saw it:
-	 *
-	 *  `",--config /tmp/evil.yml"` → guard passes → `--config /tmp/evil.yml`
-	 *
-	 * while the same text unwrapped was correctly refused. Not injectable
-	 * today only because every Go arg builder re-checks — the user-visible
-	 * effect was a cryptic "Could not run" instead of the clean
-	 * `unsafe-context` skip this has a message for.
-	 */
 	const comment = (body) => ({
 		action: "created",
 		issue: { number: 7, pull_request: {} },
@@ -618,16 +522,6 @@ describe("the flag guard sees the FINAL value, not the raw one", () => {
 	})
 })
 
-/**
- * An UNADDRESSED comment reaches us only as a possible approval. It used to
- * be enough to open with the word, so "Approved, but rename X" — an ordinary
- * review comment on any pull request — started a live write run, with
- * "but rename X" carried in as approver edits that win.
- *
- * Unaddressed, the comment must now BE the approval and nothing else.
- * Addressed, "@browserstack go and also cover X" still works: that is
- *  "you can edit the list first", and they did address us.
- */
 describe("an unaddressed comment counts as approval only when it is exactly that", () => {
 	const comment = (body) =>
 		plan("issue_comment", {
@@ -659,12 +553,7 @@ describe("an unaddressed comment counts as approval only when it is exactly that
 	})
 })
 
-/**
- * The result comment is edited in place, so it can only ever show the latest
- * run. On a pull request where several people have asked for different jobs,
- * nothing said whose request the current contents were answering. The report
- * links back to the asking comment, which means carrying its URL out of here.
- */
+// The result comment is edited in place, so it can only ever show the latest run.
 describe("the asking comment is carried through", () => {
 	const at = "https://github.com/acme/shop/pull/412#issuecomment-99"
 
@@ -695,17 +584,6 @@ describe("the asking comment is carried through", () => {
 	})
 })
 
-/**
- * People address the Action as @browserstack, the name the GitHub App posts
- * under, so the name they type matches the name that replies.
- *
- * "browserstack" also appears in text that is NOT addressed to us: email
- * addresses (someone@browserstack.com), GitHub team mentions
- * (@browserstack/qa), npm package scopes (@browserstack/wdio-service) and the
- * App's own bot account (@browserstack[bot]). A plain "does the comment
- * contain @browserstack" check would start a run for every one of those, so
- * only the word on its own counts.
- */
 describe("the @browserstack mention", () => {
 	const comment = (body) => ({
 		action: "created",
@@ -733,7 +611,7 @@ describe("the @browserstack mention", () => {
 
 	test("text that merely contains the name is not addressed to us", () => {
 		for (const body of [
-			"ping naimish@browserstack.com about this",
+			"ping someone@example.com about this",
 			"sent to QA@BrowserStack.com",
 			"@browserstack/qa please review",
 			"bump @browserstack/wdio-browserstack-service to 9.1",

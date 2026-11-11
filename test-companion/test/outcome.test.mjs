@@ -38,8 +38,6 @@ describe("resolveOutcome", () => {
 		assert.equal(resolveOutcome(5, {}), OUTCOMES.TESTS_FAILED)
 	})
 
-	// Exit 4 covers three different causes. Only the report distinguishes a
-	// ceiling from a crash, which is why the Action reads both.
 	test("a ceiling is told apart from a crash, using the report", () => {
 		assert.equal(resolveOutcome(4, { error_type: "ceiling_exceeded" }), OUTCOMES.STOPPED_AT_LIMIT)
 		assert.equal(resolveOutcome(4, {}), OUTCOMES.RUN_BROKE)
@@ -57,9 +55,6 @@ describe("resolveOutcome", () => {
 		assert.equal(resolveOutcome(7, {}), OUTCOMES.COULD_NOT_RUN)
 	})
 
-	// The observed false green: an expired session ended with status completed
-	// and exit 0 having done nothing. If the CLI said it could not run, believe
-	// the report over the exit code.
 	test("believes the report when it contradicts a success exit code", () => {
 		assert.equal(resolveOutcome(0, { outcome: "broke" }), OUTCOMES.RUN_BROKE)
 	})
@@ -87,8 +82,6 @@ describe("checkConclusion", () => {
 		assert.equal(checkConclusion(OUTCOMES.TESTS_FAILED), "failure")
 	})
 
-	// A run that could not finish must not be able to satisfy a required check,
-	// but it is not the same as a test failure — someone has to do something.
 	test("asks for a person when the run could not finish", () => {
 		assert.equal(checkConclusion(OUTCOMES.STOPPED_AT_LIMIT), "action_required")
 		assert.equal(checkConclusion(OUTCOMES.COULD_NOT_RUN), "action_required")
@@ -117,22 +110,12 @@ describe("stepShouldFail — build effect", () => {
 		assert.equal(stepShouldFail("fail", OUTCOMES.SUCCEEDED), false)
 	})
 
-	// REVERSED by. While `report` was the
-	// default, "a misconfiguration must never redden a build" was the safe
-	// direction. The default is now fail-on-break, so a typo landing you on a
-	// quieter setting than a fresh install is exactly the silent pass to avoid.
-	// The whole rule lives in build-effect.test.mjs now; this is the hinge.
 	test("anything unrecognised behaves as the default", () => {
 		assert.equal(stepShouldFail(undefined, OUTCOMES.RUN_BROKE), true)
 		assert.equal(stepShouldFail("FAIL_HARD", OUTCOMES.RUN_BROKE), true)
 	})
 })
 
-// P0 from review: an event nothing is bound to must not look like a failure.
-//
-// The CLI now exits 0 and writes `outcome: skipped` for an unbound event. The
-// old code took exit 0 with any non-"succeeded" outcome as RUN_BROKE, so this
-// would have gone from one wrong answer to another.
 describe("resolveOutcome — an unbound event is skipped, not broken", () => {
 	test("exit 0 with outcome skipped is SKIPPED", () => {
 		assert.equal(resolveOutcome(0, { outcome: "skipped" }), OUTCOMES.SKIPPED)
@@ -152,33 +135,17 @@ describe("resolveOutcome — an unbound event is skipped, not broken", () => {
 	})
 
 	test("a skipped outcome never reddens the step or the check", () => {
-		// The arguments were the wrong way round here, which made this pass
-		// without ever asking the question. stepShouldFail(buildEffect, outcome).
 		assert.equal(stepShouldFail("fail", OUTCOMES.SKIPPED), false)
 		assert.notEqual(checkConclusion(OUTCOMES.SKIPPED), "failure")
 	})
 })
 
-/**
- * Approving a plan is spent by the run that carries it out — but only if a run
- * actually happened.
- *
- * Found live: an approved `fix` died in under a second before doing any work
- * (the dedupe claim had no credential), and the result comment
- * still carried the consumed marker. Every later `go` on that commit was then
- * refused — "already been approved and run on this commit" — including after a
- * fresh proposal was put up. The only way out was a new commit.
- *
- * The dedupe claim already has this property: it releases itself on a
- * non-success outcome. An approval should behave the same way.
- */
+// Approving a plan is spent by the run that carries it out — but only if a run actually happened.
 describe("approvalWasSpent", () => {
 	test("a run that succeeded spends it", () => {
 		assert.equal(approvalWasSpent(OUTCOMES.SUCCEEDED), true)
 	})
 
-	// The run did the work it was approved for. Red tests are a result, not a
-	// failure to run — re-running would redo the work and charge for it again.
 	test("failing tests still spend it", () => {
 		assert.equal(approvalWasSpent(OUTCOMES.TESTS_FAILED), true)
 	})
@@ -200,8 +167,6 @@ describe("approvalWasSpent", () => {
 		assert.equal(approvalWasSpent(OUTCOMES.SKIPPED), false)
 	})
 
-	// Totality: a new outcome must be considered rather than silently spending
-	// an approval because it is not one of the two named failures.
 	test("every outcome has an answer", () => {
 		for (const o of Object.values(OUTCOMES)) {
 			assert.equal(typeof approvalWasSpent(o), "boolean", `${o} has no answer`)

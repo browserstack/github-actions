@@ -1,6 +1,4 @@
 * @browserstack/automate-public-repos
 
-# The Test Companion action. Changes to it run an AI agent in customers' jobs,
-# so they also need a review from its team.
 /test-companion/ @browserstack/automate-public-repos @browserstack/test-companion
 /.github/workflows/test-companion-tests.yml @browserstack/automate-public-repos @browserstack/test-companion

@@ -16,15 +16,6 @@ describe("childEnvFor — what the agent's shell can see", () => {
 		assert.equal(out.GITHUB_TOKEN, undefined)
 	})
 
-	/**
-	 * The one the allowlist would have let through. TC_ is a kept PREFIX, so
-	 * the App's private key — TC_ACTION_APP_PRIVATE_KEY — matched it and would
-	 * have been handed to a shell running commands the model chose.
-	 *
-	 * That key can mint installation tokens for every repository the App is on,
-	 * which is a far worse thing to leak than the workflow token the allowlist
-	 * was written to keep out.
-	 */
 	test("the App's private key never does either, despite its TC_ prefix", () => {
 		const out = childEnvFor({
 			TC_ACTION_APP_PRIVATE_KEY: "-----BEGIN RSA PRIVATE KEY-----",

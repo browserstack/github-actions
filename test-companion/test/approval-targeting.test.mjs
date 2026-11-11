@@ -15,22 +15,12 @@ import {
 } from "../src/report.mjs"
 import { OUTCOMES } from "../src/outcome.mjs"
 
-/**
- * "go" should say which request it is answering.
- *
- * Two problems, one cause: the approval machinery was keyed on the COMMIT and
- * nothing else. With two plans waiting there was nothing in what you typed to
- * pick one, and the record of which plans had been used could not tell two
- * jobs apart — so approving one blocked approving any other on that commit
- * until somebody pushed.
- */
-
 const US = "test-companion[bot]"
 const SHA = "abc123def4567890"
 const now = Date.parse("2026-11-03T12:00:00Z")
 const fresh = "2026-11-03T11:00:00Z"
 
-/** A proposal comment from us, for one job. */
+// A proposal comment from us, for one job.
 const proposal = (id, workflow, { requester = "dev", sha = SHA, at = fresh } = {}) => ({
 	id,
 	user: { type: "Bot", login: US },
@@ -39,7 +29,7 @@ const proposal = (id, workflow, { requester = "dev", sha = SHA, at = fresh } = {
 	body: `Here is the plan.\n\n${proposalMarkerFor(sha, requester, workflow)}`,
 })
 
-/** Our own comment recording that a plan was spent. */
+// Our own comment recording that a plan was spent.
 const consumed = (id, workflow, sha = SHA) => ({
 	id,
 	user: { type: "Bot", login: US },
@@ -61,9 +51,6 @@ describe("go can name the plan it answers", () => {
 	})
 
 	test("the intent carries the id a reply named", () => {
-		// What readIntent actually receives: plan-run.mjs strips the mention
-		// before this, so the pattern is anchored to the approval word and not
-		// to the start of the raw comment.
 		const got = readIntent("go #6580278184", { proposalWaiting: true })
 		assert.equal(got.kind, INTENT.GO)
 		assert.equal(got.proposalId, "6580278184")
@@ -82,7 +69,6 @@ describe("go can name the plan it answers", () => {
 	})
 
 	test("a pull request number is not a comment id", () => {
-		// "go #25" is somebody pointing at a pull request, not at a plan.
 		const got = readIntent("go #25", { proposalWaiting: true })
 		assert.equal(got.kind, INTENT.GO)
 		assert.equal(got.proposalId, undefined)
@@ -101,7 +87,6 @@ describe("go can name the plan it answers", () => {
 
 describe("the record of a spent plan knows which job it was", () => {
 	test("approving one job leaves another job's plan approvable", () => {
-		// The bug, in one assertion. Both plans are on the same commit.
 		const comments = [proposal(1001, "generate"), proposal(1002, "fix"), consumed(1003, "fix")]
 		const got = findProposal(comments, SHA, now, US)
 		assert.equal(got?.id, 1001, "the generate plan was never approved and must still be waiting")
@@ -124,8 +109,6 @@ describe("the record of a spent plan knows which job it was", () => {
 	})
 
 	test("a marker written before jobs were recorded still spends the whole commit", () => {
-		// Back-compat: an old thread mid-upgrade. Treating it as spending
-		// nothing would re-run work somebody already approved.
 		const old = { id: 1003, user: { type: "Bot", login: US }, created_at: fresh, body: proposalConsumedMarkerFor(SHA) }
 		const comments = [proposal(1001, "generate"), proposal(1002, "fix"), old]
 		assert.equal(findProposal(comments, SHA, now, US), undefined)
@@ -174,18 +157,6 @@ describe("the result comment says which plan it carried out", () => {
 })
 
 describe("naming a plan does not need the mention", () => {
-	/**
-	 * FOUND ON A LIVE RUN, 3 November. `readIntent` and `findProposal` both
-	 * learned about `go `, and the gate in plan-run.mjs that decides
-	 * whether an UNADDRESSED comment reaches us at all did not — it still
-	 * only accepted a bare `go`. So `go ` was dropped as "no
-	 * @browserstack mention" before the intent was ever read, and naming a
-	 * plan only worked if you also addressed the comment.
-	 *
-	 * Still narrow. `go` followed by a plan reference and nothing else is
-	 * unmistakably aimed at us; "Approved, but rename the login case" is still
-	 * an ordinary review comment and still needs the mention.
-	 */
 	const comment = (body) => ({
 		action: "created",
 		issue: { number: 7, pull_request: {} },
@@ -220,22 +191,12 @@ describe("naming a plan does not need the mention", () => {
 	})
 
 	test("and a number that is not a plan reference does not open the gate", () => {
-		// "go #25" is somebody pointing at a pull request. It is a bare-ish go,
-		// so it is carried through — but as a BARE one, with no plan named.
 		const out = planRun({ eventName: "issue_comment", payload: comment("go and look at #25 too"), repo: "acme/shop" })
 		assert.equal(out.skip?.reason, "not-addressed-to-us")
 	})
 })
 
 describe("naming a plan is not editing it", () => {
-	/**
-	 * `hasApproverEdits("go ")`
-	 * was true, because the bare-approval pattern allowed no plan reference.
-	 * That is not just a wrong line in the report: renderApprovedPlan uses the
-	 * same answer to append "# Changes the approver made … these win" to the
-	 * plan the agent is handed. So the per-job approval feature injected its own
-	 * comment id into the plan as an authoritative instruction.
-	 */
 	test("go #id is a bare approval", () => {
 		assert.equal(hasApproverEdits("go #6600030205"), false)
 		assert.equal(hasApproverEdits("approved #6600030205"), false)
@@ -262,14 +223,6 @@ describe("naming a plan is not editing it", () => {
 })
 
 describe("a plan reference has to sit next to the approval", () => {
-	/**
-	 * GO_TARGET matched a `#id` anywhere in the comment, so
-	 * "@browserstack go — and pull the steps from <url>#issuecomment-…"
-	 * became an approval of a plan that does not exist, and was refused.
-	 *
-	 * readIntent receives the comment with the mention already removed by
-	 * plan-run.mjs, so that is what is passed here.
-	 */
 	test("a link quoted later in the sentence is not a plan reference", () => {
 		const got = readIntent("go — and pull the steps from https://github.com/o/r/pull/9#issuecomment-2345678901", {
 			proposalWaiting: true,
@@ -287,11 +240,6 @@ describe("a plan reference has to sit next to the approval", () => {
 	})
 })
 
-/**
- * The approval word is only recognised at the START of the instruction, so
- * this pins the hand-off it depends on: plan-run.mjs removes the mention, and
- * what reaches readIntent opens with the word the person actually led with.
- */
 describe("a real approval comment, end to end through plan-run", () => {
 	const comment = (body) => ({
 		action: "created",

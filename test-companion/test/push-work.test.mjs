@@ -32,12 +32,6 @@ describe("shouldPushWork — the approved work must survive the runner", () => {
 		assert.equal(shouldPushWork(live).ok, true)
 	})
 
-	/**
-	 * A preview run is the proposal pass. The brain refuses every write tool,
-	 * so there should be nothing to push — but if a shell command wrote
-	 * something anyway, pushing it would break the one promise the proposal
-	 * makes: "nothing is written until you say go".
-	 */
 	test("a preview run never pushes", () => {
 		assert.equal(shouldPushWork({ ...live, preview: true }).ok, false)
 		assert.match(shouldPushWork({ ...live, preview: true }).why, /preview/i)
@@ -51,11 +45,6 @@ describe("shouldPushWork — the approved work must survive the runner", () => {
 		assert.equal(shouldPushWork({ ...live, branch: "" }).ok, false)
 	})
 
-	/**
-	 * The loop guard. Our own push creates a commit; if that commit triggers a
-	 * run that pushes again, the pull request fills with commits forever. One
-	 * generation is enough: we never push on top of our own commit.
-	 */
 	test("a run triggered by our own commit does not push again", () => {
 		assert.equal(shouldPushWork({ ...live, headAuthorEmail: BOT_EMAIL }).ok, false)
 		assert.match(shouldPushWork({ ...live, headAuthorEmail: BOT_EMAIL }).why, /own commit/i)
@@ -99,12 +88,6 @@ describe("splitPushable — what we refuse to commit", () => {
 		assert.deepEqual(skip, [])
 	})
 
-	/**
-	 * `git add` already honours .gitignore, so this is the second line of
-	 * defence, for a repository that does not ignore these. A pushed .env is
-	 * the worst outcome in this whole feature — it publishes a credential to
-	 * the customer's own history, where deleting it does not take it back.
-	 */
 	test("an environment file is never committed", () => {
 		const { push, skip } = splitPushable([".env", "tests/a.spec.js", "config/.env.local"])
 		assert.deepEqual(push, ["tests/a.spec.js"])
@@ -150,12 +133,6 @@ describe("renderPushNote — the reader must see exactly what landed", () => {
 })
 
 describe("needsCheckout — the run must happen on the branch it writes to", () => {
-	/**
-	 * main.mjs already detaches onto the pull request's commit when it resolves
-	 * a comment's issue number, but that fetch is advisory — it warns and
-	 * carries on so a proposal can still be built. This is what turns "we tried
-	 * to be on the right commit" into "we are", before anything is pushed.
-	 */
 	test("a checkout sitting on another commit needs switching", () => {
 		assert.equal(needsCheckout({ headSha: "7cab305", wantSha: "54ceef4" }), true)
 	})
@@ -181,24 +158,11 @@ describe("needsCheckout — the run must happen on the branch it writes to", () 
 })
 
 describe("shouldPushWork — the two fail-open holes a review caught", () => {
-	/**
-	 * `sameRepo` was hard-coded true at the call site, on the reasoning that
-	 * plan-run.mjs already skips forks. True today; a hard-coded security
-	 * value is wrong the moment the code around it moves, and this is the
-	 * second time this exact shape has appeared in this Action — the first was
-	 * `pull_request_target` failing open on a deleted fork.
-	 */
 	test("not knowing whose repository this is refuses the push", () => {
 		assert.equal(shouldPushWork({ ...live, sameRepo: undefined }).ok, false)
 		assert.equal(shouldPushWork({ ...live, sameRepo: "yes" }).ok, false)
 	})
 
-	/**
-	 * The checkout is advisory — a run continues against whatever is there so
-	 * the proposal still gets built. But pushing from the wrong tree would
-	 * send the DEFAULT branch's content to the pull request's branch and
-	 * clobber the change under review.
-	 */
 	test("a tree that is not on the wanted commit never pushes", () => {
 		assert.equal(shouldPushWork({ ...live, onWantedCommit: false }).ok, false)
 		assert.match(shouldPushWork({ ...live, onWantedCommit: false }).why, /commit/i)
@@ -210,12 +174,7 @@ describe("shouldPushWork — the two fail-open holes a review caught", () => {
 })
 
 describe("shouldPushWork — never the default branch", () => {
-	/**
-	 * The branch name comes from the pull request's own head ref, which its
-	 * author controls. Same-repo plus on-the-right-commit already bound that,
-	 * but the default branch is the one target where a mistake is not
-	 * recoverable by closing a pull request — so it is refused by name.
-	 */
+	// The branch name comes from the pull request's own head ref, which its author controls.
 	test("a pull request branch is fine", () => {
 		assert.equal(shouldPushWork({ ...live, branch: "feat/x", defaultBranch: "main" }).ok, true)
 	})
@@ -235,21 +194,7 @@ describe("shouldPushWork — never the default branch", () => {
 	})
 })
 
-describe("changedPaths — the bug a live run found that 345 unit tests did not", () => {
-	/**
-	 * Run 40845669513. The Action wrote ten passing tests and then could not
-	 * save them: "pathspec 'ests/pricing.spec.js' did not match any files".
-	 *
-	 * `git status --porcelain` puts a SPACE in the first column for an
-	 * unstaged modification, so the line is " M tests/pricing.spec.js" — three
-	 * characters before the path. The caller trimmed git's whole stdout, which
-	 * removed that leading space from the FIRST LINE ONLY, leaving a two
-	 * character prefix and a fixed slice(3) that ate the "t".
-	 *
-	 * Both ends are fixed: the caller no longer trims, and this parse no
-	 * longer assumes a fixed width. The tests passed before because they all
-	 * fed it well-formed porcelain — the corruption happened upstream.
-	 */
+describe("changedPaths — parsing git status output", () => {
 	test("a first line whose leading space was trimmed away still parses", () => {
 		assert.deepEqual(changedPaths("M tests/pricing.spec.js"), ["tests/pricing.spec.js"])
 	})
@@ -275,17 +220,6 @@ describe("changedPaths — the bug a live run found that 345 unit tests did not"
 })
 
 describe("isSameRepo — whose branch is this, really", () => {
-	/**
-	 * Run 40857884973 refused to save with "the change does not come from this
-	 * repository", on a branch in this very repository.
-	 *
-	 * The caller read the head repository off the pull request object that
-	 * main.mjs fetches — but it only fetches that for a COMMENT event, where a
-	 * PR number has to be resolved to a head sha. On a pull_request event the
-	 * sha is already in the payload, so nothing was fetched, the answer was
-	 * undefined, and undefined is a refusal. The head repository was in the
-	 * event payload the whole time.
-	 */
 	test("the same repository, compared case-insensitively", () => {
 		assert.equal(isSameRepo("Acme/Shop", "acme/shop"), true)
 		assert.equal(isSameRepo("acme/shop", "acme/shop"), true)
@@ -303,22 +237,6 @@ describe("isSameRepo — whose branch is this, really", () => {
 })
 
 describe("changedPaths — paths git had to escape", () => {
-	/**
-	 * With `core.quotePath` on
-	 * (the default) git octal-escapes non-ASCII bytes, so `café.spec.ts` comes
-	 * out as `"caf\\303\\251.spec.ts"`. Stripping the quotes without decoding
-	 * leaves a path that does not exist, and `git add` with several pathspecs
-	 * ABORTS ON THE FIRST MISS and stages nothing — so one accented filename
-	 * loses every file the run produced.
-	 *
-	 * The call site now passes `-c core.quotePath=false`, which stops the
-	 * escaping at source. This decodes it anyway, so a repository that forces
-	 * the setting back on cannot reintroduce it.
-	 *
-	 * The old test picked the one quoted input that round-trips — a path with
-	 * a space, which git quotes but does not escape — so the suite was green
-	 * right beside the bug.
-	 */
 	test("an octal-escaped non-ASCII path is decoded back to its real name", () => {
 		assert.deepEqual(changedPaths('?? "caf\\303\\251.spec.ts"'), ["café.spec.ts"])
 	})
@@ -343,24 +261,6 @@ describe("changedPaths — paths git had to escape", () => {
 })
 
 describe("changedPaths — characters outside the basic plane", () => {
-	/**
-	 * The decoder walked the string by UTF-16 code unit and ran Buffer.from on
-	 * each one, so an astral character — an emoji — was split into its two
-	 * surrogate halves and each half became U+FFFD:
-	 *
-	 *  "my 🎉 file.spec.ts" -> "my \uFFFD\uFFFD file.spec.ts"
-	 *
-	 * Reachable BECAUSE of the other half of the fix: with
-	 * `core.quotePath=false` git stops octal-escaping non-ASCII but still
-	 * QUOTES a path containing a space, so an emoji in a spaced filename
-	 * arrives raw inside quotes and goes through this branch. The result is a
-	 * path that does not exist, `git add` aborts, and the whole approved run's
-	 * work is lost — the original bug, reached through the setting added to
-	 * prevent it.
-	 *
-	 * BMP characters like é survived, which is why the first round of tests
-	 * passed.
-	 */
 	test("an emoji in a quoted path survives", () => {
 		assert.deepEqual(changedPaths('?? "my 🎉 file.spec.ts"'), ["my 🎉 file.spec.ts"])
 	})
@@ -376,20 +276,6 @@ describe("changedPaths — characters outside the basic plane", () => {
 })
 
 describe("the App token has to reach git, not just gh", () => {
-	/**
-	 * action.yml and the starter both tell
-	 * customers they can delete the `permissions:` block once the App is
-	 * installed, "because the App's installation token carries these
-	 * permissions itself". The token was put in GH_TOKEN, which only `gh`
-	 * reads — the push is a plain `git push` authenticating with whatever
-	 * actions/checkout left in .git/config.
-	 *
-	 * So following our own advice, on an org whose default workflow token is
-	 * read-only, made every approved run fail its push with a 403.
-	 *
-	 * Passed as config rather than written into the remote URL: a token in a
-	 * URL ends up in the reflog, in error messages and in `git remote -v`.
-	 */
 	const URL = "https://github.com/acme/shop.git"
 
 	test("builds a basic auth header SCOPED to the push url", () => {
@@ -399,12 +285,6 @@ describe("the App token has to reach git, not just gh", () => {
 		assert.equal(Buffer.from(b64, "base64").toString("utf8"), "x-access-token:ghs_abc123")
 	})
 
-	/**
-	 * `url.<base>.insteadOf` in the repository's own config — which the agent
-	 * can write — redirects a push to another host. Verified: one line turns
-	 * github.com into evil.test. A GLOBAL header follows it there and hands
-	 * over the App's installation token.
-	 */
 	test("the header is never global", () => {
 		const got = pushCredentialEnv("ghs_abc123", URL)
 		assert.notEqual(got.GIT_CONFIG_KEY_0, "http.extraheader")
@@ -439,15 +319,7 @@ describe("the App token has to reach git, not just gh", () => {
 })
 
 describe("our own git commands must not carry secrets or run hooks", () => {
-	/**
-	 * These commands run AFTER the agent, which has had --yolo write access to
-	 * the working tree. spawnSync with no `env` inherits everything, so an
-	 * agent that wrote .git/hooks/pre-commit would have it executed by our
-	 * `git commit` with TC_ACTION_APP_PRIVATE_KEY, GH_TOKEN and the customer's
-	 * BrowserStack key in its environment. On pull_request_target the diff is
-	 * attacker-authored, so that is one prompt injection from a key leaving
-	 * the runner.
-	 */
+	// These commands run after the agent, which could write to the working tree.
 	const dirty = {
 		PATH: "/usr/bin",
 		HOME: "/home/runner",
@@ -482,9 +354,6 @@ describe("our own git commands must not carry secrets or run hooks", () => {
 	})
 
 	test("an empty environment still disables the system and user config", () => {
-		// Nothing is inherited, and git is told to ignore /etc/gitconfig and
-		// ~/.gitconfig too, so the only configuration in play is what this
-		// process passes with -c.
 		for (const got of [gitEnvFrom({}), gitEnvFrom()]) {
 			assert.equal(got.GIT_CONFIG_NOSYSTEM, "1")
 			assert.equal(got.GIT_CONFIG_GLOBAL, "/dev/null")
@@ -497,11 +366,6 @@ describe("our own git commands must not carry secrets or run hooks", () => {
 		}
 	})
 
-	/**
-	 * Every one of these is a way the REPOSITORY can ask git to run a program
-	 * on our behalf, and the agent can write all of them. Asserted by name so
-	 * removing one is a failing test rather than a quiet loss.
-	 */
 	test("every exec-capable config key is pinned shut", () => {
 		const settings = GIT_SAFE_ARGS.filter((a) => a !== "-c")
 		for (const key of [
@@ -532,17 +396,8 @@ describe("our own git commands must not carry secrets or run hooks", () => {
 	})
 })
 
-/**
- * The agent runs with --yolo write access to the tree, and `.git/config` is
- * part of the tree it can write. Two separate things go wrong there, so there
- * are two separate defences.
- */
 describe("the repository's own git config must not steer the push", () => {
 	test("a redirect is refused — insteadOf rewrites even an explicit URL", () => {
-		// Verified against real git: `git push https://github.com/acme/shop.git`
-		// with url."https://evil.test/".insteadOf "https://github.com/" set
-		// reports `failed to push some refs to 'https://evil.test/acme/shop.git'`.
-		// Naming the URL on the command line is NOT enough.
 		assert.deepEqual(unexpectedConfigKeys("url.https://evil.test/.insteadOf\ncore.bare"), [
 			"url.https://evil.test/.insteadOf",
 		])
@@ -587,11 +442,6 @@ describe("the repository's own git config must not steer the push", () => {
 		assert.deepEqual(unexpectedConfigKeys("CORE.FILEMODE"), [])
 	})
 
-	/**
-	 * The point of an allow list: a key nobody has thought about yet is
-	 * refused without anyone having to add it. git gains config keys with
-	 * every release, and several of them run programs.
-	 */
 	test("a key we have never heard of is refused by default", () => {
 		assert.deepEqual(unexpectedConfigKeys("some.future.hook"), ["some.future.hook"])
 		assert.deepEqual(unexpectedConfigKeys("http.sslVerify"), ["http.sslVerify"])
@@ -605,11 +455,6 @@ describe("the repository's own git config must not steer the push", () => {
 		assert.deepEqual(unexpectedConfigKeys("http.https://github.com/.extraheader"), [])
 	})
 
-	/**
-	 * This is the half that decides whether the Action works at all. Every one
-	 * of these is written by actions/checkout on a perfectly ordinary run, so
-	 * refusing any of them would refuse every push we have ever made.
-	 */
 	test("an ordinary checkout is NOT refused", () => {
 		const afterCheckout = [
 			"core.repositoryformatversion",
@@ -623,8 +468,6 @@ describe("the repository's own git config must not steer the push", () => {
 			"branch.main.merge",
 			"user.name",
 			"user.email",
-			// safe.directory is deliberately absent: actions/checkout writes it
-			// to a TEMPORARY GLOBAL config, and we read local + worktree only.
 			"gc.auto",
 		].join("\n")
 		assert.deepEqual(unexpectedConfigKeys(afterCheckout), [])
@@ -656,11 +499,6 @@ describe("the credential travels in the environment, not in argv", () => {
 	})
 })
 
-/**
- * The agent writes to the runner as the same user we do, and several
- * directories on the default PATH are writable by that user. A planted `git`
- * earlier on PATH would be handed the installation token.
- */
 describe("git itself must be the real git", () => {
 	const exists = (p) => ["/usr/bin/git", "/bin/git"].includes(p)
 	const notWritable = () => false
@@ -675,8 +513,6 @@ describe("git itself must be the real git", () => {
 	})
 
 	test("nothing trustworthy means nothing, not a fallback to PATH", () => {
-		// A fallback to bare "git" would reintroduce exactly the hole this
-		// closes, so the caller is made to handle the absence instead.
 		assert.equal(trustedGitPath({ exists: () => false, canWrite: notWritable }), undefined)
 		assert.equal(trustedGitPath({ exists, canWrite: () => true }), undefined)
 	})
@@ -687,11 +523,7 @@ describe("git itself must be the real git", () => {
 	})
 })
 
-/**
- * Every gh call we make carries a token, the App's included. The agent can
- * write to `$HOME/.local/bin`, which is on PATH ahead of the system folders,
- * and to the job's shared gh settings folder.
- */
+// Every gh call we make carries a token, the App's included.
 describe("gh itself must be the real gh, with settings nobody planted", () => {
 	const notWritable = () => false
 
@@ -729,8 +561,6 @@ describe("gh itself must be the real gh, with settings nobody planted", () => {
 	})
 
 	test("no source file starts gh by its bare name", () => {
-		// Every call must go through runGh in main.mjs, which uses the path
-		// found above and a fresh settings folder.
 		const src = new URL("../src/", import.meta.url).pathname
 		for (const f of readdirSync(src).filter((n) => n.endsWith(".mjs"))) {
 			const code = readFileSync(join(src, f), "utf8")
@@ -743,18 +573,6 @@ describe("gh itself must be the real gh, with settings nobody planted", () => {
 	})
 })
 
-/**
- * Found by a live run, which refused to save with a list of
- * fifteen "unexpected" keys — every one of them a flag WE pass in
- * GIT_SAFE_ARGS.
- *
- * `git config --list` includes config given on the command line with `-c`.
- * So the check read our own hardening back and reported it as tampering,
- * which would have blocked every push the Action ever makes.
- *
- * This runs real git, because the bug was in what git returns, not in how
- * the listing is parsed — a fixture would have agreed with the broken code.
- */
 describe("the config check reads the repository, not our own flags", () => {
 	test("-c values do not come back as unexpected keys", () => {
 		const dir = mkdtempSync(join(tmpdir(), "tc-config-"))
@@ -776,15 +594,8 @@ describe("the config check reads the repository, not our own flags", () => {
 	})
 })
 
-/**
- * Two ways the push could carry more than the run meant to write.
- */
 describe("the push carries the run's test files and nothing else", () => {
 	test("a new directory must arrive as its files, not as one entry", () => {
-		// `git status --porcelain` without -uall collapses a new directory to
-		// `?? tests/`. splitPushable then sees ONE path with one segment, its
-		// deny list never sees `tests/.env` or `tests/run.log`, and
-		// `git add tests/` commits the lot.
 		const collapsed = changedPaths("?? tests/\n")
 		assert.deepEqual(collapsed, ["tests/"], "this is what the old command produced")
 		const { push } = splitPushable(collapsed)
@@ -798,8 +609,6 @@ describe("the push carries the run's test files and nothing else", () => {
 	})
 
 	test("a commit the agent made itself is not ours to push", () => {
-		// We push HEAD. If the agent committed, HEAD carries whatever it put in
-		// source, lockfiles.github/ — none of it filtered by splitPushable.
 		assert.equal(agentCommitted("aaa111", "bbb222"), true)
 		assert.equal(agentCommitted("aaa111", "aaa111"), false)
 	})
@@ -810,10 +619,7 @@ describe("the push carries the run's test files and nothing else", () => {
 	})
 })
 
-/**
- * `.github/` tells GitHub what to run, and a symlink can point anywhere on the
- * runner. Neither is test work, so neither is pushed.
- */
+// `.github/` tells GitHub what to run, and a symlink can point anywhere on the runner.
 describe("splitPushable refuses .github and symlinks", () => {
 	test("anything under .github is skipped", () => {
 		const { push, skip } = splitPushable([

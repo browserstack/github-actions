@@ -1,18 +1,6 @@
-/**
- * Which test framework does this repository use?
- *
- * Pure: the caller does the directory walk and the package.json read, this
- * decides. Guessing WRONG is worse than not guessing — a starter file naming
- * Cypress at a Playwright shop tells the team Test Companion understood their
- * setup when it did not — so anything unrecognised returns undefined and the
- * starter stays generic.
- */
+/** Detect the repository's test framework, or undefined when unsure. */
 
-/**
- * A config file is stronger evidence than a dependency: it is what actually
- * runs. A repository can carry `@playwright/test` from an experiment while
- * its suite is Cypress.
- */
+// A config file is stronger evidence than a dependency.
 const BY_CONFIG = [
 	[/(^|\/)playwright\.config\.[cm]?[jt]s$/i, "Playwright"],
 	[/(^|\/)cypress\.config\.[cm]?[jt]s$/i, "Cypress"],

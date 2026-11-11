@@ -24,10 +24,6 @@ describe("detectFramework", () => {
 		assert.equal(found, "Cypress")
 	})
 
-	/**
-	 * Guessing wrong is worse than not guessing: the starter file would tell the
-	 * team Test Companion had understood their setup when it had not.
-	 */
 	test("nothing recognisable is undefined, not a guess", () => {
 		assert.equal(detectFramework({ filenames: ["README.md"], deps: { react: "^18" } }), undefined)
 		assert.equal(detectFramework({}), undefined)
