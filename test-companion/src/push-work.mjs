@@ -130,6 +130,21 @@ export function splitPushable(paths, { isSymlink = () => false } = {}) {
 	return { push, skip }
 }
 
+/**
+ * For a branch the agent handed back: files under `.github/` and symlinks are
+ * refused outright; other never-committed files (tool by-products, logs, .env)
+ * are dropped from the pull request instead of blocking it.
+ */
+export function splitHandoffPaths(paths, { isSymlink = () => false } = {}) {
+	const refused = []
+	const dropped = []
+	for (const path of splitPushable(paths, { isSymlink }).skip) {
+		const dangerous = isSymlink(path) || String(path).split("/").some((s) => s.toLowerCase() === ".github")
+		;(dangerous ? refused : dropped).push(path)
+	}
+	return { refused, dropped }
+}
+
 /** The pull request note about the push, including when it failed. */
 export function renderPushNote({ branch, sha, files = [], skipped = [], error } = {}) {
 	const list = files.map((f) => `- \`${f}\``).join("\n")

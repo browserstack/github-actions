@@ -56,6 +56,7 @@ import {
 	shouldPushWork,
 	changedPaths,
 	splitPushable,
+	splitHandoffPaths,
 	renderPushNote,
 	needsCheckout,
 	isSameRepo,
@@ -1137,13 +1138,23 @@ function openHandedOffPr(path, plan) {
 		paths.push(fields[i + 1])
 		if (meta[1] === "120000") links.add(fields[i + 1])
 	}
-	const { skip } = splitPushable(paths, { isSymlink: (p) => links.has(p) })
-	if (skip.length) {
-		return `**Did not open a pull request:** the branch changes files Test Companion never pushes: ${skip.map((f) => `\`${f}\``).join(", ")}.`
+	const { refused, dropped } = splitHandoffPaths(paths, { isSymlink: (p) => links.has(p) })
+	if (refused.length) {
+		return `**Did not open a pull request:** the branch changes files Test Companion never pushes: ${refused.map((f) => `\`${f}\``).join(", ")}.`
 	}
+	let head = tip.out
+	if (dropped.length) {
+		const left = leaveOut(from.out, tip.out, dropped)
+		if (left.error) return `**Could not open the pull request:** ${left.error}.`
+		if (left.empty) {
+			return `**Did not open a pull request:** the run's only changes were files Test Companion never commits: ${dropped.map((f) => `\`${f}\``).join(", ")}.`
+		}
+		head = left.sha
+	}
+	const leftOutNote = dropped.length ? ` Left out ${dropped.map((f) => `\`${f}\``).join(", ")}, which Test Companion never commits.` : ""
 	const target = pushUrlFor(REPO, env.GITHUB_SERVER_URL)
 	if (!target) return `**Could not open the pull request:** bad repository name "${REPO}".`
-	const pushed = git(["push", target, `${tip.out}:refs/heads/${req.branch}`], pushCredentialEnv(env.GH_TOKEN, target))
+	const pushed = git(["push", target, `${head}:refs/heads/${req.branch}`], pushCredentialEnv(env.GH_TOKEN, target))
 	if (!pushed.ok) {
 		return /rejected|non-fast-forward|already exists/i.test(pushed.err)
 			? `**Already done:** \`${req.branch}\` already exists, so this job's pull request was opened by an earlier run.`
@@ -1171,7 +1182,43 @@ function openHandedOffPr(path, plan) {
 	} catch {
 		// The link is a nicety.
 	}
-	return `**Opened a pull request** with this run's changes${url ? `: ${url}` : ` from \`${req.branch}\``}.`
+	return `**Opened a pull request** with this run's changes${url ? `: ${url}` : ` from \`${req.branch}\``}.${leftOutNote}`
+}
+
+/**
+ * A commit on top of `tip` that puts `paths` back as they were at `base`, built in a
+ * scratch index so the checkout is untouched. Returns { sha }, { empty } when nothing
+ * else changed, or { error }.
+ */
+function leaveOut(base, tip, paths) {
+	const index = join(REPORT_DIR, `tc-handoff-index-${process.pid}`)
+	const scratch = { GIT_INDEX_FILE: index }
+	try {
+		if (!git(["read-tree", tip], scratch).ok) return { error: "could not read the branch" }
+		// Resetting to `base` restores a changed file and removes an added one.
+		if (!git(["reset", "-q", base, "--", ...paths], scratch).ok) return { error: "could not leave out the by-products" }
+		const tree = git(["write-tree"], scratch)
+		if (!tree.ok) return { error: "could not write the branch's files" }
+		if (tree.out === git(["rev-parse", `${base}^{tree}`]).out) return { empty: true }
+		const commit = git(
+			[
+				"-c",
+				`user.name=${identity.name}`,
+				"-c",
+				`user.email=${identity.email}`,
+				"commit-tree",
+				tree.out,
+				"-p",
+				tip,
+				"-m",
+				`Leave out files Test Companion never commits\n\n${paths.join("\n")}`,
+			],
+			scratch,
+		)
+		return commit.ok && commit.out ? { sha: commit.out } : { error: "could not commit without the by-products" }
+	} finally {
+		rmSync(index, { force: true })
+	}
 }
 
 /** Create or update this run's check on `sha`. */
