@@ -67,6 +67,7 @@ from the release you tested; a version without a checksum is refused.
 
 Before a job changes anything, Test Companion posts its plan and waits for
 someone with write access to reply `go`. Read the plan before you reply.
+Test Companion reacts 👀 to a request, or a `go`, once it picks it up.
 
 Without the GitHub App, Test Companion posts as `github-actions[bot]`, the
 account every workflow in your repository shares, and recognises its own plans

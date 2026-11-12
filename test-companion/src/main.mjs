@@ -19,7 +19,7 @@ import {
 	LOOKUP_FAILED_REPLY,
 } from "./runs.mjs"
 import { decideGate, GATE, describeChangeSize, ANSWER_JOBS } from "./gate.mjs"
-import { mayAsk, describeTestRepoAccess } from "./access.mjs"
+import { mayAsk, describeTestRepoAccess, pickupReactionTarget, addPickupReaction } from "./access.mjs"
 import { findTicket } from "./ticket.mjs"
 import { childEnvFor } from "./child-env.mjs"
 import { canIsolate, prepareSandbox, stopSandbox, handToAgent, writeAgentEnv, readAgentFile } from "./sandbox.mjs"
@@ -153,6 +153,24 @@ function runGh(args, { token, input } = {}) {
 function ghRaw(args, body) {
 	// Every comment, check and pull request we send passes through here, so it's hidden once.
 	return runGh(args, { token: env.GH_TOKEN, input: body ? JSON.stringify(redactDeep(body, secretsNow())) : undefined })
+}
+
+/** 👀 on the request comment once it is picked up. Never fails the run. */
+function reactToPickup(plan, allowed, approvalHasPlan) {
+	const commentId = pickupReactionTarget({
+		eventName: env.GITHUB_EVENT_NAME,
+		comment: readEvent().comment,
+		plan,
+		allowed,
+		approvalHasPlan,
+	})
+	if (!commentId) return
+	const added = addPickupReaction({
+		repo: REPO,
+		commentId,
+		post: (path, body) => ghRaw(["api", path, "--method", "POST", "--input", "-"], body).status === 0,
+	})
+	if (!added) notice("Test Companion: could not add the 👀 reaction to the request; carrying on.")
 }
 
 /** `gh api`, returning parsed JSON or null. Never throws. */
@@ -512,6 +530,8 @@ async function main() {
 			if (!plan.approvalOnly) replyOnPr(plan.context?.pr, renderNotAuthorized(who ?? "there", askTeam))
 			finishSkipped("not-authorized", who)
 		}
+		// A request addressed to us is picked up now; a bare "go" once we know it has a plan.
+		reactToPickup(plan, allowed, false)
 	}
 
 	// Place the request before spawning the CLI, so one we can't place costs nothing.
@@ -595,6 +615,7 @@ async function main() {
 			}
 			finishSkipped("not-addressed-to-us")
 		}
+		if (plan.approvalOnly) reactToPickup(plan, true, true)
 		const gate = decideGate({
 			intent,
 			approval: binding?.approval,
