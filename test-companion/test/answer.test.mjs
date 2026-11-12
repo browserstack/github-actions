@@ -1,6 +1,6 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
-import { createAnswerCapture, runCapturingAnswer, MAX_PARTIAL_LINE, redactSecrets, secretsFrom } from "../src/answer.mjs"
+import { createAnswerCapture, runCapturingAnswer, MAX_PARTIAL_LINE, redactSecrets, redactDeep, secretsFrom } from "../src/answer.mjs"
 
 // One `answer` event as the CLI prints it under --json.
 const said = (text) => JSON.stringify({ event: "answer", text }) + "\n"
@@ -255,5 +255,28 @@ describe("secretsFrom", () => {
 			HOME: "/home/runner",
 		})
 		assert.deepEqual(got.sort(), ["k1", "p1", "t1"])
+	})
+})
+
+describe("redactDeep — every string in a payload sent to GitHub", () => {
+	test("hides secrets in nested comment, check and pull request payloads", () => {
+		const payload = {
+			body: "ran with key abc123secret",
+			output: { title: "t", summary: "https://u:p4ss@hub/x", annotations: [{ message: "abc123secret" }] },
+			draft: true,
+			n: 3,
+		}
+		assert.deepEqual(redactDeep(payload, ["abc123secret"]), {
+			body: "ran with key ***",
+			output: { title: "t", summary: "https://***@hub/x", annotations: [{ message: "***" }] },
+			draft: true,
+			n: 3,
+		})
+	})
+
+	test("the original token stays hidden after the environment changes", () => {
+		const startup = secretsFrom({ GH_TOKEN: "ghs_workflowtoken1" })
+		const later = secretsFrom({ GH_TOKEN: "ghs_apptoken22222" })
+		assert.equal(redactDeep({ body: "ghs_workflowtoken1 ghs_apptoken22222" }, [...startup, ...later]).body, "*** ***")
 	})
 })

@@ -97,6 +97,8 @@ export function runCapturingAnswer(command, args, childEnv) {
 			capture.end()
 			errors.end()
 			// The CLI's own structured error is the precise reason; a plain line is the fallback.
+			// The CLI doesn't pass its child processes' stderr through, so the last plain
+			// `Error:` line on stderr is cobra's, i.e. the CLI's own.
 			const error = capture.structuredError() ?? errors.structuredError() ?? errors.plainError()
 			resolve({ status, answer: capture.answer(), error })
 		})
@@ -117,6 +119,16 @@ export function redactSecrets(text, secrets = []) {
 	for (const s of known) out = out.split(s).join("***")
 	// user:password@ in any URL.
 	return out.replace(/(\/\/)[^/\s:@]+:[^/\s@]+@/g, "$1***@")
+}
+
+/** redactSecrets over every string in a JSON payload about to be sent to GitHub. */
+export function redactDeep(value, secrets = []) {
+	if (typeof value === "string") return redactSecrets(value, secrets)
+	if (Array.isArray(value)) return value.map((v) => redactDeep(v, secrets))
+	if (value && typeof value === "object") {
+		return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactDeep(v, secrets)]))
+	}
+	return value
 }
 
 /** Values of environment variables whose names mark them as credentials. */
