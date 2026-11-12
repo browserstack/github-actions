@@ -405,11 +405,11 @@ export function leaveOut({ git, base, tip, paths, identity, message, indexFile }
 		// Resetting to `base` restores a changed file and removes an added one. Paths on stdin:
 		// no argument-length limit, and no name read as an option. --no-refresh: don't re-read
 		// the checkout, which would run its clean filters.
-		const reset = git(
-			["reset", "-q", "--no-refresh", base, "--pathspec-from-file=-", "--pathspec-file-nul"],
-			scratch,
-			paths.join("\0"),
-		)
+		const resetWith = (extra) =>
+			git(["reset", "-q", ...extra, base, "--pathspec-from-file=-", "--pathspec-file-nul"], scratch, paths.join("\0"))
+		let reset = resetWith(["--no-refresh"])
+		// --no-refresh needs git 2.36; an older self-hosted runner rejects the option.
+		if (!reset.ok && /unknown option|usage: git reset/i.test(String(reset.err ?? ""))) reset = resetWith([])
 		if (!reset.ok) return { error: "could not leave out the by-products" }
 	}
 	const tree = git(["write-tree"], scratch)
@@ -441,9 +441,29 @@ export function classifyHandoffPush({ ok, err } = {}) {
 	return /!\s*\[rejected\][^\n]*\((non-fast-forward|fetch first)\)/i.test(String(err ?? "")) ? "already" : "failed"
 }
 
+/**
+ * The line of a failed `git push` that says why. git's last line is always the generic
+ * "failed to push some refs"; the reason (a ruleset, a hook, a missing permission) is earlier.
+ */
+export function pushFailureReason(err) {
+	const lines = String(err ?? "")
+		.split("\n")
+		.map((l) => l.trim())
+		.filter(Boolean)
+	return (
+		lines.find((l) => /^!\s*\[remote rejected\]/i.test(l)) ??
+		lines.find((l) => /^remote:\s*(error|GH\d+)/i.test(l)) ??
+		lines.find((l) => /^fatal:/i.test(l)) ??
+		lines.at(-1) ??
+		""
+	)
+}
+
 /** The pull request an earlier run opened for this branch, from a state=all listing. */
 export function existingHandoffPr(prs) {
-	const list = Array.isArray(prs) ? prs.filter(Boolean) : []
+	// A failed lookup is not "no pull request": treating it so could reopen closed work.
+	if (!Array.isArray(prs)) return { kind: "unknown" }
+	const list = prs.filter(Boolean)
 	const open = list.find((p) => p.state === "open")
 	if (open) return { kind: "open", url: open.html_url }
 	const closed = list.find((p) => p.state === "closed")
@@ -455,6 +475,7 @@ export function existingHandoffPr(prs) {
 export function nextHandoffStep(pushKind, existing = { kind: "none" }) {
 	if (pushKind === "failed") return { action: "stop" }
 	if (pushKind === "pushed") return { action: "create", earlier: false }
+	if (existing.kind === "unknown") return { action: "stop", unknown: true }
 	if (existing.kind === "none") return { action: "create", earlier: true }
 	// A closed or merged one is reported, never reopened.
 	return { action: "report", ...existing }
@@ -472,6 +493,9 @@ export function handoffReport(step, { branch } = {}) {
 	}
 	if (step.action === "report") {
 		return `**Already done:** an earlier run's pull request for this commit was ${step.kind}: ${step.url}. Push a new commit to run this job again.`
+	}
+	if (step.unknown) {
+		return `**Did not open a pull request:** ${codeSpan(branch)} already exists from an earlier run, and Test Companion could not check whether that run's pull request was closed. Look for it, or push a new commit to run this job again.`
 	}
 	return `**Could not push ${codeSpan(branch)}.**`
 }

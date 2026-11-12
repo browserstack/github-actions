@@ -77,6 +77,7 @@ import {
 	commitIdentity,
 	handedOffPrRequest,
 	classifyHandoffPush,
+	pushFailureReason,
 	existingHandoffPr,
 	nextHandoffStep,
 	draftRejected,
@@ -1211,7 +1212,8 @@ function openHandedOffPr(path, plan) {
 	}
 	const step = nextHandoffStep(pushKind, existing)
 	if (step.action === "stop") {
-		return `${handoffReport(step, { branch: req.branch })} ${pushed.err ? `${pushed.err.split("\n").filter(Boolean).pop()}.` : ""}`.trim()
+		const why = step.unknown ? "" : pushFailureReason(pushed.err)
+		return `${handoffReport(step, { branch: req.branch })} ${why ? `${why}.` : ""}`.trim()
 	}
 	if (step.action === "report") return handoffReport(step, { branch: req.branch })
 
