@@ -1,9 +1,9 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { execFileSync, spawnSync } from "node:child_process"
-import { mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import {
 	shouldPushWork,
 	changedPaths,
@@ -26,6 +26,12 @@ import {
 	BOT_EMAIL,
 	handedOffPrRequest,
 	commitIdentity,
+	savingFor,
+	leaveOut,
+	leaveOutMessage,
+	codeSpan,
+	listFiles,
+	APP_SLUGS,
 } from "../src/push-work.mjs"
 
 const live = { preview: false, sameRepo: true, branch: "feat/x", headAuthorEmail: "dev@example.com", onWantedCommit: true }
@@ -675,10 +681,10 @@ describe("BrowserStack tooling's by-products are never committed", () => {
 })
 
 describe("handedOffPrRequest — a fix asked for on a pull request targets that pull request", () => {
-	const req = { branch: "tc/fix/abc", base: "main", title: "tc fix: abc", body: "What changed." }
+	const req = { workflow: "fix", branch: "tc/fix/abc", base: "main", title: "tc fix: abc", body: "What changed." }
 
 	test("on a pull request: base is its branch, a draft, a title that names it", () => {
-		const out = handedOffPrRequest({ req, workflow: "fix", pr: "42", prBranch: "feat/cart", defaultBranch: "main" })
+		const out = handedOffPrRequest({ req, pr: "42", prBranch: "feat/cart", defaultBranch: "main" })
 		assert.equal(out.base, "feat/cart")
 		assert.equal(out.head, "tc/fix/abc")
 		assert.equal(out.draft, true)
@@ -686,8 +692,18 @@ describe("handedOffPrRequest — a fix asked for on a pull request targets that 
 		assert.match(out.body, /Requested on #42\./)
 	})
 
+	test("the title names the job from the hand-off, not the plan", () => {
+		const out = handedOffPrRequest({ req: { ...req, workflow: "automate" }, pr: "42", prBranch: "feat/cart" })
+		assert.equal(out.title, "Test Companion automate for #42")
+	})
+
+	test("if the run didn't start on the pull request's commit, the default branch is the base", () => {
+		const out = handedOffPrRequest({ req, pr: "42", prBranch: "feat/cart", defaultBranch: "main", onReviewedCommit: false })
+		assert.equal(out.base, "main")
+	})
+
 	test("without a pull request: the default branch, the CLI's own title", () => {
-		const out = handedOffPrRequest({ req, workflow: "fix", defaultBranch: "main" })
+		const out = handedOffPrRequest({ req, defaultBranch: "main" })
 		assert.equal(out.base, "main")
 		assert.equal(out.title, "tc fix: abc")
 		assert.equal(out.draft, true)
@@ -741,37 +757,149 @@ describe("splitHandoffPaths — a handed-back branch", () => {
 	})
 })
 
-describe("leaving by-products out of a branch with a scratch index", () => {
-	// A hook running these tests may export GIT_DIR and friends; they must not leak in.
-	const cleanGitEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")))
-	// The same git steps leaveOut() in main.mjs runs, on a real repository.
-	const run = (cwd, args, env = {}) => {
-		const r = spawnSync("git", args, { cwd, encoding: "utf8", env: { ...cleanGitEnv(), ...env } })
-		assert.equal(r.status, 0, r.stderr)
-		return r.stdout.trim()
+// A real git, with the Action's own environment, for the git-level tests below.
+function realGit(cwd) {
+	const env = gitEnvFrom(process.env)
+	return (args, extraEnv = {}, input = undefined) => {
+		const r = spawnSync("git", args, { cwd, encoding: "utf8", input, env: { ...env, ...extraEnv } })
+		return { ok: r.status === 0, out: (r.stdout ?? "").trim(), err: (r.stderr ?? "").trim() }
 	}
-	test("the new commit keeps the work and loses the by-product", () => {
-		const dir = mkdtempSync(join(tmpdir(), "tc-leaveout-"))
-		const id = ["-c", "user.name=t", "-c", "user.email=t@example.com"]
-		run(dir, ["init", "-q"])
-		writeFileSync(join(dir, "a.ts"), "old\n")
-		run(dir, ["add", "."])
-		run(dir, [...id, "commit", "-qm", "base"])
-		const base = run(dir, ["rev-parse", "HEAD"])
-		writeFileSync(join(dir, "a.ts"), "new\n")
-		writeFileSync(join(dir, "browserstack.err"), "[object Object]")
-		run(dir, ["add", "."])
-		run(dir, [...id, "commit", "-qm", "work"])
-		const tip = run(dir, ["rev-parse", "HEAD"])
+}
 
-		const scratch = { GIT_INDEX_FILE: join(dir, ".git", "scratch-index") }
-		run(dir, ["read-tree", tip], scratch)
-		run(dir, ["reset", "-q", base, "--", "browserstack.err"], scratch)
-		const tree = run(dir, ["write-tree"], scratch)
-		const sha = run(dir, [...id, "commit-tree", tree, "-p", tip, "-m", "leave out"], scratch)
+function repoWithBranch(files) {
+	const dir = mkdtempSync(join(tmpdir(), "tc-leaveout-"))
+	const git = realGit(dir)
+	const id = ["-c", "user.name=t", "-c", "user.email=t@example.com"]
+	const must = (args) => {
+		const r = git(args)
+		assert.ok(r.ok, `${args.join(" ")}: ${r.err}`)
+		return r.out
+	}
+	must(["init", "-q"])
+	writeFileSync(join(dir, "a.ts"), "old\n")
+	must(["add", "a.ts"])
+	must([...id, "commit", "-qm", "base"])
+	const base = must(["rev-parse", "HEAD"])
+	for (const [name, content] of Object.entries(files)) {
+		mkdirSync(dirname(join(dir, name)), { recursive: true })
+		writeFileSync(join(dir, name), content)
+	}
+	must(["add", "--", ...Object.keys(files)])
+	must([...id, "commit", "-qm", "work"])
+	return { dir, git, base, tip: must(["rev-parse", "HEAD"]) }
+}
 
-		assert.equal(run(dir, ["diff", "--name-only", base, sha]), "a.ts")
-		assert.equal(run(dir, ["show", `${sha}:a.ts`]), "new")
+describe("leaveOut — by-products never reach the pushed branch", () => {
+	const identity = { name: "Test Companion", email: BOT_EMAIL }
+
+	test("one commit on the base: the work survives, the by-product is in no pushed commit", () => {
+		const { dir, git, base, tip } = repoWithBranch({ "a.ts": "new\n", "browserstack.err": "[object Object]", ".env": "KEY=secret" })
+		const out = leaveOut({ git, base, tip, paths: ["browserstack.err", ".env"], identity, message: "m", indexFile: join(dir, "scratch") })
+		assert.ok(out.sha, JSON.stringify(out))
+		// Only the new commit between base and the head: the agent's commit is not reachable.
+		assert.deepEqual(git(["rev-list", `${base}..${out.sha}`]).out.split("\n"), [out.sha])
+		assert.equal(git(["diff", "--name-only", base, out.sha]).out, "a.ts")
+		assert.equal(git(["show", `${out.sha}:a.ts`]).out, "new")
+		assert.equal(git(["cat-file", "-e", `${out.sha}:browserstack.err`]).ok, false)
+		assert.equal(git(["cat-file", "-e", `${out.sha}:.env`]).ok, false)
 		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("a file named like pathspec magic is treated as a file name", () => {
+		const { dir, git, base, tip } = repoWithBranch({ "a.ts": "new\n", ":!keep/.env": "KEY=secret" })
+		const out = leaveOut({ git, base, tip, paths: [":!keep/.env"], identity, message: "m", indexFile: join(dir, "scratch") })
+		assert.ok(out.sha, JSON.stringify(out))
+		assert.equal(git(["show", `${out.sha}:a.ts`]).out, "new", "the work was reset along with the by-product")
+		assert.equal(git(["diff", "--name-only", base, out.sha]).out, "a.ts")
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("when the by-products were the only changes, it says so and makes no commit", () => {
+		const { dir, git, base, tip } = repoWithBranch({ "browserstack.err": "[object Object]" })
+		assert.deepEqual(
+			leaveOut({ git, base, tip, paths: ["browserstack.err"], identity, message: "m", indexFile: join(dir, "scratch") }),
+			{ empty: true },
+		)
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("the commit message names the job and the left-out files, capped", () => {
+		const many = Array.from({ length: 12 }, (_, i) => `log/${i}.log`)
+		const msg = leaveOutMessage("Fix the cart total", many)
+		assert.match(msg, /^Fix the cart total\n\nLeft out/)
+		assert.match(msg, /and 2 more$/)
+	})
+})
+
+describe("git reads file names literally", () => {
+	test("the Action's git environment turns pathspec magic off", () => {
+		assert.equal(gitEnvFrom({}).GIT_LITERAL_PATHSPECS, "1")
+	})
+
+	test("adding a file named `:!x` stages only that file", () => {
+		const dir = mkdtempSync(join(tmpdir(), "tc-literal-"))
+		const git = realGit(dir)
+		assert.ok(git(["init", "-q"]).ok)
+		writeFileSync(join(dir, ":!x"), "1")
+		writeFileSync(join(dir, ".env"), "KEY=secret")
+		assert.ok(git(["add", "--", ":!x"]).ok)
+		assert.equal(git(["diff", "--cached", "--name-only"]).out, ":!x")
+		rmSync(dir, { recursive: true, force: true })
+	})
+})
+
+describe("savingFor — the job the pipeline chose still decides", () => {
+	test("an event run that turned out to be generate saves nothing, quietly", () => {
+		const out = savingFor({ ok: true }, "generate")
+		assert.equal(out.ok, false)
+		assert.equal(out.quiet, true)
+	})
+
+	test("a job that writes code keeps the earlier decision", () => {
+		assert.deepEqual(savingFor({ ok: true }, "test-pr"), { ok: true })
+		assert.deepEqual(savingFor({ ok: false, why: "x" }, undefined), { ok: false, why: "x" })
+	})
+
+	test("shouldPushWork marks the no-code refusal quiet", () => {
+		assert.equal(shouldPushWork({ ...live, workflow: "rca" }).quiet, true)
+		assert.equal(shouldPushWork({ ...live, preview: true }).quiet, undefined)
+	})
+})
+
+describe("authoredByUs — the App's commits are ours whatever this run is", () => {
+	test("the App's noreply email is recognised without this run's identity", () => {
+		assert.equal(authoredByUs("355331011+browserstack[bot]@users.noreply.github.com"), true)
+		assert.ok(APP_SLUGS.includes("browserstack"))
+	})
+
+	test("another app's bot is not ours", () => {
+		assert.equal(authoredByUs("49699333+dependabot[bot]@users.noreply.github.com"), false)
+	})
+
+	test("this run's own identity, compared trimmed and in any case", () => {
+		assert.equal(authoredByUs("Me@Example.com", ["  me@example.com "]), true)
+		assert.equal(authoredByUs("", [""]), false)
+	})
+})
+
+describe("file names in comments", () => {
+	test("a plain name is ordinary code", () => {
+		assert.equal(codeSpan("src/a.ts"), "`src/a.ts`")
+	})
+
+	test("a backtick in the name can't break out of the code span", () => {
+		assert.equal(codeSpan("a`b"), "`` a`b ``")
+		assert.equal(codeSpan("x``y"), "``` x``y ```")
+	})
+
+	test("newlines in a name are flattened", () => {
+		assert.equal(codeSpan("a\nb"), "`a b`")
+	})
+
+	test("lists stop at 10 names", () => {
+		const names = Array.from({ length: 13 }, (_, i) => `f${i}`)
+		const out = listFiles(names)
+		assert.equal(out.split(", ").length, 11)
+		assert.match(out, /and 3 more$/)
 	})
 })
