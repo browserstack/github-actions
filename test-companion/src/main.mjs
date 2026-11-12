@@ -13,7 +13,7 @@ import { childEnvFor } from "./child-env.mjs"
 import { canIsolate, prepareSandbox, stopSandbox, handToAgent, writeAgentEnv, readAgentFile } from "./sandbox.mjs"
 import { agentEnvFrom, asAgentCommand, checkPrHandoff, readClaimResult } from "./sandbox-policy.mjs"
 import { startRelay } from "./relay.mjs"
-import { runCapturingAnswer } from "./answer.mjs"
+import { runCapturingAnswer, redactSecrets, secretsFrom } from "./answer.mjs"
 import {
 	appCredentials,
 	signJwt,
@@ -57,6 +57,10 @@ import {
 	changedPaths,
 	splitPushable,
 	splitHandoffPaths,
+	savingFor,
+	leaveOut,
+	leaveOutMessage,
+	listFiles,
 	renderPushNote,
 	needsCheckout,
 	isSameRepo,
@@ -70,7 +74,6 @@ import {
 	ghEnvFrom,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
-	NO_CODE_OUTPUT,
 	commitIdentity,
 	handedOffPrRequest,
 } from "./push-work.mjs"
@@ -236,6 +239,7 @@ async function appInstallationToken() {
 		botLogin = appLogin
 		// The bot account's id makes the noreply email GitHub links to the App.
 		const user = runGh(["api", `users/${encodeURIComponent(appLogin)}`, "--jq", ".id"], { token })
+		if (user.status !== 0) warn(`Test Companion: could not look up ${appLogin}'s account, so commits use the plain Test Companion name.`)
 		identity = commitIdentity({ appSlug: found.data?.app_slug, appUserId: user.status === 0 ? String(user.stdout ?? "").trim() : "" })
 	}
 	return token
@@ -290,11 +294,12 @@ const GIT_BIN = trustedGitPath({
 	},
 })
 
-function git(args, extraEnv = {}) {
+function git(args, extraEnv = {}, input = undefined) {
 	// Near-empty environment and no hooks: the agent has had write access to the tree.
 	if (!GIT_BIN) return { ok: false, out: "", raw: "", err: "no trusted git binary" }
 	const r = spawnSync(GIT_BIN, [...GIT_SAFE_ARGS, ...args], {
 		encoding: "utf8",
+		input,
 		env: { ...gitEnvFrom(env), ...extraEnv },
 	})
 	// `raw` keeps porcelain's leading space; trimming would lose the first line's status column.
@@ -681,7 +686,7 @@ async function main() {
 		defaultBranch: defaultBranchName(),
 		workflow: plan.workflow,
 	})
-	if (plan.context.branch && !plan.preview && !saving.ok && !NO_CODE_OUTPUT.has(String(plan.workflow ?? ""))) {
+	if (plan.context.branch && !plan.preview && !saving.ok && !saving.quiet) {
 		notice(`Nothing will be saved to ${plan.context.branch}: ${saving.why}.`)
 	}
 
@@ -796,7 +801,8 @@ async function main() {
 	})
 
 	// automate and fix hand back a pull request; other jobs save to this branch.
-	const workNote = handoffNote ?? saveWork(saving, plan)
+	// Re-checked with the job the pipeline chose: an event run didn't know it before the run.
+	const workNote = handoffNote ?? saveWork(savingFor(saving, plan.workflow ?? summary.workflow), plan)
 
 	const view = {
 		workflow: plan.workflow ?? summary.workflow,
@@ -815,10 +821,13 @@ async function main() {
 		askedAt: plan.askedAt,
 		// rca and verdict leave no artefact: the answer is the agent's closing words. The result
 		// file is the fallback, only for ANSWER_JOBS (for generate it holds test cases).
-		answer: run.answer || (hasResult && ANSWER_JOBS.has(plan.workflow ?? summary.workflow) ? readResult() : undefined),
+		answer: redactSecrets(
+			run.answer || (hasResult && ANSWER_JOBS.has(plan.workflow ?? summary.workflow) ? readResult() : undefined),
+			secretsFrom(env),
+		),
 		failedTests,
 		// Only where the run didn't work, so a stray error line never colours a success.
-		errorLine: runDidNotWork(outcome) ? run.error : undefined,
+		errorLine: runDidNotWork(outcome) ? redactSecrets(run.error, secretsFrom(env)) : undefined,
 	}
 	// Proposing: post what it would do and stop. A run that broke has nothing to approve,
 	// so it is reported like any other run, which also completes its check.
@@ -1140,41 +1149,58 @@ function openHandedOffPr(path, plan) {
 	}
 	const { refused, dropped } = splitHandoffPaths(paths, { isSymlink: (p) => links.has(p) })
 	if (refused.length) {
-		return `**Did not open a pull request:** the branch changes files Test Companion never pushes: ${refused.map((f) => `\`${f}\``).join(", ")}.`
+		return `**Did not open a pull request:** the branch changes files Test Companion never pushes: ${listFiles(refused)}.`
 	}
 	let head = tip.out
 	if (dropped.length) {
-		const left = leaveOut(from.out, tip.out, dropped)
+		const indexFile = join(REPORT_DIR, `tc-handoff-index-${process.pid}`)
+		let left
+		try {
+			left = leaveOut({ git, base: from.out, tip: tip.out, paths: dropped, identity, message: leaveOutMessage(req.title, dropped), indexFile })
+		} finally {
+			rmSync(indexFile, { force: true })
+		}
 		if (left.error) return `**Could not open the pull request:** ${left.error}.`
 		if (left.empty) {
-			return `**Did not open a pull request:** the run's only changes were files Test Companion never commits: ${dropped.map((f) => `\`${f}\``).join(", ")}.`
+			return `**Did not open a pull request:** the run's only changes were files Test Companion never commits: ${listFiles(dropped)}.`
 		}
 		head = left.sha
 	}
-	const leftOutNote = dropped.length ? ` Left out ${dropped.map((f) => `\`${f}\``).join(", ")}, which Test Companion never commits.` : ""
+	const leftOutNote = dropped.length ? ` Left out ${listFiles(dropped)}, which Test Companion never commits.` : ""
 	const target = pushUrlFor(REPO, env.GITHUB_SERVER_URL)
 	if (!target) return `**Could not open the pull request:** bad repository name "${REPO}".`
+	const onReviewedCommit = String(headBeforeRun ?? "").toLowerCase() === String(plan.context.sha ?? "").toLowerCase()
+	const request = handedOffPrRequest({
+		req,
+		pr: plan.context.pr,
+		prBranch: plan.context.branch,
+		defaultBranch: defaultBranchName(),
+		onReviewedCommit,
+	})
+	const baseNote =
+		plan.context.pr && !onReviewedCommit
+			? ` It targets \`${request.base}\`, not #${plan.context.pr}'s branch, because the run did not start on that pull request's commit.`
+			: ""
 	const pushed = git(["push", target, `${head}:refs/heads/${req.branch}`], pushCredentialEnv(env.GH_TOKEN, target))
-	if (!pushed.ok) {
-		return /rejected|non-fast-forward|already exists/i.test(pushed.err)
-			? `**Already done:** \`${req.branch}\` already exists, so this job's pull request was opened by an earlier run.`
-			: `**Could not open the pull request:** ${pushed.err || "git push failed"}.`
+	if (!pushed.ok && !/rejected|non-fast-forward|already exists/i.test(pushed.err)) {
+		return `**Could not open the pull request:** ${pushed.err || "git push failed"}.`
 	}
-	// actions/checkout doesn't record the remote HEAD, so the CLI's base is only a fallback.
-	const opened = ghRaw(
-		["api", `repos/${REPO}/pulls`, "--method", "POST", "--input", "-"],
-		handedOffPrRequest({
-			req,
-			workflow: plan.workflow,
-			pr: plan.context.pr,
-			prBranch: plan.context.branch,
-			defaultBranch: defaultBranchName(),
-		}),
-	)
+	// The branch may be left from an earlier run; only claim "done" if its pull request exists.
+	const owner = REPO.split("/")[0]
+	const open = gh(["api", `repos/${REPO}/pulls?head=${encodeURIComponent(`${owner}:${req.branch}`)}&state=open`])
+	if (Array.isArray(open) && open.length) {
+		return `**Already done:** this job's pull request is already open: ${open[0].html_url}.`
+	}
+	// Push rejected and no pull request: an earlier run of this job on this commit pushed the
+	// branch but couldn't open its pull request, so open it now.
+	const create = (body) => ghRaw(["api", `repos/${REPO}/pulls`, "--method", "POST", "--input", "-"], body)
+	let opened = create(request)
+	// Draft pull requests aren't available on every plan.
+	if (opened.status !== 0 && /draft/i.test(`${opened.stdout}${opened.stderr}`)) {
+		opened = create({ ...request, draft: false })
+	}
 	if (opened.status !== 0) {
-		return /already exists/i.test(`${opened.stdout}${opened.stderr}`)
-			? `**Already done:** a pull request for \`${req.branch}\` is already open.`
-			: `**Pushed \`${req.branch}\` but could not open the pull request:** ${String(opened.stderr ?? "").trim().split("\n")[0]}.`
+		return `**Pushed \`${req.branch}\` but could not open the pull request:** ${String(opened.stderr ?? "").trim().split("\n")[0]}.`
 	}
 	let url = ""
 	try {
@@ -1182,44 +1208,9 @@ function openHandedOffPr(path, plan) {
 	} catch {
 		// The link is a nicety.
 	}
-	return `**Opened a pull request** with this run's changes${url ? `: ${url}` : ` from \`${req.branch}\``}.${leftOutNote}`
+	return `**Opened a pull request** with this run's changes${url ? `: ${url}` : ` from \`${req.branch}\``}.${leftOutNote}${baseNote}`
 }
 
-/**
- * A commit on top of `tip` that puts `paths` back as they were at `base`, built in a
- * scratch index so the checkout is untouched. Returns { sha }, { empty } when nothing
- * else changed, or { error }.
- */
-function leaveOut(base, tip, paths) {
-	const index = join(REPORT_DIR, `tc-handoff-index-${process.pid}`)
-	const scratch = { GIT_INDEX_FILE: index }
-	try {
-		if (!git(["read-tree", tip], scratch).ok) return { error: "could not read the branch" }
-		// Resetting to `base` restores a changed file and removes an added one.
-		if (!git(["reset", "-q", base, "--", ...paths], scratch).ok) return { error: "could not leave out the by-products" }
-		const tree = git(["write-tree"], scratch)
-		if (!tree.ok) return { error: "could not write the branch's files" }
-		if (tree.out === git(["rev-parse", `${base}^{tree}`]).out) return { empty: true }
-		const commit = git(
-			[
-				"-c",
-				`user.name=${identity.name}`,
-				"-c",
-				`user.email=${identity.email}`,
-				"commit-tree",
-				tree.out,
-				"-p",
-				tip,
-				"-m",
-				`Leave out files Test Companion never commits\n\n${paths.join("\n")}`,
-			],
-			scratch,
-		)
-		return commit.ok && commit.out ? { sha: commit.out } : { error: "could not commit without the by-products" }
-	} finally {
-		rmSync(index, { force: true })
-	}
-}
 
 /** Create or update this run's check on `sha`. */
 function postCheck(outcome, view, sha, annotations = [], status = "completed", title = undefined) {

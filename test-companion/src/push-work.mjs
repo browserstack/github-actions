@@ -19,22 +19,43 @@ export function commitIdentity({ appSlug, appUserId } = {}) {
 	return { name: `${slug}[bot]`, email: `${id}+${slug}[bot]@users.noreply.github.com` }
 }
 
-export function authoredByUs(email, ours = []) {
-	const e = String(email ?? "")
-		.trim()
-		.toLowerCase()
-	return e === BOT_EMAIL || ours.some((o) => String(o ?? "").toLowerCase() === e && e !== "")
+/** Slugs of the GitHub App Test Companion may act as. */
+export const APP_SLUGS = Object.freeze(["browserstack"])
+
+/**
+ * Is this commit email ours? Includes the App's noreply address whatever identity this
+ * run has: a run that fell back to the workflow token must still see the App's commits.
+ */
+export function authoredByUs(email, ours = [], { appSlugs = APP_SLUGS } = {}) {
+	const norm = (v) =>
+		String(v ?? "")
+			.trim()
+			.toLowerCase()
+	const e = norm(email)
+	if (!e) return false
+	if (e === BOT_EMAIL || ours.map(norm).includes(e)) return true
+	const app = /^\d+\+([a-z0-9-]+)\[bot\]@users\.noreply\.github\.com$/.exec(e)
+	return Boolean(app && appSlugs.map(norm).includes(app[1]))
 }
 
 /** Jobs whose result is a report or Test Management cases, never code on the branch. */
 export const NO_CODE_OUTPUT = new Set(["generate", "rca", "verdict", "validate"])
+
+/**
+ * The save decision once the job is known. Event runs learn their job only from the
+ * pipeline file, after shouldPushWork ran without it.
+ */
+export function savingFor(saving, job) {
+	if (NO_CODE_OUTPUT.has(String(job ?? ""))) return { ok: false, quiet: true, why: `${job} does not change code` }
+	return saving
+}
 
 /** May this run push? Every check fails closed. */
 export function shouldPushWork({ preview, sameRepo, branch, headAuthorEmail, onWantedCommit, defaultBranch, workflow, ourEmails = [] } = {}) {
 	// A shell command the agent ran during preview is outside the brain's write refusal.
 	if (preview) return { ok: false, why: "this is a preview run, which writes nothing" }
 	// Anything such a job leaves in the checkout is a by-product, not work to save.
-	if (NO_CODE_OUTPUT.has(String(workflow ?? ""))) return { ok: false, why: `${workflow} does not change code` }
+	if (NO_CODE_OUTPUT.has(String(workflow ?? ""))) return { ok: false, quiet: true, why: `${workflow} does not change code` }
 	// Never push to a fork's branch with pull_request_target credentials. Unknown counts as no.
 	if (sameRepo !== true) return { ok: false, why: "the change does not come from this repository" }
 	if (!String(branch ?? "").trim()) return { ok: false, why: "there is no branch to push to" }
@@ -145,9 +166,26 @@ export function splitHandoffPaths(paths, { isSymlink = () => false } = {}) {
 	return { refused, dropped }
 }
 
+/** A file name as markdown code, safe whatever characters the agent put in it. */
+export function codeSpan(name) {
+	const text = String(name ?? "").replace(/[\r\n\t]/g, " ")
+	const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length))
+	const fence = "`".repeat(longest + 1)
+	const pad = longest > 0 || text.startsWith("`") || text.endsWith("`") ? " " : ""
+	return `${fence}${pad}${text}${pad}${fence}`
+}
+
+/** File names, at most `limit` of them, then how many more. */
+export function listFiles(names, { limit = 10, render = codeSpan, separator = ", " } = {}) {
+	const all = names ?? []
+	const shown = all.slice(0, limit).map(render)
+	if (all.length > limit) shown.push(`and ${all.length - limit} more`)
+	return shown.join(separator)
+}
+
 /** The pull request note about the push, including when it failed. */
 export function renderPushNote({ branch, sha, files = [], skipped = [], error } = {}) {
-	const list = files.map((f) => `- \`${f}\``).join("\n")
+	const list = listFiles(files, { render: (f) => `- ${codeSpan(f)}`, separator: "\n", limit: 50 })
 	if (error) {
 		return [
 			`**Could not save this work to \`${branch}\`:** ${error}`,
@@ -158,7 +196,7 @@ export function renderPushNote({ branch, sha, files = [], skipped = [], error } 
 	}
 	const lines = [`**Saved to \`${branch}\`** as \`${String(sha ?? "").slice(0, 7)}\` — ${countOf(files)}:`, "", list]
 	if (skipped.length) {
-		lines.push("", `Not committed, because Test Companion never commits these: ${skipped.map((f) => `\`${f}\``).join(", ")}.`)
+		lines.push("", `Not committed, because Test Companion never commits these: ${listFiles(skipped)}.`)
 	}
 	return lines.join("\n")
 }
@@ -226,6 +264,8 @@ export function gitEnvFrom(env = {}) {
 	out.GIT_ASKPASS = ""
 	out.SSH_ASKPASS = ""
 	out.GIT_ATTR_NOSYSTEM = "1"
+	// File names come from the agent: `:!x` must name a file, not mean "everything but x".
+	out.GIT_LITERAL_PATHSPECS = "1"
 	return out
 }
 
@@ -337,9 +377,10 @@ export const GIT_SAFE_ARGS = Object.freeze([
  * The pull request to open for work the CLI handed back. Asked on a pull request,
  * it targets that pull request's branch, so it carries only the new change.
  */
-export function handedOffPrRequest({ req, workflow, pr, prBranch, defaultBranch } = {}) {
-	const onAPr = Boolean(pr && String(prBranch ?? "").trim())
-	const job = String(workflow ?? "").trim() || "change"
+export function handedOffPrRequest({ req, pr, prBranch, defaultBranch, onReviewedCommit = true } = {}) {
+	// The changes were measured from where the run started; only that commit makes the PR's branch a fair base.
+	const onAPr = Boolean(pr && String(prBranch ?? "").trim() && onReviewedCommit)
+	const job = String(req?.workflow ?? "").trim() || "change"
 	return {
 		head: req?.branch,
 		base: onAPr ? prBranch : defaultBranch || req?.base,
@@ -347,4 +388,34 @@ export function handedOffPrRequest({ req, workflow, pr, prBranch, defaultBranch 
 		body: onAPr ? `${String(req?.body ?? "").trim()}\n\nRequested on #${pr}.`.trim() : req?.body,
 		draft: true,
 	}
+}
+
+/**
+ * One commit, on `base`, with the branch's changes except `paths` (put back as they were
+ * at `base`). Its parent is `base`, not `tip`, so the left-out files are not in what is
+ * pushed. Built in a scratch index so the checkout is untouched.
+ *
+ * `git(args, extraEnv, input)` runs git; it must apply literal pathspecs.
+ * Returns { sha }, { empty } when nothing else changed, or { error }.
+ */
+export function leaveOut({ git, base, tip, paths, identity, message, indexFile }) {
+	const scratch = { GIT_INDEX_FILE: indexFile, GIT_LITERAL_PATHSPECS: "1" }
+	if (!git(["read-tree", tip], scratch).ok) return { error: "could not read the branch" }
+	// Resetting to `base` restores a changed file and removes an added one. Paths on stdin:
+	// no argument-length limit, and no name read as an option.
+	const reset = git(["reset", "-q", base, "--pathspec-from-file=-", "--pathspec-file-nul"], scratch, paths.join("\0"))
+	if (!reset.ok) return { error: "could not leave out the by-products" }
+	const tree = git(["write-tree"], scratch)
+	if (!tree.ok || !tree.out) return { error: "could not write the branch's files" }
+	if (tree.out === git(["rev-parse", `${base}^{tree}`]).out) return { empty: true }
+	const commit = git(
+		["-c", `user.name=${identity.name}`, "-c", `user.email=${identity.email}`, "commit-tree", tree.out, "-p", base, "-m", message],
+		scratch,
+	)
+	return commit.ok && commit.out ? { sha: commit.out } : { error: "could not commit without the by-products" }
+}
+
+/** The commit message for a hand-off with files left out. */
+export function leaveOutMessage(title, paths) {
+	return `${String(title ?? "").trim() || "Test Companion changes"}\n\nLeft out, because Test Companion never commits them:\n${listFiles(paths, { render: (p) => `- ${p}`, separator: "\n" })}`
 }
