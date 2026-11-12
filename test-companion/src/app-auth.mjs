@@ -28,7 +28,32 @@ export function jwtClaims(appId, nowSeconds) {
  * and GitHub accepts an App's JWT only as `Authorization: Bearer`.
  * Returns { ok, status, data, reason }; `reason` is GitHub's message, never the JWT.
  */
-export async function appApi(path, { jwt, method = "GET", body, apiUrl, fetchImpl = fetch } = {}) {
+export async function appApi(path, { jwt, method = "GET", body, apiUrl, fetchImpl = fetch, attempts = 3, sleep = defaultSleep } = {}) {
+	let result
+	for (let attempt = 1; attempt <= attempts; attempt++) {
+		result = await appApiOnce(path, { jwt, method, body, apiUrl, fetchImpl })
+		if (!isRetryable(result) || attempt === attempts) return { ...result, attempts: attempt }
+		await sleep(retryDelayMs(result, attempt))
+	}
+	return { ...result, attempts }
+}
+
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** A network failure, a 5xx or a 429 may pass on a second try; 401/403/404/422 never will. */
+export function isRetryable(result) {
+	const status = Number(result?.status)
+	return status === 0 || status === 429 || (status >= 500 && status <= 599)
+}
+
+/** 1s, then 3s; a Retry-After from GitHub wins, capped at 10s. */
+export function retryDelayMs(result, attempt) {
+	const after = Number(result?.retryAfter)
+	if (Number.isFinite(after) && after > 0) return Math.min(after, 10) * 1000
+	return attempt === 1 ? 1000 : 3000
+}
+
+async function appApiOnce(path, { jwt, method, body, apiUrl, fetchImpl }) {
 	const base = String(apiUrl || "https://api.github.com").replace(/\/+$/, "")
 	let response
 	try {
@@ -47,7 +72,8 @@ export async function appApi(path, { jwt, method = "GET", body, apiUrl, fetchImp
 	}
 	const data = await response.json().catch(() => undefined)
 	const reason = response.ok ? "" : `${data?.message || response.statusText || "no detail from GitHub"} (HTTP ${response.status})`
-	return { ok: response.ok, status: response.status, data, reason }
+	const retryAfter = response.headers?.get?.("retry-after") ?? undefined
+	return { ok: response.ok, status: response.status, data, reason, ...(retryAfter ? { retryAfter } : {}) }
 }
 
 /** What to log when looking up the App's installation on this repository fails. */
