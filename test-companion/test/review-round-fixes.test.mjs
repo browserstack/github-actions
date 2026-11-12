@@ -5,7 +5,9 @@ import {
 	planSpentState,
 	proposalNeedsDropping,
 	proposalConsumedMarkerFor,
+	proposalDroppedMarkerFor,
 	proposalMarkerFor,
+	unavailablePlanReply,
 	renderJobSummary,
 } from "../src/report.mjs"
 import {
@@ -51,15 +53,61 @@ describe("approving a newer plan also spends the older ones of that job", () => 
 		assert.equal(proposalNeedsDropping(comments(stale), SHA, now, US), false)
 	})
 
-	test("go #<older plan> is told it was already approved", () => {
-		assert.equal(planSpentState(comments(), 100, US), "approved")
+	test("go #<older plan> is told another plan was approved instead, not that it ran", () => {
+		assert.equal(planSpentState(comments(), 100, US), "superseded")
 		assert.equal(planSpentState(comments(), 200, US), "approved")
 	})
 
-	test("approving the older plan leaves the newer one approvable", () => {
-		const c = [plan(100), plan(200), ours(300, proposalConsumedMarkerFor(SHA, "fix", 100))]
-		assert.equal(findProposal(c, SHA, now, US)?.id, 200)
+	test("approving the older plan also settles a newer one that was already waiting", () => {
+		const c = (created = fresh) => [
+			plan(100, "fix", { created }),
+			plan(200, "fix", { created }),
+			ours(300, proposalConsumedMarkerFor(SHA, "fix", 100)),
+		]
+		assert.equal(findProposal(c(), SHA, now, US), undefined)
+		assert.equal(planSpentState(c(), 200, US), "superseded")
+		assert.equal(planSpentState(c(), 100, US), "approved")
+		// So the sweep never drops the newer plan and flips the check over the approved run.
+		assert.equal(proposalNeedsDropping(c(stale), SHA, now, US), false)
+	})
+
+	test("a plan posted after the approval stays approvable", () => {
+		const c = [plan(100), ours(300, proposalConsumedMarkerFor(SHA, "fix", 100)), plan(400)]
+		assert.equal(findProposal(c, SHA, now, US)?.id, 400)
+		assert.equal(planSpentState(c, 400, US), undefined)
+	})
+
+	test("a marker that names a plan but no job spends only that plan", () => {
+		const c = [plan(100, "fix"), plan(150, "generate"), plan(200, "fix"), ours(300, proposalConsumedMarkerFor(SHA, "", 200))]
+		assert.equal(planSpentState(c, 200, US), "approved")
+		assert.equal(planSpentState(c, 100, US), undefined)
+		assert.equal(planSpentState(c, 150, US), undefined)
+		assert.equal(findProposal(c, SHA, now, US)?.id, 150)
+	})
+
+	test("an approval on one commit leaves plans on another commit alone", () => {
+		const other = { ...plan(250, "fix"), body: `p\n\n${proposalMarkerFor("def5678", "alice", "fix")}` }
+		const c = [plan(200, "fix"), other, ours(300, proposalConsumedMarkerFor(SHA, "fix", 200))]
+		assert.equal(planSpentState(c, 250, US), undefined)
+		assert.equal(findProposal(c, "def5678", now, US)?.id, 250)
+	})
+
+	test("dropping an expired plan never spends a newer one still waiting", () => {
+		const c = [
+			plan(100, "fix", { created: stale }),
+			plan(200, "fix"),
+			ours(300, proposalDroppedMarkerFor(SHA, "fix", 100)),
+		]
+		assert.equal(planSpentState(c, 100, US), "dropped")
 		assert.equal(planSpentState(c, 200, US), undefined)
+		assert.equal(findProposal(c, SHA, now, US)?.id, 200)
+	})
+
+	test("an old marker without a plan id keeps its old meaning", () => {
+		const c = [plan(100), plan(200), ours(300, proposalConsumedMarkerFor(SHA, "fix")), plan(400)]
+		assert.equal(planSpentState(c, 100, US), "approved")
+		assert.equal(planSpentState(c, 200, US), "approved")
+		assert.equal(findProposal(c, SHA, now, US)?.id, 400)
 	})
 
 	test("an older plan for a different job stays open", () => {
@@ -80,11 +128,15 @@ describe("naming a failed workflow in the comment", () => {
 	const pick = (text) => matchFailedByName(text, failed)?.name
 
 	test("a whole workflow name wins, longest first", () => {
-		assert.equal(pick("@browserstack explain CI"), "CI")
-		assert.equal(pick("@browserstack explain Build and Test"), "Build and Test")
 		assert.equal(pick("@browserstack explain Lint Checks"), "Lint Checks")
 		assert.equal(pick("@browserstack explain lint"), "Lint")
 		assert.equal(pick("@browserstack explain e2e please"), "e2e")
+	})
+
+	test("a name made only of everyday words never matches; it is asked for by run id", () => {
+		// The comment uses these words anyway ("why this build failed"), so they can't name a run.
+		assert.equal(pick("@browserstack explain CI"), undefined)
+		assert.equal(pick("@browserstack explain Build and Test"), undefined)
 	})
 
 	test("an incidental word does not name a workflow", () => {
@@ -95,6 +147,44 @@ describe("naming a failed workflow in the comment", () => {
 
 	test("every significant word of a name counts as naming it", () => {
 		assert.equal(pick("@browserstack explain the main deploy"), "Deploy main")
+	})
+})
+
+describe("everyday-word workflow names and matrix suffixes", () => {
+	const pick = (text, failed) => matchFailedByName(text, failed)?.name
+
+	test("a workflow called build, Test or explain is not picked by a sentence that uses the word", () => {
+		assert.equal(pick("explain why this build failed", [{ id: 9, name: "e2e" }, { id: 8, name: "build" }]), undefined)
+		assert.equal(pick("fix the failing test", [{ id: 9, name: "Lint" }, { id: 8, name: "Test" }]), undefined)
+		assert.equal(pick("explain", [{ id: 9, name: "Lint" }, { id: 8, name: "explain" }]), undefined)
+		assert.equal(pick("explain CI / build", [{ id: 9, name: "e2e" }, { id: 8, name: "CI / build" }]), undefined)
+	})
+
+	test("a matrix suffix doesn't stop the workflow from being named", () => {
+		assert.equal(pick("explain e2e", [{ id: 9, name: "Lint" }, { id: 8, name: "E2E Tests (linux)" }]), "E2E Tests (linux)")
+		assert.equal(pick("explain e2e", [{ id: 9, name: "Lint" }, { id: 8, name: "e2e (chrome, 18)" }]), "e2e (chrome, 18)")
+	})
+
+	test("between two matrix legs, ties go to the newest", () => {
+		assert.equal(pick("explain e2e", [{ id: 9, name: "e2e (linux)" }, { id: 8, name: "e2e (mac)" }]), "e2e (linux)")
+	})
+})
+
+describe("the reply to go #<id> on a plan that can't be approved", () => {
+	test("superseded says another plan was approved, not that this one ran", () => {
+		const text = unavailablePlanReply("superseded", 100, SHA)
+		assert.match(text, /different plan for this job on this commit was already approved/)
+		assert.doesNotMatch(text, /approved and run/)
+	})
+
+	test("approved, dropped and unknown keep their own replies", () => {
+		assert.match(unavailablePlanReply("approved", 100, SHA), /was already approved and run/)
+		assert.match(unavailablePlanReply("dropped", 100, SHA), /was already dropped/)
+		assert.match(unavailablePlanReply(undefined, 100, SHA), /I have no plan `#100` still waiting on `abc1234`/)
+	})
+
+	test("the id is digits only in the reply", () => {
+		assert.match(unavailablePlanReply("approved", "1`0@x", SHA), /Plan `#10`/)
 	})
 })
 
