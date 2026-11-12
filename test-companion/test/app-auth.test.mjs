@@ -228,3 +228,25 @@ describe("appApi retries a passing failure", () => {
 		for (const status of [200, 201, 401, 403, 404, 422]) assert.equal(isRetryable({ status }), false, String(status))
 	})
 })
+
+describe("appApi gives each call a time limit", () => {
+	test("every request carries an abort signal", async () => {
+		let seen
+		await appApi("x", { jwt: "J", fetchImpl: async (_u, init) => ((seen = init), { ok: true, status: 200, json: async () => ({}) }) })
+		assert.ok(seen.signal instanceof AbortSignal)
+	})
+
+	test("a call that stalls is aborted, counted as a network error and retried", async () => {
+		let calls = 0
+		const fetchImpl = (_u, init) =>
+			new Promise((_resolve, reject) => {
+				calls++
+				init.signal.addEventListener("abort", () => reject(init.signal.reason))
+			})
+		const r = await appApi("x", { jwt: "J", fetchImpl, sleep: async () => {}, timeoutMs: 5 })
+		assert.equal(r.ok, false)
+		assert.equal(r.status, 0)
+		assert.match(r.reason, /no reply within/)
+		assert.equal(calls, 3)
+	})
+})

@@ -11,7 +11,7 @@ const withMark = (outcome) => {
 /** `[#<id>](<url>)` for the comment that asked for this run; "" unless the URL names a comment. */
 export function requestLink(url) {
 	const u = String(url ?? "")
-	const id = /^https:\/\/[^\s)]+#issuecomment-(\d+)$/.exec(u)?.[1]
+	const id = /^https:\/\/[^\s()|<>[\]]+#issuecomment-(\d+)$/.exec(u)?.[1]
 	return id ? `[#${id}](${u})` : ""
 }
 

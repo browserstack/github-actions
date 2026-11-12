@@ -31,3 +31,10 @@ describe("askedByCell", () => {
 		assert.equal(askedByCell(undefined, "https://github.com/o/r/pull/9#issuecomment-1"), "")
 	})
 })
+
+describe("requestLink rejects table and markdown breakers", () => {
+	test("a pipe or bracket in the URL gives no link", () => {
+		assert.equal(requestLink("https://github.com/o/r|x/pull/9#issuecomment-1"), "")
+		assert.equal(requestLink("https://github.com/o/r]x/pull/9#issuecomment-1"), "")
+	})
+})

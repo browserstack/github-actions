@@ -1245,7 +1245,9 @@ function openHandedOffPr(path, plan) {
 	if (!tip.ok || !tip.out) return `**Did not open a pull request:** the run did not leave a \`${req.branch}\` branch.`
 	// The squash goes onto the commit the run started on, and only if the agent's branch builds
 	// on it: a branch that reset or rebased past it would hand back a diff that undoes that work.
-	const reviewed = git(["rev-parse", "--verify", "--quiet", `${headBeforeRun || "HEAD"}^{commit}`])
+	// Never fall back to HEAD here: after the run, the agent decides where HEAD points.
+	if (!headBeforeRun) return "**Could not open the pull request:** could not read the commit the run started on."
+	const reviewed = git(["rev-parse", "--verify", "--quiet", `${headBeforeRun}^{commit}`])
 	if (!reviewed.ok || !reviewed.out) return "**Could not open the pull request:** could not read the commit the run started on."
 	const descends = checkHandoffDescends({ git, reviewed: reviewed.out, tip: tip.out })
 	if (descends.error) return `**Could not open the pull request:** ${descends.error}.`
