@@ -1,6 +1,7 @@
 /** Rendering and decisions for the run's comment, check and job summary. No network calls. */
 import { CAPABILITIES, isApprovalOnly } from "./intent.mjs"
 import { emojiFor } from "./outcome.mjs"
+import { ANSWER_JOBS } from "./gate.mjs"
 
 const withMark = (outcome) => {
 	const mark = emojiFor(outcome)
@@ -13,8 +14,14 @@ const withMark = (outcome) => {
  */
 export const isOurs = (comment, us) => Boolean(us) && comment?.user?.type === "Bot" && comment?.user?.login === us
 
-// Hidden marker so later runs edit one comment instead of posting new ones.
+// Hidden marker on the one status comment automatic runs (no request comment) keep up to date.
 export const COMMENT_MARKER = "<!-- test-companion-run -->"
+
+/** Marks the reply to one request, so a re-run of the same job edits it and nothing else does. */
+export function requestMarkerFor(requestId) {
+	const id = String(requestId ?? "").replace(/\D/g, "")
+	return id ? `<!-- test-companion-run request=${id} -->` : COMMENT_MARKER
+}
 
 const previewRun = (summary) => summary?.preview === "true"
 
@@ -86,6 +93,7 @@ export function renderJobSummary({
 	extraChecks = [],
 	warnings = [],
 	errorLine,
+	buildNote,
 } = {}) {
 	const lines = []
 	lines.push(`## Test Companion — ${withMark(outcome)}`)
@@ -114,10 +122,19 @@ export function renderJobSummary({
 		}
 	}
 
+	if (String(buildNote ?? "").trim()) {
+		lines.push(`> ${inertMarkers(oneLine(buildNote))}`)
+		lines.push("")
+	}
+
 	if (previewRun(summary)) {
-		// Preview blocks Test Companion's own write tools, not shell commands the agent runs.
+		// Explain and find-the-bad-PR always run this way on purpose; the banner reads as "nothing happened".
+		const job = workflow ?? summary.workflow
 		lines.push(
-			"> **Preview** — Test Companion refused every one of its own write tools, so it created, changed and saved nothing itself. Shell commands the agent ran are not covered by that.",
+			ANSWER_JOBS.has(job)
+				? "> Read-only: this job explains what happened and changes nothing."
+				: // Preview blocks Test Companion's own write tools, not shell commands the agent runs.
+					"> **Preview** — Test Companion refused every one of its own write tools, so it created, changed and saved nothing itself. Shell commands the agent ran are not covered by that.",
 		)
 		lines.push("")
 	}
@@ -172,8 +189,9 @@ function cutShortNote(runUrl) {
 	return `\n\n_Cut short to fit a comment. The full version is on ${where}._`
 }
 
-export function renderComment(args) {
-	return renderWithin(args, COMMENT_LIMIT, `\n\n${COMMENT_MARKER}`)
+/** `marker` is requestMarkerFor(id) for a reply to a request; the shared status marker otherwise. */
+export function renderComment(args, marker = COMMENT_MARKER) {
+	return renderWithin(args, COMMENT_LIMIT, `\n\n${marker}`)
 }
 
 // GitHub's cap on a check run's summary; over it the check is never completed.
@@ -205,9 +223,13 @@ function renderWithin(args, limit, tail) {
 	return rest.slice(0, Math.max(0, limit - tail.length - note.length)) + note + tail
 }
 
-// Only our own marked comment; a person quoting it must not capture the thread.
-export function chooseCommentAction(comments, us) {
-	const ours = (comments ?? []).filter((c) => isOurs(c, us) && (c.body ?? "").includes(COMMENT_MARKER))
+/**
+ * Only our own marked comment; a person quoting it must not capture the thread. With a
+ * `requestId`, only that request's own reply is ever edited: one reply per request.
+ */
+export function chooseCommentAction(comments, us, { requestId } = {}) {
+	const marker = requestId ? requestMarkerFor(requestId) : COMMENT_MARKER
+	const ours = (comments ?? []).filter((c) => isOurs(c, us) && (c.body ?? "").includes(marker))
 	if (ours.length === 0) return { action: "create" }
 	const oldest = ours.reduce((a, b) => (a.id <= b.id ? a : b))
 	return { action: "update", id: oldest.id }
@@ -293,16 +315,38 @@ export function proposalAlreadyUsed(comments, sha, us, workflow) {
 	return undefined
 }
 
+/**
+ * Is this plan comment spent? A marker naming a plan spends only that plan. An older marker
+ * without one spends the plans of its job (or every job, if it names none) posted up to the
+ * comment carrying it, so a plan posted after it is still approvable.
+ */
+function planSpentBy(planComment, marks) {
+	const id = Number(planComment?.id)
+	const job = readMarker(planComment?.body)?.workflow ?? ""
+	return marks.find((m) =>
+		m.plan ? m.plan === String(planComment?.id) : (!m.workflow || m.workflow === job) && id <= Number(m.host),
+	)
+}
+
+/** "approved" or "dropped" when the plan comment `id` was spent, else undefined. */
+export function planSpentState(comments, id, us) {
+	const plan = (comments ?? []).find((c) => isOurs(c, us) && String(c.id) === String(id) && readMarker(c.body))
+	if (!plan) return undefined
+	const hit = planSpentBy(
+		plan,
+		spentPlans(comments, us).filter((m) => m.sha === readMarker(plan.body).sha),
+	)
+	return hit ? (hit.kind === "consumed" ? "approved" : "dropped") : undefined
+}
+
 // Only our own comments count; an unreadable timestamp counts as expired.
 export function findProposal(comments, sha, now = Date.now(), us, opts = {}) {
 	const want = String(sha ?? "").trim()
-	// Spent plans are tracked per job, so using one leaves the others on this commit waiting.
+	// Spent per plan, so approving one leaves a newer plan (same job or not) waiting.
 	const spent = spentPlans(comments, us).filter((m) => m.sha === want)
-	if (spent.some((m) => !m.workflow)) return undefined
-	const spentJobs = new Set(spent.map((m) => m.workflow))
 
 	let ours = (comments ?? []).filter((c) => isOurs(c, us) && readMarker(c.body)?.sha === want)
-	ours = ours.filter((c) => !spentJobs.has(readMarker(c.body)?.workflow ?? ""))
+	ours = ours.filter((c) => !planSpentBy(c, spent))
 	// `go <id>` picks one plan when several are waiting.
 	const named = String(opts?.id ?? "").trim()
 	if (named) ours = ours.filter((c) => String(c.id) === named)
@@ -341,12 +385,13 @@ export function renderApprovedPlan(proposalBody, replyText) {
 }
 
 // Spent-plan markers, so neither a second `go` nor the nightly sweep acts on a finished plan.
-export function proposalConsumedMarkerFor(sha, workflow) {
-	return `<!-- test-companion-proposal-consumed sha=${String(sha ?? "")}${jobField(workflow)} -->`
+// `planId` is the plan comment spent; without it the marker covers older plans (see planSpentBy).
+export function proposalConsumedMarkerFor(sha, workflow, planId) {
+	return `<!-- test-companion-proposal-consumed sha=${String(sha ?? "")}${jobField(workflow)}${planField(planId)} -->`
 }
 
-export function proposalDroppedMarkerFor(sha, workflow) {
-	return `<!-- test-companion-proposal-dropped sha=${String(sha ?? "")}${jobField(workflow)} -->`
+export function proposalDroppedMarkerFor(sha, workflow, planId) {
+	return `<!-- test-companion-proposal-dropped sha=${String(sha ?? "")}${jobField(workflow)}${planField(planId)} -->`
 }
 
 function jobField(workflow) {
@@ -354,15 +399,20 @@ function jobField(workflow) {
 	return job ? ` workflow=${job}` : ""
 }
 
-// A marker without `workflow=` covers every plan on the commit.
-const SPENT_MARKER = /<!-- test-companion-proposal-(consumed|dropped) sha=([^\s>]+)(?: workflow=([^\s>]+))? -->/g
+function planField(planId) {
+	const id = String(planId ?? "").replace(/\D/g, "")
+	return id ? ` plan=${id}` : ""
+}
+
+const SPENT_MARKER =
+	/<!-- test-companion-proposal-(consumed|dropped) sha=([^\s>]+)(?: workflow=([^\s>]+))?(?: plan=(\d+))? -->/g
 
 function spentPlans(comments, us) {
 	const out = []
 	for (const c of comments ?? []) {
 		if (!isOurs(c, us)) continue
 		for (const m of String(c.body ?? "").matchAll(SPENT_MARKER)) {
-			out.push({ kind: m[1], sha: m[2], workflow: m[3] })
+			out.push({ kind: m[1], sha: m[2], workflow: m[3], plan: m[4], host: c.id })
 		}
 	}
 	return out
