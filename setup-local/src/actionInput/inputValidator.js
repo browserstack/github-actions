@@ -1,6 +1,5 @@
 const core = require('@actions/core');
 const { v4: uuidv4 } = require('uuid');
-const parseArgs = require('minimist');
 const constants = require('../../config/constants');
 
 const {
@@ -85,27 +84,69 @@ class InputValidator {
   }
 
   /**
+   * Splits a string into tokens on whitespace, keeping single/double quoted
+   * sections together (the quotes themselves are removed).
+   * @param {String} argString Raw args string
+   * @returns {Array<String>} Tokens
+   */
+  static _tokenizeArgs(argString) {
+    const tokens = [];
+    let current = '';
+    let inToken = false;
+    let quoteChar = null;
+
+    for (const char of argString) {
+      if (quoteChar) {
+        if (char === quoteChar) {
+          quoteChar = null;
+        } else {
+          current += char;
+        }
+      } else if (char === '"' || char === "'") {
+        quoteChar = char;
+        inToken = true;
+      } else if (/\s/.test(char)) {
+        if (inToken) {
+          tokens.push(current);
+          current = '';
+          inToken = false;
+        }
+      } else {
+        current += char;
+        inToken = true;
+      }
+    }
+    if (inToken) tokens.push(current);
+
+    return tokens;
+  }
+
+  /**
    * Validates the local-args input. Removes any args which might conflict with
    * the input args taken from the action input for the Local Binary.
+   * Every value following a flag is preserved, so flags taking multiple values
+   * (e.g. --include-hosts host1 host2) are passed to the binary intact.
    * @param {String} inputLocalArgs Action input for 'local-args'
-   * @returns {String} Parsed args
+   * @returns {Array<String>} Parsed args, one element per argv entry
    */
   static validateLocalArgs(inputLocalArgs) {
-    const parsedArgs = parseArgs(inputLocalArgs.split(/\s+/));
+    if (!inputLocalArgs) return [];
 
-    delete parsedArgs._;
-    RESTRICTED_LOCAL_ARGS.forEach((arg) => {
-      delete parsedArgs[arg];
+    const tokens = InputValidator._tokenizeArgs(inputLocalArgs);
+    const isFlag = (token) => /^-{1,2}[^-\d]/.test(token);
+
+    const keptTokens = [];
+    // Tokens before the first flag have no flag to belong to and are dropped.
+    let keepCurrentGroup = false;
+    tokens.forEach((token) => {
+      if (isFlag(token)) {
+        const flagName = token.replace(/^-{1,2}/, '').split('=')[0];
+        keepCurrentGroup = !RESTRICTED_LOCAL_ARGS.includes(flagName);
+      }
+      if (keepCurrentGroup) keptTokens.push(token);
     });
 
-    let parsedArgsString = '';
-    for (const [key, value] of Object.entries(parsedArgs)) {
-      const argKey = key.length === 1 ? `-${key}` : `--${key}`;
-      const argValue = value === true ? '' : value;
-      parsedArgsString += `${argKey} ${argValue} `;
-    }
-
-    return parsedArgsString;
+    return keptTokens;
   }
 }
 
