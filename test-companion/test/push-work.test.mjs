@@ -23,6 +23,8 @@ import {
 	GIT_SAFE_ARGS,
 	pushUrlFor,
 	BOT_EMAIL,
+	handedOffPrRequest,
+	commitIdentity,
 } from "../src/push-work.mjs"
 
 const live = { preview: false, sameRepo: true, branch: "feat/x", headAuthorEmail: "dev@example.com", onWantedCommit: true }
@@ -643,5 +645,77 @@ describe("splitPushable refuses .github and symlinks", () => {
 		const { push, skip } = splitPushable(["tests/fixtures/link", "tests/a.spec.ts"], { isSymlink })
 		assert.deepEqual(push, ["tests/a.spec.ts"])
 		assert.deepEqual(skip, ["tests/fixtures/link"])
+	})
+})
+
+describe("jobs that don't produce code never push", () => {
+	const live = { preview: false, sameRepo: true, branch: "feature/x", onWantedCommit: true, defaultBranch: "main" }
+
+	for (const workflow of ["generate", "rca", "verdict", "validate"]) {
+		test(`${workflow} saves nothing to the branch`, () => {
+			const out = shouldPushWork({ ...live, workflow })
+			assert.equal(out.ok, false)
+			assert.match(out.why, /does not change code/)
+		})
+	}
+
+	test("a job that writes code still may", () => {
+		assert.equal(shouldPushWork({ ...live, workflow: "test-pr" }).ok, true)
+		assert.equal(shouldPushWork({ ...live, workflow: "fix" }).ok, true)
+	})
+})
+
+describe("BrowserStack tooling's by-products are never committed", () => {
+	test("browserstack.err and .browserstack files are skipped", () => {
+		const { push, skip } = splitPushable(["browserstack.err", ".browserstack-local.json", "src/a.test.ts", "nested/browserstack.err"])
+		assert.deepEqual(push, ["src/a.test.ts"])
+		assert.deepEqual(skip, ["browserstack.err", ".browserstack-local.json", "nested/browserstack.err"])
+	})
+})
+
+describe("handedOffPrRequest — a fix asked for on a pull request targets that pull request", () => {
+	const req = { branch: "tc/fix/abc", base: "main", title: "tc fix: abc", body: "What changed." }
+
+	test("on a pull request: base is its branch, a draft, a title that names it", () => {
+		const out = handedOffPrRequest({ req, workflow: "fix", pr: "42", prBranch: "feat/cart", defaultBranch: "main" })
+		assert.equal(out.base, "feat/cart")
+		assert.equal(out.head, "tc/fix/abc")
+		assert.equal(out.draft, true)
+		assert.equal(out.title, "Test Companion fix for #42")
+		assert.match(out.body, /Requested on #42\./)
+	})
+
+	test("without a pull request: the default branch, the CLI's own title", () => {
+		const out = handedOffPrRequest({ req, workflow: "fix", defaultBranch: "main" })
+		assert.equal(out.base, "main")
+		assert.equal(out.title, "tc fix: abc")
+		assert.equal(out.draft, true)
+	})
+
+	test("no default branch known: the CLI's base", () => {
+		assert.equal(handedOffPrRequest({ req, workflow: "automate" }).base, "main")
+	})
+})
+
+describe("commitIdentity — commits are credited to the App when acting as it", () => {
+	test("the App's bot account, with the noreply email GitHub links to it", () => {
+		assert.deepEqual(commitIdentity({ appSlug: "browserstack", appUserId: "355331011" }), {
+			name: "browserstack[bot]",
+			email: "355331011+browserstack[bot]@users.noreply.github.com",
+		})
+	})
+
+	test("without the App, or without its id, the fixed identity", () => {
+		assert.deepEqual(commitIdentity(), { name: "Test Companion", email: BOT_EMAIL })
+		assert.deepEqual(commitIdentity({ appSlug: "browserstack", appUserId: "" }), { name: "Test Companion", email: BOT_EMAIL })
+		assert.deepEqual(commitIdentity({ appSlug: "browserstack", appUserId: "not-a-number" }), { name: "Test Companion", email: BOT_EMAIL })
+	})
+
+	test("the loop guard knows the App's commits are ours too", () => {
+		const app = "355331011+browserstack[bot]@users.noreply.github.com"
+		assert.equal(authoredByUs(app, [app]), true)
+		assert.equal(authoredByUs(BOT_EMAIL), true)
+		assert.equal(authoredByUs("dev@example.com", [app]), false)
+		assert.equal(authoredByUs("", [""]), false)
 	})
 })

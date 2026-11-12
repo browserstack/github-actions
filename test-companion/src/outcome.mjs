@@ -101,6 +101,9 @@ export const BUILD_EFFECTS = Object.freeze({
 
 const RUN_DID_NOT_WORK = new Set([OUTCOMES.RUN_BROKE, OUTCOMES.COULD_NOT_RUN, OUTCOMES.STOPPED_AT_LIMIT])
 
+/** The run broke, never started or hit a limit: there is nothing to approve. */
+export const runDidNotWork = (outcome) => RUN_DID_NOT_WORK.has(outcome)
+
 /**
  * Whether the Action's step goes red. The check is unaffected. Unknown values
  * act as the default, not `report`; `off` is a legacy synonym for `report`.

@@ -85,10 +85,17 @@ export function renderJobSummary({
 	workNote,
 	extraChecks = [],
 	warnings = [],
+	errorLine,
 } = {}) {
 	const lines = []
 	lines.push(`## Test Companion — ${withMark(outcome)}`)
 	lines.push("")
+
+	const why = oneLine(errorLine)
+	if (why) {
+		lines.push(`> **Why:** ${inertMarkers(why)}`)
+		lines.push("")
+	}
 
 	if (String(approvalNote ?? "").trim()) {
 		lines.push(`>${inertMarkers(approvalNote)}`)
@@ -456,4 +463,12 @@ export function inFlightCheckId(checks, checkName = "Test Companion") {
 	const ours = (checks ?? []).filter((c) => c?.name === checkName && c?.status !== "completed")
 	if (ours.length === 0) return undefined
 	return ours.reduce((a, b) => ((a.id ?? 0) >= (b.id ?? 0) ? a : b)).id
+}
+
+/** One line of at most 300 characters, for an error quoted in a comment. */
+function oneLine(text) {
+	const line = String(text ?? "")
+		.replace(/\s+/g, " ")
+		.trim()
+	return line.length > 300 ? `${line.slice(0, 299)}…` : line
 }

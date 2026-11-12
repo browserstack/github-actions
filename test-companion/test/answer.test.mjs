@@ -174,3 +174,33 @@ describe("runCapturingAnswer", () => {
 		assert.equal(r.answer, undefined)
 	})
 })
+
+describe("the CLI's reason for stopping is kept", () => {
+	const node = process.execPath
+
+	test("from an `Error:` line on stderr", async () => {
+		const r = await runCapturingAnswer(node, ["-e", `process.stderr.write('Error: project "x" not found\\n'); process.exit(1)`], process.env)
+		assert.equal(r.error, 'project "x" not found')
+	})
+
+	test("from an error event on stdout", async () => {
+		const ev = JSON.stringify({ event: "error", fatal: true, message: "You've hit your Free credit limit." })
+		const r = await runCapturingAnswer(node, ["-e", `process.stdout.write(${JSON.stringify(ev)} + "\\n"); process.exit(1)`], process.env)
+		assert.equal(r.error, "You've hit your Free credit limit.")
+	})
+
+	test("stderr wins: it is the CLI's own last word", async () => {
+		const ev = JSON.stringify({ event: "error", message: "api_request_failed" })
+		const r = await runCapturingAnswer(
+			node,
+			["-e", `process.stdout.write(${JSON.stringify(ev)} + "\\n"); process.stderr.write("Error: task failed: credit limit\\n"); process.exit(1)`],
+			process.env,
+		)
+		assert.equal(r.error, "task failed: credit limit")
+	})
+
+	test("a clean run has none", async () => {
+		const r = await runCapturingAnswer(node, ["-e", "process.exit(0)"], process.env)
+		assert.equal(r.error, undefined)
+	})
+})

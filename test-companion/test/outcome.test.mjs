@@ -1,6 +1,6 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
-import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent } from "../src/outcome.mjs"
+import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent, runDidNotWork } from "../src/outcome.mjs"
 
 describe("parseSummary", () => {
 	test("reads the CLI's key: value report", () => {
@@ -171,5 +171,16 @@ describe("approvalWasSpent", () => {
 		for (const o of Object.values(OUTCOMES)) {
 			assert.equal(typeof approvalWasSpent(o), "boolean", `${o} has no answer`)
 		}
+	})
+})
+
+describe("runDidNotWork — there is nothing to approve", () => {
+	test("broke, never started, or hit a limit", () => {
+		for (const o of [OUTCOMES.RUN_BROKE, OUTCOMES.COULD_NOT_RUN, OUTCOMES.STOPPED_AT_LIMIT]) assert.equal(runDidNotWork(o), true)
+	})
+
+	test("succeeded or failed tests is a real result", () => {
+		assert.equal(runDidNotWork(OUTCOMES.SUCCEEDED), false)
+		assert.equal(runDidNotWork(OUTCOMES.TESTS_FAILED), false)
 	})
 })
