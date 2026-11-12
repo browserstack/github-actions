@@ -72,6 +72,8 @@ import {
 	changedPaths,
 	splitPushable,
 	splitHandoffPaths,
+	checkHandoffDescends,
+	REWROTE_HISTORY,
 	savingFor,
 	isRequestedByPerson,
 	leaveOut,
@@ -222,7 +224,11 @@ async function appInstallationToken() {
 	}
 
 	// The JWT authenticates the App; only the installation token can touch a repository.
-	const asApp = (path, opts) => appApi(path, { jwt, apiUrl: env.GITHUB_API_URL, ...opts })
+	const asApp = async (path, opts) => {
+		const r = await appApi(path, { jwt, apiUrl: env.GITHUB_API_URL, ...opts })
+		if (r.ok && r.attempts > 1) notice(`Test Companion: reaching GitHub as the App took ${r.attempts} tries.`)
+		return r
+	}
 
 	const found = await asApp(`repos/${REPO}/installation`)
 	if (!found.ok) {
@@ -1216,8 +1222,14 @@ function openHandedOffPr(path, plan) {
 	}
 	const tip = git(["rev-parse", "--verify", "--quiet", `refs/heads/${req.branch}^{commit}`])
 	if (!tip.ok || !tip.out) return `**Did not open a pull request:** the run did not leave a \`${req.branch}\` branch.`
-	const from = git(["merge-base", headBeforeRun || "HEAD", tip.out])
-	if (!from.ok) return `**Did not open a pull request:** \`${req.branch}\` does not share history with this commit.`
+	// The squash goes onto the commit the run started on, and only if the agent's branch builds
+	// on it: a branch that reset or rebased past it would hand back a diff that undoes that work.
+	const reviewed = git(["rev-parse", "--verify", "--quiet", `${headBeforeRun || "HEAD"}^{commit}`])
+	if (!reviewed.ok || !reviewed.out) return "**Could not open the pull request:** could not read the commit the run started on."
+	const descends = checkHandoffDescends({ git, reviewed: reviewed.out, tip: tip.out })
+	if (descends.error) return `**Could not open the pull request:** ${descends.error}.`
+	if (!descends.ok) return `**Did not open a pull request:** ${REWROTE_HISTORY}.`
+	const from = { ok: true, out: reviewed.out }
 	// --raw gives file modes, so a symlink is caught from the commit itself.
 	const diff = git(["-c", "core.quotePath=false", "diff", "--raw", "--no-renames", "-z", from.out, tip.out])
 	if (!diff.ok) return `**Could not open the pull request:** ${diff.err || "could not list its changes"}.`

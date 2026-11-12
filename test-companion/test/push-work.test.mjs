@@ -28,6 +28,8 @@ import {
 	commitIdentity,
 	savingFor,
 	leaveOut,
+	checkHandoffDescends,
+	REWROTE_HISTORY,
 	leaveOutMessage,
 	classifyHandoffPush,
 	pushFailureReason,
@@ -1045,5 +1047,57 @@ describe("leaveOut on a git without --no-refresh", () => {
 		assert.deepEqual(r, { sha: "sha2" })
 		assert.equal(calls.filter((a) => a[0] === "reset").length, 2)
 		assert.ok(!calls.filter((a) => a[0] === "reset")[1].includes("--no-refresh"))
+	})
+})
+
+describe("a hand-off branch must build on the reviewed commit", () => {
+	const identity = { name: "Test Companion", email: BOT_EMAIL }
+	const id = ["-c", "user.name=t", "-c", "user.email=t@example.com"]
+
+	// main → R (the reviewed PR head, with the PR's own work in a.ts and tests).
+	function reviewedRepo() {
+		const { dir, git, base: main, tip: reviewed } = repoWithBranch({ "a.ts": "fixed\n", "a.test.ts": "ten tests\n" })
+		const must = (args) => {
+			const r = git(args)
+			assert.ok(r.ok, `${args.join(" ")}: ${r.err}`)
+			return r.out
+		}
+		return { dir, git, must, main, reviewed }
+	}
+
+	test("an agent that reset past the reviewed commit is refused", () => {
+		const { dir, git, must, main, reviewed } = reviewedRepo()
+		// What the agent did on the pilot: `git reset HEAD^`, then committed on its own branch.
+		must(["checkout", "-q", "-b", "tc/fix/x", reviewed])
+		must(["reset", "-q", "--hard", main])
+		writeFileSync(join(dir, "a.ts"), "old again\n")
+		must(["add", "a.ts"])
+		must([...id, "commit", "-qm", "undo"])
+		const tip = must(["rev-parse", "HEAD"])
+		assert.deepEqual(checkHandoffDescends({ git, reviewed, tip }), { refused: true })
+		assert.match(REWROTE_HISTORY, /doesn't build on the commit that was reviewed/)
+	})
+
+	test("an agent that builds on the reviewed commit is accepted, and the squash sits on it", () => {
+		const { dir, git, must, reviewed } = reviewedRepo()
+		must(["checkout", "-q", "-b", "tc/fix/y", reviewed])
+		writeFileSync(join(dir, "a.ts"), "fixed better\n")
+		writeFileSync(join(dir, "browserstack.err"), "[object Object]")
+		must(["add", "a.ts", "browserstack.err"])
+		must([...id, "commit", "-qm", "fix"])
+		const tip = must(["rev-parse", "HEAD"])
+		assert.deepEqual(checkHandoffDescends({ git, reviewed, tip }), { ok: true })
+		const out = leaveOut({ git, base: reviewed, tip, paths: ["browserstack.err"], identity, message: "m", indexFile: join(dir, "scratch") })
+		assert.ok(out.sha, JSON.stringify(out))
+		// Parent is the reviewed commit itself, and the diff on top of it is only the agent's change.
+		assert.equal(git(["rev-parse", `${out.sha}^`]).out, reviewed)
+		assert.equal(git(["diff", "--name-only", reviewed, out.sha]).out, "a.ts")
+		assert.equal(git(["show", `${out.sha}:a.test.ts`]).out, "ten tests")
+	})
+
+	test("missing commits are refused; a git failure is reported, not taken as yes", () => {
+		assert.deepEqual(checkHandoffDescends({ git: () => ({ ok: true }), reviewed: "", tip: "t" }), { refused: true })
+		const broken = () => ({ ok: false, err: "fatal: Not a valid commit name zzz" })
+		assert.deepEqual(checkHandoffDescends({ git: broken, reviewed: "zzz", tip: "t" }), { error: "fatal: Not a valid commit name zzz" })
 	})
 })

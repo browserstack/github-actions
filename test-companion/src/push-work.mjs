@@ -414,6 +414,22 @@ export function handedOffPrRequest({ req, pr, prBranch, defaultBranch, onReviewe
 	}
 }
 
+export const REWROTE_HISTORY =
+	"the run's branch doesn't build on the commit that was reviewed (it rewrote history), so its changes can't be trusted as a fix for this pull request"
+
+/**
+ * Does the agent's branch build on `reviewed`? An agent that reset or rebased past it
+ * (e.g. `git reset HEAD^`) hands back a tree whose diff would undo the reviewed work.
+ * Returns { ok }, { refused }, or { error } when git couldn't tell.
+ */
+export function checkHandoffDescends({ git, reviewed, tip }) {
+	if (!reviewed || !tip) return { refused: true }
+	const r = git(["merge-base", "--is-ancestor", reviewed, tip])
+	if (r.ok) return { ok: true }
+	// Exit 1 with nothing on stderr means "not an ancestor"; anything else is git failing.
+	return String(r.err ?? "").trim() ? { error: r.err.trim().split("\n")[0] } : { refused: true }
+}
+
 /**
  * One commit, on `base`, with the branch's changes except `paths` (put back as they were
  * at `base`). Its parent is `base`, not `tip`, so the left-out files are not in what is
