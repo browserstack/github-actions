@@ -114,7 +114,7 @@ describe("checkNamedRun", () => {
 describe("the replies", () => {
 	test("CI still running lists what is going", () => {
 		const text = renderCiStillRunning("abcdef1234", [{ name: "Unit tests" }, { name: "E2E" }])
-		assert.match(text, /CI is still running on `abcdef1`: \*\*Unit tests\*\*, \*\*E2E\*\*/)
+		assert.match(text, /CI is still running on `abcdef1`: `Unit tests`, `E2E`/)
 		assert.match(text, /Ask me again when it finishes/)
 	})
 	test("CI still running caps the list at five", () => {
@@ -124,14 +124,14 @@ describe("the replies", () => {
 	test("the build note says which run was used and what else failed", () => {
 		const note = renderBuildNote(
 			{ name: "E2E", url: "https://x/1" },
-			{ otherFailed: [{ name: "Unit tests" }], running: [{ name: "Deploy" }], ask: "explain" },
+			{ otherFailed: [{ id: 4242424, name: "Unit tests" }], running: [{ name: "Deploy" }], ask: "explain" },
 		)
-		assert.match(note, /Looked at \*\*E2E\*\* \(\[run\]\(https:\/\/x\/1\)\)/)
-		assert.match(note, /Also failed: \*\*Unit tests\*\*\. To look at one, ask `@browserstack explain Unit tests`/)
-		assert.match(note, /Still running: \*\*Deploy\*\*/)
+		assert.match(note, /Looked at `E2E` \(\[run\]\(https:\/\/x\/1\)\)/)
+		assert.match(note, /Also failed: `Unit tests`\. To look at one, ask `@browserstack explain run 4242424`/)
+		assert.match(note, /Still running: `Deploy`/)
 	})
 	test("no other failures, no extra text", () => {
-		assert.equal(renderBuildNote({ name: "E2E", url: "u" }), "Looked at **E2E** ([run](u)).")
+		assert.equal(renderBuildNote({ name: "E2E", url: "u" }), "Looked at `E2E` ([run](u)).")
 		assert.equal(renderBuildNote(undefined), "")
 	})
 })
