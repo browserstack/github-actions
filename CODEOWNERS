@@ -1,1 +1,4 @@
 * @browserstack/automate-public-repos
+
+/test-companion/ @browserstack/automate-public-repos @browserstack/test-companion
+/.github/workflows/test-companion-tests.yml @browserstack/automate-public-repos @browserstack/test-companion

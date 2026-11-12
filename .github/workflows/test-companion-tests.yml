@@ -1,0 +1,47 @@
+# If this check is ever made required, remove the `paths` filter: a required
+# check that never reports blocks the pull request.
+name: Test Companion tests
+
+on:
+    pull_request:
+        branches: [master]
+        paths:
+            - "test-companion/**"
+            - ".github/workflows/test-companion-tests.yml"
+    push:
+        branches: [master]
+        paths:
+            - "test-companion/**"
+
+permissions:
+    contents: read
+
+concurrency:
+    group: test-companion-tests-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    unit-tests:
+        name: Test Companion unit tests
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
+
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+              with:
+                  node-version: "22"
+
+            # `node --test` exits 0 when a test file fails to load; only a
+            # `not ok` line shows it.
+            - name: Run the unit tests
+              working-directory: test-companion
+              run: |
+                  set -o pipefail
+                  node --test --test-reporter=tap test/*.test.mjs | tee test-output.tap
+                  if grep -nE '^\s*not ok' test-output.tap; then
+                      echo "::error::A test failed or a test file did not load. See the 'not ok' lines above."
+                      exit 1
+                  fi

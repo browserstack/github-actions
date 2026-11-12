@@ -1,0 +1,269 @@
+name: "Test Companion"
+description: >
+    Run Test Companion from a GitHub workflow — generate test cases, explain a red
+    build, fix stale tests — and report the result back onto the pull request.
+    Add this as one step with two secrets; everything else is read from the
+    testcompanion-pipeline.yml in your repository.
+author: "BrowserStack"
+branding:
+    icon: check-circle
+    color: orange
+
+inputs:
+    username:
+        description: "BrowserStack username. Store it as a repository secret, never inline."
+        required: true
+    access-key:
+        description: "BrowserStack access key. Store it as a repository secret, never inline."
+        required: true
+    app-id:
+        description: >-
+            Test Companion GitHub App id. With it, comments and the check come from
+            the App rather than github-actions[bot]. Keep the workflow's
+            permissions block either way: the workflow token is still the
+            fallback. Optional — without it the workflow's own token is used.
+        required: false
+    app-private-key:
+        description: >-
+            The App's private key. Store it as a repository or organisation secret,
+            never inline. It is never passed to the agent's shell.
+        required: false
+
+    workflow:
+        description: >
+            Which job to run, for a manual run only (see `tc workflow list`). Leave it
+            unset for event-driven runs, where the job comes from your pipeline file.
+        required: false
+    preview:
+        description: "Manual runs only: report what would happen and change nothing."
+        required: false
+        default: "false"
+
+    cli-version:
+        description: >
+            Exact Test Companion CLI version to install, e.g. 1.39.8. Unset installs
+            the latest release, which can change between runs.
+        required: false
+    cli-sha256:
+        description: >
+            Checksum for the pinned CLI. Required alongside cli-version, because the
+            installer refuses an unverified pinned install.
+        required: false
+
+    config:
+        description: "Path to the pipeline file. Defaults to testcompanion-pipeline.yml at the repo root."
+        required: false
+    build-effect:
+        description: >
+            Whether a bad outcome fails this step. fail-on-break (default) fails it
+            when the run broke, could not start or hit a limit, but not for test
+            failures. report never fails it. fail fails it on anything but success.
+            The Test Companion check reports the real outcome either way.
+        required: false
+        default: "fail-on-break"
+    allow-unisolated:
+        description: >
+            Run even when the agent cannot be locked down. The agent normally runs
+            as a separate user that cannot reach this job's tokens and secrets,
+            which needs Linux with password-free sudo (GitHub-hosted runners have
+            it). Without that the run stops, unless this is "true": then the agent
+            runs as the job's own user and can reach them.
+        required: false
+        default: "false"
+    github-token:
+        description: >
+            Token used to post the check and the comment. Override only to post as a
+            different identity, such as a GitHub App.
+        required: false
+        default: ${{ github.token }}
+    self-workflow-name:
+        description: >
+            This workflow's own name, so a red run of it is never explained by itself.
+            Defaults to the running workflow.
+        required: false
+        default: ${{ github.workflow }}
+
+outputs:
+    outcome:
+        description: "One of: Succeeded, Tests failed, Run broke, Stopped at limit, Could not run."
+        value: ${{ steps.run.outputs.outcome }}
+    result-file:
+        description: >-
+            Path to the test cases the run generated, with their steps, whether or
+            not they reached Test Management. summary-file says how the run went.
+        value: ${{ steps.run.outputs.result-file }}
+    summary-file:
+        description: "Path to the run's report file."
+        value: ${{ steps.run.outputs.summary-file }}
+    cli-version:
+        description: "The CLI version that actually ran."
+        value: ${{ steps.install.outputs.cli-version }}
+
+runs:
+    using: composite
+    steps:
+        # Several jobs commit. Repo-scoped, not --global, so nothing outlives the run.
+        - name: Give this run a git identity
+          shell: bash
+          run: |
+              set -euo pipefail
+              git config user.email "test-companion[bot]@users.noreply.github.com"
+              git config user.name "Test Companion"
+
+        - name: Install the Test Companion CLI
+          id: install
+          shell: bash
+          env:
+              TC_VERSION: ${{ inputs.cli-version }}
+              TC_SHA256: ${{ inputs.cli-sha256 }}
+          run: |
+              set -euo pipefail
+              # $RUNNER_TEMP is per-job; a fixed /tmp path could be written by something else first.
+              installer="${RUNNER_TEMP:-/tmp}/tc-install.sh"
+              curl -fsSL -o "$installer" https://test-companion.browserstack.com/cli/install.sh
+              sh "$installer"
+              echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+              version="$("$HOME/.local/bin/tc" --version 2>/dev/null | head -1 || echo unknown)"
+              # The pin must have taken: exact match on the first version-shaped token.
+              installed="$(printf '%s' "$version" | grep -oE '[0-9]+(\.[0-9]+)+' | head -1 || true)"
+              if [ -n "${TC_VERSION:-}" ] && [ "$installed" != "$TC_VERSION" ]; then
+                echo "::error::Asked for Test Companion CLI $TC_VERSION but got '$version'." >&2
+                exit 1
+              fi
+              echo "cli-version=$version" >> "$GITHUB_OUTPUT"
+              echo "::notice::Test Companion $version"
+
+        # The CLI only reads BROWSERSTACK_* credentials during `auth login`.
+        - name: Sign in
+          shell: bash
+          env:
+              BROWSERSTACK_USERNAME: ${{ inputs.username }}
+              BROWSERSTACK_ACCESS_KEY: ${{ inputs.access-key }}
+              # Every step that runs tc needs the pin, or the CLI self-upgrades on its first command.
+              TC_PIN_VERSION: ${{ inputs.cli-version }}
+              TC_SKIP_AGENT_SKILL_INSTALL: "1"
+              TC_ACTION_CLI_VERSION: ${{ steps.install.outputs.cli-version }}
+          run: |
+              set -euo pipefail
+              # Bounded: never wait on an interactive sign-in.
+              timeout 120 tc auth login
+
+        # rca, verdict and fix read build logs with gh, which has no credentials on a runner.
+        # The token goes in a job-scoped gh config, not the CLI's environment. The locked-down
+        # agent can't reach it; it reads GitHub through a read-only relay instead.
+        - name: Sign gh in, so a failed build can be read
+          shell: bash
+          env:
+              GH_TOKEN: ${{ inputs.github-token }}
+          run: |
+              # Not `set -e`: most jobs never read a build, so this must not fail the job.
+              set -uo pipefail
+              if [ -z "${GH_TOKEN:-}" ]; then
+                echo "::notice::No GitHub token, so jobs that read a failed build will not be able to fetch its logs."
+                exit 0
+              fi
+              # Leave a runner's own stored credentials alone. GH_TOKEN is removed so
+              # `gh auth status` reports stored credentials, not this shell's variable.
+              if env -u GH_TOKEN -u GITHUB_TOKEN gh auth status >/dev/null 2>&1; then
+                echo "gh already has stored credentials on this runner; leaving them alone."
+                exit 0
+              fi
+
+              # Job-scoped, so a self-hosted runner's next job doesn't inherit this token.
+              export GH_CONFIG_DIR="${RUNNER_TEMP}/tc-gh-config"
+              mkdir -p "$GH_CONFIG_DIR"
+              chmod 700 "$GH_CONFIG_DIR"
+              echo "GH_CONFIG_DIR=$GH_CONFIG_DIR" >> "$GITHUB_ENV"
+              # Marks the dir as ours, so cleanup never removes a runner-wide GH_CONFIG_DIR.
+              echo "TC_OWNS_GH_CONFIG_DIR=1" >> "$GITHUB_ENV"
+              # gh won't store a credential while GH_TOKEN is set; the token goes in on stdin.
+              if printf '%s' "$GH_TOKEN" | env -u GH_TOKEN -u GITHUB_TOKEN gh auth login --with-token; then
+                echo "gh signed in for this job."
+                # Let git use it for github.com: the CLI's dedupe claim pushes, and the starter sets
+                # persist-credentials: false. Undone in the cleanup step.
+                if env -u GH_TOKEN -u GITHUB_TOKEN gh auth setup-git --hostname github.com 2>/dev/null; then
+                echo "TC_ADDED_GIT_HELPER=1" >> "$GITHUB_ENV"
+                  echo "git will use gh's credential for github.com."
+                else
+                  echo "::notice::Could not point git at gh's credential; a live run's dedupe claim may fail."
+                fi
+              else
+                echo "::notice::Could not sign gh in. Jobs that read a failed build will not work in this run; everything else is unaffected."
+              fi
+              exit 0
+
+        - name: Run
+          id: run
+          shell: bash
+          env:
+              # The CLI picks these up on a non-interactive shell with no extra flags.
+              BROWSERSTACK_USERNAME: ${{ inputs.username }}
+              BROWSERSTACK_ACCESS_KEY: ${{ inputs.access-key }}
+              # Stops the CLI upgrading itself mid-run.
+              TC_PIN_VERSION: ${{ inputs.cli-version }}
+              # For the Action's own API calls; not passed to the agent.
+              GH_TOKEN: ${{ inputs.github-token }}
+              # No Claude Code on a runner to install a skill into.
+              TC_SKIP_AGENT_SKILL_INSTALL: "1"
+              TC_ACTION_WORKFLOW: ${{ inputs.workflow }}
+              TC_ACTION_PREVIEW: ${{ inputs.preview }}
+              TC_ACTION_CONFIG: ${{ inputs.config }}
+              TC_ACTION_BUILD_EFFECT: ${{ inputs.build-effect }}
+              TC_ACTION_SELF_WORKFLOW: ${{ inputs.self-workflow-name }}
+              TC_ACTION_APP_ID: ${{ inputs.app-id }}
+              TC_ACTION_APP_PRIVATE_KEY: ${{ inputs.app-private-key }}
+              TC_ACTION_ALLOW_UNISOLATED: ${{ inputs.allow-unisolated }}
+          run: node "${{ github.action_path }}/src/main.mjs"
+
+        - name: Attach the report
+          if: always() && steps.run.outputs.summary-file != ''
+          # v4.6.2, pinned to a commit: a tag can be repointed.
+          uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+          with:
+              name: test-companion-report
+              path: ${{ steps.run.outputs.summary-file }}
+              if-no-files-found: ignore
+
+        # The generated work itself, attached even when the run is about to go red.
+        - name: Attach the generated test cases
+          if: always() && steps.run.outputs.result-file != ''
+          # v4.6.2, pinned to a commit: a tag can be repointed.
+          uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+          with:
+              name: test-companion-result
+              path: ${{ steps.run.outputs.result-file }}
+              if-no-files-found: ignore
+
+        # Matters on a self-hosted runner, which outlives the job.
+        - name: Take gh's credentials back off the runner
+          if: always()
+          shell: bash
+          run: |
+              set -uo pipefail
+              [ -n "${GH_CONFIG_DIR:-}" ] || exit 0
+              # Remove only the helper entries setup-git added (it writes an empty one and its own),
+              # leaving any the runner's owner configured.
+              if [ "${TC_ADDED_GIT_HELPER:-}" = "1" ]; then
+                for host in github.com gist.github.com; do
+                  git config --global --unset "credential.https://$host.helper" '^!.*gh auth git-credential' 2>/dev/null || true
+                  git config --global --unset "credential.https://$host.helper" '^$' 2>/dev/null || true
+                done
+              fi
+              if [ "${TC_OWNS_GH_CONFIG_DIR:-}" = "1" ]; then
+                gh auth logout --hostname github.com >/dev/null 2>&1 || true
+                rm -rf "$GH_CONFIG_DIR"
+                echo "gh credentials removed from this runner."
+              else
+                echo "GH_CONFIG_DIR was not set by this job; leaving it alone."
+              fi
+
+        # Separate step, so the report is attached even when the build goes red.
+        - name: Apply the build effect
+          if: always() && steps.run.outputs.should-fail == 'true'
+          shell: bash
+          # Through env: a step output pasted into `run:` becomes shell code.
+          env:
+              OUTCOME: ${{ steps.run.outputs.outcome }}
+          run: |
+              echo "::error::Test Companion: ${OUTCOME}"
+              exit 1

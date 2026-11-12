@@ -1,0 +1,91 @@
+# Test Companion: copy this to .github/workflows/test-companion.yml
+#
+# Add two secrets under Settings → Secrets and variables → Actions:
+# BROWSERSTACK_USERNAME and BROWSERSTACK_ACCESS_KEY.
+#
+# What runs is set in testcompanion-pipeline.yml, so you can leave this file as it is.
+# Every trigger is listed up front; one that matches nothing costs a no-op job.
+name: Test Companion
+
+on:
+    # Ask for something by commenting "@browserstack" on a pull request.
+    issue_comment:
+        types: [created]
+    # A pull request opening or receiving commits.
+    pull_request:
+        types: [opened, reopened, synchronize, closed]
+    push:
+        branches: [main]
+    # React to one of your own workflows finishing red. Replace "CI" with its name.
+    workflow_run:
+        workflows: ["CI"]
+        types: [completed]
+    schedule:
+        - cron: "0 2 * * *"
+    # Run any job by hand from the Actions tab.
+    workflow_dispatch:
+        inputs:
+            workflow:
+                description: "Which job to run (see `tc workflow list`)"
+                required: true
+                default: generate
+            preview:
+                description: "Report what would happen and change nothing"
+                type: boolean
+                default: true
+
+concurrency:
+    # One run per pull request (issue.number for comments), otherwise per run.
+    # A closed pull request, or a comment starting "@browserstack stop", gets its own
+    # group so it doesn't queue behind the run it acts on.
+    group: >-
+        test-companion-${{ github.event.pull_request.number
+        || github.event.issue.number
+        || github.run_id }}${{
+        (github.event.action == 'closed'
+        || startsWith(github.event.comment.body, '@browserstack stop'))
+        && '-control' || '' }}
+    # Queue rather than cancel: a run in flight has already spent credits.
+    cancel-in-progress: false
+
+jobs:
+    test-companion:
+        runs-on: ubuntu-latest
+        timeout-minutes: 35
+        # A loose first filter so unrelated comments don't boot a runner; the Action makes
+        # the real decision. The last two lines catch a bare "go" approval (case-insensitive).
+        if: >-
+            github.event_name != 'issue_comment'
+            || contains(github.event.comment.body, '@browserstack')
+            || startsWith(github.event.comment.body, 'go')
+            || startsWith(github.event.comment.body, 'approve')
+        # Keep this block even with the App: the workflow token is the fallback.
+        permissions:
+            contents: write # branches and commits for fix / reconcile jobs
+            pull-requests: write # the one comment, and opening a pull request
+            checks: write # the "Test Companion" check
+            actions: write # reading the red run, and cancelling one when a PR closes
+        steps:
+            # v4.4.0, pinned to a commit because a tag can be repointed.
+            - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+              with:
+                  fetch-depth: 0 # jobs that look at what changed need history
+                  # Keeps the workflow token out of .git/config, where the agent could read it.
+                  persist-credentials: false
+
+            # A fixed release. For the strongest pin, use the release's full commit SHA.
+            # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+            - uses: browserstack/github-actions/test-companion@v1.1.0
+              with:
+                  username: ${{ secrets.BROWSERSTACK_USERNAME }}
+                  access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+                  # Pin the CLI once you've picked a version. Set both lines or neither:
+                  # a version without a checksum is refused.
+                  # cli-version: "1.2.0"
+                  # cli-sha256: "<sha256 of that release for linux-amd64>"
+                  # With the GitHub App installed, uncomment these.
+                  # app-id: ${{ secrets.TEST_COMPANION_APP_ID }}
+                  # app-private-key: ${{ secrets.TEST_COMPANION_APP_PRIVATE_KEY }}
+                  # Manual runs only; event-driven runs read the pipeline file.
+                  workflow: ${{ inputs.workflow }}
+                  preview: ${{ inputs.preview }}
