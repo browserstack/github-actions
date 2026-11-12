@@ -636,3 +636,24 @@ describe("the @browserstack mention", () => {
 		assert.match(out.context.instructions, /test this PR/)
 	})
 })
+
+describe("comments from bots, our own included, are ignored", () => {
+	const fromUser = (user) => ({
+		action: "created",
+		issue: { number: 7, pull_request: {} },
+		comment: { body: "Reply **go** to run this, or **@browserstack go** with your edits.", user },
+	})
+	const run = (user) => planRun({ eventName: "issue_comment", repo: "acme/shop", payload: fromUser(user) })
+
+	test("the App's own comment", () => {
+		assert.equal(run({ login: "browserstack[bot]", type: "Bot" }).skip?.reason, "bot-comment")
+	})
+
+	test("a bot login without a type", () => {
+		assert.equal(run({ login: "github-actions[bot]" }).skip?.reason, "bot-comment")
+	})
+
+	test("a person saying the same thing still counts", () => {
+		assert.equal(run({ login: "an-sdet", type: "User" }).skip, undefined)
+	})
+})

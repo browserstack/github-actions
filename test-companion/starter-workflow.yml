@@ -53,12 +53,14 @@ jobs:
         runs-on: ubuntu-latest
         timeout-minutes: 35
         # A loose first filter so unrelated comments don't boot a runner; the Action makes
-        # the real decision. The last two lines catch a bare "go" approval (case-insensitive).
+        # the real decision. Bot comments, our own included, never start one. The last two
+        # lines catch a bare "go" approval (case-insensitive).
         if: >-
             github.event_name != 'issue_comment'
-            || contains(github.event.comment.body, '@browserstack')
+            || (github.event.comment.user.type != 'Bot'
+            && (contains(github.event.comment.body, '@browserstack')
             || startsWith(github.event.comment.body, 'go')
-            || startsWith(github.event.comment.body, 'approve')
+            || startsWith(github.event.comment.body, 'approve')))
         # Keep this block even with the App: the workflow token is the fallback.
         permissions:
             contents: write # branches and commits for fix / reconcile jobs

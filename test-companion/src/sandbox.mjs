@@ -38,7 +38,7 @@ function must(r, what) {
 	return r
 }
 
-export function prepareSandbox({ repoDir, tcPath }) {
+export function prepareSandbox({ repoDir, tcPath, identity = { name: "Test Companion", email: "test-companion[bot]@users.noreply.github.com" } }) {
 	const layout = sandboxLayout()
 	const me = userInfo().username
 
@@ -90,7 +90,7 @@ export function prepareSandbox({ repoDir, tcPath }) {
 	// safe.directory: git refuses a repository owned by another user.
 	writeAs(
 		`${layout.home}/.gitconfig`,
-		`[safe]\n\tdirectory = ${layout.work}\n[user]\n\tname = Test Companion\n\temail = test-companion[bot]@users.noreply.github.com\n`,
+		`[safe]\n\tdirectory = ${layout.work}\n[user]\n\tname = ${identity.name}\n\temail = ${identity.email}\n`,
 		`${AGENT_USER}:${AGENT_USER}`,
 		"644",
 	)

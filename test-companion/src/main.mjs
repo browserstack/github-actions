@@ -21,7 +21,7 @@ import {
 	appApi,
 	installationLookupMessage,
 } from "./app-auth.mjs"
-import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent } from "./outcome.mjs"
+import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent, runDidNotWork } from "./outcome.mjs"
 import {
 	renderJobSummary,
 	renderCheckSummary,
@@ -69,6 +69,9 @@ import {
 	ghEnvFrom,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
+	NO_CODE_OUTPUT,
+	commitIdentity,
+	handedOffPrRequest,
 } from "./push-work.mjs"
 
 const env = process.env
@@ -134,6 +137,9 @@ function gh(args, body) {
 		return null
 	}
 }
+
+// Who the Action's commits are by; the App's bot account once we act as it.
+let identity = commitIdentity()
 
 // The login our comments appear under: github-actions[bot], or <app-slug>[bot] with the App.
 // Used to tell our proposals from another bot's.
@@ -225,7 +231,12 @@ async function appInstallationToken() {
 
 	// Mask before first use.
 	console.log(`::add-mask::${token}`)
-	if (appLogin) botLogin = appLogin
+	if (appLogin) {
+		botLogin = appLogin
+		// The bot account's id makes the noreply email GitHub links to the App.
+		const user = runGh(["api", `users/${encodeURIComponent(appLogin)}`, "--jq", ".id"], { token })
+		identity = commitIdentity({ appSlug: found.data?.app_slug, appUserId: user.status === 0 ? String(user.stdout ?? "").trim() : "" })
+	}
 	return token
 }
 
@@ -663,11 +674,13 @@ async function main() {
 		sameRepo: isSameRepo(prForTicket?.head?.repo?.full_name, REPO),
 		branch: plan.context.branch,
 		headAuthorEmail: git(["log", "-1", "--format=%ae"]).out,
+		ourEmails: [identity.email],
 		// The earlier checkout is advisory, so confirm we are on the reviewed commit before pushing.
 		onWantedCommit: !needsCheckout({ headSha: git(["rev-parse", "HEAD"]).out, wantSha: plan.context.sha }),
 		defaultBranch: defaultBranchName(),
+		workflow: plan.workflow,
 	})
-	if (plan.context.branch && !plan.preview && !saving.ok) {
+	if (plan.context.branch && !plan.preview && !saving.ok && !NO_CODE_OUTPUT.has(String(plan.workflow ?? ""))) {
 		notice(`Nothing will be saved to ${plan.context.branch}: ${saving.why}.`)
 	}
 
@@ -803,9 +816,12 @@ async function main() {
 		// file is the fallback, only for ANSWER_JOBS (for generate it holds test cases).
 		answer: run.answer || (hasResult && ANSWER_JOBS.has(plan.workflow ?? summary.workflow) ? readResult() : undefined),
 		failedTests,
+		// Only where the run didn't work, so a stray error line never colours a success.
+		errorLine: runDidNotWork(outcome) ? run.error : undefined,
 	}
-	// Proposing: post what it would do and stop. Nothing has been written.
-	if (proposing) {
+	// Proposing: post what it would do and stop. A run that broke has nothing to approve,
+	// so it is reported like any other run, which also completes its check.
+	if (proposing && !runDidNotWork(outcome)) {
 		const sha = checkSha(plan.context, summary, env.GITHUB_SHA)
 		addToJobSummary(renderJobSummary(view))
 		const size = describeChangeSize(pull)
@@ -924,7 +940,7 @@ function saveWork(saving, plan) {
 		`Written by Test Companion for ${plan.context.pr ? `#${plan.context.pr}` : plan.context.sha}.`,
 		`Run: ${RUN_URL}`,
 	].join("\n")
-	const committed = git(["commit", "-m", body])
+	const committed = git(["-c", `user.name=${identity.name}`, "-c", `user.email=${identity.email}`, "commit", "-m", body])
 	if (!committed.ok) {
 		return renderPushNote({
 			branch,
@@ -956,7 +972,7 @@ function isolateAgent(plan) {
 	let why = can.why
 	if (can.ok) {
 		try {
-			const layout = prepareSandbox({ repoDir: process.cwd(), tcPath: TC_PATH })
+			const layout = prepareSandbox({ repoDir: process.cwd(), tcPath: TC_PATH, identity })
 			notice("Test Companion: the agent runs as a separate, locked-down user with no access to this job's tokens.")
 			return layout
 		} catch (e) {
@@ -1134,12 +1150,16 @@ function openHandedOffPr(path, plan) {
 			: `**Could not open the pull request:** ${pushed.err || "git push failed"}.`
 	}
 	// actions/checkout doesn't record the remote HEAD, so the CLI's base is only a fallback.
-	const opened = ghRaw(["api", `repos/${REPO}/pulls`, "--method", "POST", "--input", "-"], {
-		head: req.branch,
-		base: defaultBranchName() || req.base,
-		title: req.title,
-		body: req.body,
-	})
+	const opened = ghRaw(
+		["api", `repos/${REPO}/pulls`, "--method", "POST", "--input", "-"],
+		handedOffPrRequest({
+			req,
+			workflow: plan.workflow,
+			pr: plan.context.pr,
+			prBranch: plan.context.branch,
+			defaultBranch: defaultBranchName(),
+		}),
+	)
 	if (opened.status !== 0) {
 		return /already exists/i.test(`${opened.stdout}${opened.stderr}`)
 			? `**Already done:** a pull request for \`${req.branch}\` is already open.`

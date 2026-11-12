@@ -6,18 +6,35 @@
 /** Must match the identity action.yml configures. */
 export const BOT_EMAIL = "test-companion[bot]@users.noreply.github.com"
 
-export function authoredByUs(email) {
-	return (
-		String(email ?? "")
-			.trim()
-			.toLowerCase() === BOT_EMAIL
-	)
+export const BOT_NAME = "Test Companion"
+
+/**
+ * The identity commits are made under. As the GitHub App, its bot account, so commits
+ * show its name and logo; otherwise the fixed Test Companion identity.
+ */
+export function commitIdentity({ appSlug, appUserId } = {}) {
+	const slug = String(appSlug ?? "").trim()
+	const id = String(appUserId ?? "").trim()
+	if (!slug || !/^\d+$/.test(id)) return { name: BOT_NAME, email: BOT_EMAIL }
+	return { name: `${slug}[bot]`, email: `${id}+${slug}[bot]@users.noreply.github.com` }
 }
 
+export function authoredByUs(email, ours = []) {
+	const e = String(email ?? "")
+		.trim()
+		.toLowerCase()
+	return e === BOT_EMAIL || ours.some((o) => String(o ?? "").toLowerCase() === e && e !== "")
+}
+
+/** Jobs whose result is a report or Test Management cases, never code on the branch. */
+export const NO_CODE_OUTPUT = new Set(["generate", "rca", "verdict", "validate"])
+
 /** May this run push? Every check fails closed. */
-export function shouldPushWork({ preview, sameRepo, branch, headAuthorEmail, onWantedCommit, defaultBranch } = {}) {
+export function shouldPushWork({ preview, sameRepo, branch, headAuthorEmail, onWantedCommit, defaultBranch, workflow, ourEmails = [] } = {}) {
 	// A shell command the agent ran during preview is outside the brain's write refusal.
 	if (preview) return { ok: false, why: "this is a preview run, which writes nothing" }
+	// Anything such a job leaves in the checkout is a by-product, not work to save.
+	if (NO_CODE_OUTPUT.has(String(workflow ?? ""))) return { ok: false, why: `${workflow} does not change code` }
 	// Never push to a fork's branch with pull_request_target credentials. Unknown counts as no.
 	if (sameRepo !== true) return { ok: false, why: "the change does not come from this repository" }
 	if (!String(branch ?? "").trim()) return { ok: false, why: "there is no branch to push to" }
@@ -31,7 +48,7 @@ export function shouldPushWork({ preview, sameRepo, branch, headAuthorEmail, onW
 		return { ok: false, why: "that is the repository's default branch" }
 	}
 	// Loop guard: never push in reaction to our own commit.
-	if (authoredByUs(headAuthorEmail)) return { ok: false, why: "this run is reacting to our own commit" }
+	if (authoredByUs(headAuthorEmail, ourEmails)) return { ok: false, why: "this run is reacting to our own commit" }
 	return { ok: true }
 }
 
@@ -90,6 +107,9 @@ const NEVER_COMMIT = [
 	/^\.testcompanion$/i,
 	/^blob-report$/i,
 	/\.log$/i,
+	// Written by BrowserStack tooling the agent runs; never part of the work.
+	/^browserstack\.err$/i,
+	/^\.browserstack/i,
 ]
 
 /**
@@ -297,3 +317,19 @@ export const GIT_SAFE_ARGS = Object.freeze([
 	"-c",
 	"core.attributesFile=/dev/null",
 ])
+
+/**
+ * The pull request to open for work the CLI handed back. Asked on a pull request,
+ * it targets that pull request's branch, so it carries only the new change.
+ */
+export function handedOffPrRequest({ req, workflow, pr, prBranch, defaultBranch } = {}) {
+	const onAPr = Boolean(pr && String(prBranch ?? "").trim())
+	const job = String(workflow ?? "").trim() || "change"
+	return {
+		head: req?.branch,
+		base: onAPr ? prBranch : defaultBranch || req?.base,
+		title: onAPr ? `Test Companion ${job} for #${pr}` : req?.title,
+		body: onAPr ? `${String(req?.body ?? "").trim()}\n\nRequested on #${pr}.`.trim() : req?.body,
+		draft: true,
+	}
+}

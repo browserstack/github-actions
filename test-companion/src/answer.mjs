@@ -12,9 +12,16 @@ export function createAnswerCapture() {
 	// Discarding the rest of a line that overran MAX_PARTIAL_LINE.
 	let skipping = false
 	let answer
+	let error
 
 	const read = (line) => {
 		const t = line.trim()
+		// The CLI prints why it stopped as `Error: …` on stderr.
+		const plain = /^Error:\s*(.+)$/.exec(t)
+		if (plain) {
+			error = plain[1]
+			return
+		}
 		if (!t.startsWith("{") || !t.endsWith("}")) return
 		let event
 		try {
@@ -22,7 +29,12 @@ export function createAnswerCapture() {
 		} catch {
 			return
 		}
-		if (!event || typeof event !== "object" || event.event !== "answer") return
+		if (!event || typeof event !== "object") return
+		if (event.event === "error" && typeof event.message === "string" && event.message.trim()) {
+			error = event.message.trim()
+			return
+		}
+		if (event.event !== "answer") return
 		const text = typeof event.text === "string" ? event.text.trim() : ""
 		if (text) answer = text
 	}
@@ -51,6 +63,7 @@ export function createAnswerCapture() {
 			pending = ""
 		},
 		answer: () => answer,
+		error: () => error,
 		pending: () => pending.length,
 	}
 }
@@ -59,17 +72,24 @@ export function createAnswerCapture() {
 export function runCapturingAnswer(command, args, childEnv) {
 	return new Promise((resolve) => {
 		const capture = createAnswerCapture()
-		const child = spawn(command, args, { stdio: ["inherit", "pipe", "inherit"], env: childEnv })
+		const errors = createAnswerCapture()
+		const child = spawn(command, args, { stdio: ["inherit", "pipe", "pipe"], env: childEnv })
 		child.stdout.on("data", (chunk) => {
 			process.stdout.write(chunk)
 			capture.push(chunk)
 		})
+		child.stderr.on("data", (chunk) => {
+			process.stderr.write(chunk)
+			errors.push(chunk)
+		})
 		child.stdout.on("error", () => {})
-		child.on("error", () => resolve({ status: null, answer: undefined }))
+		child.stderr.on("error", () => {})
+		child.on("error", () => resolve({ status: null, answer: undefined, error: undefined }))
 		// `close`, not `exit`: stdout may still be draining at exit.
 		child.on("close", (status) => {
 			capture.end()
-			resolve({ status, answer: capture.answer() })
+			errors.end()
+			resolve({ status, answer: capture.answer(), error: errors.error() ?? capture.error() })
 		})
 	})
 }

@@ -200,6 +200,10 @@ describe("a comment that is not for us does not start a job", () => {
 		assert.match(job, /startsWith\(github\.event\.comment\.body, 'approve'\)/)
 	})
 
+	test("a bot's comment, the App's own included, never boots a runner", () => {
+		assert.match(job, /github\.event\.comment\.user\.type != 'Bot'/)
+	})
+
 	test("every other event is untouched, so pushes and schedules still run", () => {
 		// The filter opens with the non-comment case for exactly this reason.
 		const mentionCheck = job.indexOf("contains(github.event.comment.body, '@browserstack')")

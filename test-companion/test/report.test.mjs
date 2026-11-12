@@ -1244,3 +1244,20 @@ describe("a plan cannot choose which job its approval runs", () => {
 		assert.equal(isApprovableJob("generate", undefined), false)
 	})
 })
+
+describe("a run that didn't work says why", () => {
+	test("the error line leads the comment, on one line", () => {
+		const md = renderJobSummary({ ...base, outcome: OUTCOMES.RUN_BROKE, errorLine: 'project "rag_assignment"\nnot found' })
+		assert.match(md, /> \*\*Why:\*\* project "rag_assignment" not found/)
+	})
+
+	test("a very long reason is cut", () => {
+		const md = renderJobSummary({ ...base, outcome: OUTCOMES.RUN_BROKE, errorLine: "x".repeat(1000) })
+		const why = md.split("\n").find((l) => l.startsWith("> **Why:**"))
+		assert.ok(why.length < 330)
+	})
+
+	test("no error line, no Why", () => {
+		assert.doesNotMatch(renderJobSummary(base), /\*\*Why:\*\*/)
+	})
+})
