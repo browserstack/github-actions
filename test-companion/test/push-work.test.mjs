@@ -1,13 +1,14 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
-import { execFileSync } from "node:child_process"
-import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs"
+import { execFileSync, spawnSync } from "node:child_process"
+import { mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
 	shouldPushWork,
 	changedPaths,
 	splitPushable,
+	splitHandoffPaths,
 	renderPushNote,
 	authoredByUs,
 	needsCheckout,
@@ -717,5 +718,60 @@ describe("commitIdentity — commits are credited to the App when acting as it",
 		assert.equal(authoredByUs(BOT_EMAIL), true)
 		assert.equal(authoredByUs("dev@example.com", [app]), false)
 		assert.equal(authoredByUs("", [""]), false)
+	})
+})
+
+describe("splitHandoffPaths — a handed-back branch", () => {
+	test("tool by-products are dropped, not a reason to refuse", () => {
+		const { refused, dropped } = splitHandoffPaths(["src/a.ts", "browserstack.err", ".browserstack-cache/x", "run.log"])
+		assert.deepEqual(refused, [])
+		assert.deepEqual(dropped, ["browserstack.err", ".browserstack-cache/x", "run.log"])
+	})
+
+	test(".github files and symlinks still refuse the branch", () => {
+		const { refused, dropped } = splitHandoffPaths([".github/workflows/x.yml", "link", "browserstack.err"], {
+			isSymlink: (p) => p === "link",
+		})
+		assert.deepEqual(refused, [".github/workflows/x.yml", "link"])
+		assert.deepEqual(dropped, ["browserstack.err"])
+	})
+
+	test("ordinary files are neither refused nor dropped", () => {
+		assert.deepEqual(splitHandoffPaths(["src/a.ts", "tests/a.spec.ts"]), { refused: [], dropped: [] })
+	})
+})
+
+describe("leaving by-products out of a branch with a scratch index", () => {
+	// A hook running these tests may export GIT_DIR and friends; they must not leak in.
+	const cleanGitEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")))
+	// The same git steps leaveOut() in main.mjs runs, on a real repository.
+	const run = (cwd, args, env = {}) => {
+		const r = spawnSync("git", args, { cwd, encoding: "utf8", env: { ...cleanGitEnv(), ...env } })
+		assert.equal(r.status, 0, r.stderr)
+		return r.stdout.trim()
+	}
+	test("the new commit keeps the work and loses the by-product", () => {
+		const dir = mkdtempSync(join(tmpdir(), "tc-leaveout-"))
+		const id = ["-c", "user.name=t", "-c", "user.email=t@example.com"]
+		run(dir, ["init", "-q"])
+		writeFileSync(join(dir, "a.ts"), "old\n")
+		run(dir, ["add", "."])
+		run(dir, [...id, "commit", "-qm", "base"])
+		const base = run(dir, ["rev-parse", "HEAD"])
+		writeFileSync(join(dir, "a.ts"), "new\n")
+		writeFileSync(join(dir, "browserstack.err"), "[object Object]")
+		run(dir, ["add", "."])
+		run(dir, [...id, "commit", "-qm", "work"])
+		const tip = run(dir, ["rev-parse", "HEAD"])
+
+		const scratch = { GIT_INDEX_FILE: join(dir, ".git", "scratch-index") }
+		run(dir, ["read-tree", tip], scratch)
+		run(dir, ["reset", "-q", base, "--", "browserstack.err"], scratch)
+		const tree = run(dir, ["write-tree"], scratch)
+		const sha = run(dir, [...id, "commit-tree", tree, "-p", tip, "-m", "leave out"], scratch)
+
+		assert.equal(run(dir, ["diff", "--name-only", base, sha]), "a.ts")
+		assert.equal(run(dir, ["show", `${sha}:a.ts`]), "new")
+		rmSync(dir, { recursive: true, force: true })
 	})
 })
