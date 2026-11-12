@@ -30,6 +30,7 @@ import {
 	leaveOut,
 	leaveOutMessage,
 	classifyHandoffPush,
+	pushFailureReason,
 	existingHandoffPr,
 	nextHandoffStep,
 	draftRejected,
@@ -897,7 +898,7 @@ describe("handing back a pull request: what happened, and what to do next", () =
 		assert.deepEqual(existingHandoffPr([closed, open]), { kind: "open", url: "https://x/1" })
 		assert.deepEqual(existingHandoffPr([closed]), { kind: "closed", url: "https://x/2" })
 		assert.deepEqual(existingHandoffPr([merged]), { kind: "merged", url: "https://x/3" })
-		assert.deepEqual(existingHandoffPr(null), { kind: "none" })
+		assert.deepEqual(existingHandoffPr([]), { kind: "none" })
 	})
 
 	test("next step for each push outcome", () => {
@@ -995,5 +996,54 @@ describe("file names in comments", () => {
 		const out = listFiles(names)
 		assert.equal(out.split(", ").length, 11)
 		assert.match(out, /and 3 more$/)
+	})
+})
+
+describe("hand-off: failed lookups and push reasons", () => {
+	test("a failed PR lookup is unknown, and stops rather than opening a pull request", () => {
+		assert.deepEqual(existingHandoffPr(null), { kind: "unknown" })
+		assert.deepEqual(existingHandoffPr({ message: "Not Found" }), { kind: "unknown" })
+		const step = nextHandoffStep("already", existingHandoffPr(null))
+		assert.deepEqual(step, { action: "stop", unknown: true })
+		assert.match(handoffReport(step, { branch: "tc/fix/abc" }), /could not check whether that run's pull request was closed/)
+	})
+
+	test("a server-side refusal reports the rule, not git's generic last line", () => {
+		const err = [
+			"remote: error: GH013: Repository rule violations found for refs/heads/tc/fix/abc.",
+			"To https://github.com/o/r.git",
+			" ! [remote rejected] abc -> tc/fix/abc (push declined due to repository rule violations)",
+			"error: failed to push some refs to 'https://github.com/o/r.git'",
+		].join("\n")
+		assert.match(pushFailureReason(err), /^! \[remote rejected\].*repository rule violations/)
+	})
+
+	test("a hook refusal without [remote rejected] falls back to the remote error line", () => {
+		const err = "remote: error: commits must be signed\nerror: failed to push some refs to 'x'"
+		assert.equal(pushFailureReason(err), "remote: error: commits must be signed")
+	})
+
+	test("fatal lines and plain last lines are used when nothing better is there", () => {
+		assert.equal(pushFailureReason("fatal: unable to access 'x': 403\n"), "fatal: unable to access 'x': 403")
+		assert.equal(pushFailureReason("something odd"), "something odd")
+		assert.equal(pushFailureReason(""), "")
+	})
+})
+
+describe("leaveOut on a git without --no-refresh", () => {
+	test("retries the reset without the option", () => {
+		const calls = []
+		const git = (args, _env, input) => {
+			calls.push(args)
+			if (args[0] === "reset" && args.includes("--no-refresh")) return { ok: false, err: "error: unknown option `no-refresh'" }
+			if (args[0] === "write-tree") return { ok: true, out: "tree2" }
+			if (args[0] === "rev-parse") return { ok: true, out: "tree1" }
+			if (args.includes("commit-tree")) return { ok: true, out: "sha2" }
+			return { ok: true, out: "" }
+		}
+		const r = leaveOut({ git, base: "b", tip: "t", paths: ["browserstack.err"], identity: { name: "n", email: "e" }, message: "m", indexFile: "/tmp/x" })
+		assert.deepEqual(r, { sha: "sha2" })
+		assert.equal(calls.filter((a) => a[0] === "reset").length, 2)
+		assert.ok(!calls.filter((a) => a[0] === "reset")[1].includes("--no-refresh"))
 	})
 })
