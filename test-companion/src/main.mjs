@@ -5,7 +5,16 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { planRun, contextArgs, withPullRequestHead, TC_EVENTS } from "./plan-run.mjs"
 import { readIntent, INTENT } from "./intent.mjs"
-import { chooseRunsToCancel, runIdsFromChecks, latestFailedRun } from "./runs.mjs"
+import {
+	chooseRunsToCancel,
+	runIdsFromChecks,
+	ciOnCommit,
+	parseRunReference,
+	matchFailedByName,
+	checkNamedRun,
+	renderCiStillRunning,
+	renderBuildNote,
+} from "./runs.mjs"
 import { decideGate, GATE, describeChangeSize, ANSWER_JOBS } from "./gate.mjs"
 import { mayAsk, describeTestRepoAccess } from "./access.mjs"
 import { findTicket } from "./ticket.mjs"
@@ -26,6 +35,7 @@ import {
 	renderJobSummary,
 	renderCheckSummary,
 	renderComment,
+	requestMarkerFor,
 	chooseCommentAction,
 	checkSha,
 	checkSubjectFor,
@@ -40,6 +50,7 @@ import {
 	renderStopRemoved,
 	proposalConsumedMarkerFor,
 	proposalAlreadyUsed,
+	planSpentState,
 	proposalNeedsDropping,
 	flattenPages,
 	hasApproverEdits,
@@ -176,6 +187,9 @@ const ALLOW_UNISOLATED = /^true$/i.test(String(env.TC_ACTION_ALLOW_UNISOLATED ??
 
 /** The proposal this run is carrying out, so the report can link it. */
 let approvedPlan
+
+/** Which failed run a build-reading job looked at, and what it left out. */
+let buildNote = ""
 
 // No --depth: it would make the full clone shallow. The URL carries its own credential
 // because the starter sets persist-credentials: false.
@@ -471,6 +485,8 @@ async function main() {
 	const CARRIES_A_PLAN = new Set(["test-pr"])
 	// Jobs that cannot run without knowing which build failed.
 	const NEEDS_A_BUILD = new Set(["rca", "fix", "verdict"])
+	// How to ask each of those for a named run.
+	const ASK_WORD = { rca: "explain", fix: "fix", verdict: "find the bad PR" }
 	const COMMENT_TRIGGERS = new Set(["issue_comment"])
 	if (COMMENT_TRIGGERS.has(env.GITHUB_EVENT_NAME) || plan.requiresWriteAccess) {
 		const who = plan.commenter ?? readEvent().comment?.user?.login
@@ -491,6 +507,8 @@ async function main() {
 	let proposing = false
 	let approvalNote = ""
 	if (plan.event === TC_EVENTS.PR_COMMENT) {
+		// Kept for naming a run: an approval deletes plan.context.instructions below.
+		const requestText = plan.context.instructions
 		// Fetched before reading intent: with a plan waiting, "go, and fix case 3" is an approval with an edit.
 		const comments = flattenPages(gh(["api", `repos/${REPO}/issues/${plan.context.pr}/comments`, "--paginate", "--slurp"]))
 		let waiting = findProposal(comments, plan.context.sha, Date.now(), botLogin)
@@ -519,11 +537,15 @@ async function main() {
 		if (intent.kind === INTENT.GO && intent.proposalId) {
 			waiting = findProposal(comments, plan.context.sha, Date.now(), botLogin, { id: intent.proposalId })
 			if (!waiting) {
+				const spentAs = planSpentState(comments, intent.proposalId, botLogin)
 				replyOnPr(
 					plan.context.pr,
-					`I have no plan \`#${intent.proposalId}\` still waiting on \`${String(plan.context.sha).slice(0, 7)}\`. ` +
-						`It may have been approved, dropped, or written against an earlier commit. ` +
-						`Reply **go** on its own to approve the most recent one.`,
+					spentAs
+						? `Plan \`#${intent.proposalId}\` was already ${spentAs === "approved" ? "approved and run" : "dropped"}, so there is nothing left to approve on it. ` +
+								`Reply **go** on its own to approve the newest plan, or ask me again for a fresh one.`
+						: `I have no plan \`#${intent.proposalId}\` still waiting on \`${String(plan.context.sha).slice(0, 7)}\`. ` +
+								`It may have been written against an earlier commit. ` +
+								`Reply **go** on its own to approve the most recent one.`,
 				)
 				finishSkipped("proposal-not-found")
 			}
@@ -614,7 +636,7 @@ async function main() {
 			)
 			if (pending) rememberCheck(plan.context.sha, pending)
 			// Per job, so approving one doesn't spend another job's plan.
-			consumedMarker = proposalConsumedMarkerFor(plan.context.sha, plan.workflow)
+			consumedMarker = proposalConsumedMarkerFor(plan.context.sha, plan.workflow, waiting?.id)
 			approvedPlan = waiting?.url ? { id: waiting.id, url: waiting.url } : undefined
 
 			// The approved plan, edits included, goes in a file: --context strips punctuation.
@@ -647,22 +669,54 @@ async function main() {
 		if (gate.preview || intent.preview) plan.preview = true
 
 		// Last, because the job isn't final until approval is handled ("go" names none).
-		// rca, fix and verdict need a failed build: default to the newest red run on this commit.
+		// rca, fix and verdict need a failed build: one the comment names, else the newest red run on this commit.
 		if (NEEDS_A_BUILD.has(plan.workflow) && !plan.context.build) {
-			const runs = gh(["api", `repos/${REPO}/actions/runs?head_sha=${plan.context.sha}&per_page=100`])
-			const failed = latestFailedRun(runs?.workflow_runs, {
-				selfRunId: env.GITHUB_RUN_ID,
-				selfWorkflowName: env.TC_ACTION_SELF_WORKFLOW,
-			})
-			if (!failed) {
-				replyOnPr(
-					plan.context.pr,
-					`Nothing has failed on \`${String(plan.context.sha).slice(0, 7)}\`, so there is no build for me to look at. Re-run me once something is red, or say what you want tested instead.`,
-				)
-				finishSkipped("nothing-failed", plan.workflow)
+			const short = String(plan.context.sha).slice(0, 7)
+			const named = parseRunReference(requestText, { repo: REPO, serverUrl: env.GITHUB_SERVER_URL })
+			if (named?.error) {
+				replyOnPr(plan.context.pr, named.error)
+				finishSkipped("run-not-usable", "link")
 			}
-			plan.context.build = failed
-			notice(`Test Companion: reading the failure from ${failed}`)
+			if (named?.id) {
+				const prShas = flattenPages(gh(["api", `repos/${REPO}/pulls/${plan.context.pr}/commits?per_page=100`, "--paginate", "--slurp"]))
+					.map((c) => c?.sha)
+					.concat(plan.context.sha)
+				const check = checkNamedRun(gh(["api", `repos/${REPO}/actions/runs/${named.id}`]), {
+					prShas,
+					selfRunId: env.GITHUB_RUN_ID,
+					selfWorkflowName: env.TC_ACTION_SELF_WORKFLOW,
+				})
+				if (!check.ok) {
+					replyOnPr(plan.context.pr, `I can't use run \`${named.id}\`: ${check.why}`)
+					finishSkipped("run-not-usable", named.id)
+				}
+				plan.context.build = check.url
+				buildNote = renderBuildNote(check, { ask: ASK_WORD[plan.workflow] })
+			} else {
+				const runs = gh(["api", `repos/${REPO}/actions/runs?head_sha=${plan.context.sha}&per_page=100`])
+				const ci = ciOnCommit(runs?.workflow_runs, {
+					selfRunId: env.GITHUB_RUN_ID,
+					selfWorkflowName: env.TC_ACTION_SELF_WORKFLOW,
+				})
+				const chosen = matchFailedByName(requestText, ci.failed) ?? ci.failed[0]
+				if (!chosen) {
+					// A build still going is not "nothing failed": its failures just aren't in yet.
+					replyOnPr(
+						plan.context.pr,
+						ci.running.length
+							? renderCiStillRunning(plan.context.sha, ci.running)
+							: `Nothing has failed on \`${short}\`, so there is no build for me to look at. Re-run me once something is red, or say what you want tested instead.`,
+					)
+					finishSkipped(ci.running.length ? "ci-still-running" : "nothing-failed", plan.workflow)
+				}
+				plan.context.build = chosen.url
+				buildNote = renderBuildNote(chosen, {
+					otherFailed: ci.failed.filter((r) => r !== chosen),
+					running: ci.running,
+					ask: ASK_WORD[plan.workflow],
+				})
+			}
+			notice(`Test Companion: reading the failure from ${plan.context.build}`)
 		}
 	}
 
@@ -695,6 +749,8 @@ async function main() {
 		onWantedCommit: !needsCheckout({ headSha: git(["rev-parse", "HEAD"]).out, wantSha: plan.context.sha }),
 		defaultBranch: defaultBranchName(),
 		workflow: plan.workflow,
+		// Asked for in a comment (bots are filtered out earlier) or a manual run: may build on our commit.
+		requestedByPerson: plan.event === TC_EVENTS.PR_COMMENT || env.GITHUB_EVENT_NAME === "workflow_dispatch",
 	})
 	if (plan.context.branch && !plan.preview && !saving.ok && !saving.quiet) {
 		notice(`Nothing will be saved to ${plan.context.branch}: ${saving.why}.`)
@@ -839,6 +895,7 @@ async function main() {
 		failedTests,
 		// Only where the run didn't work, so a stray error line never colours a success.
 		errorLine: runDidNotWork(outcome) ? redactSecrets(run.error, secretsNow()) : undefined,
+		buildNote,
 	}
 	// Proposing: post what it would do and stop. A run that broke has nothing to approve,
 	// so it is reported like any other run, which also completes its check.
@@ -1411,7 +1468,7 @@ function sweepExpiredProposals() {
 		postCheck(OUTCOMES.COULD_NOT_RUN, { outcome: OUTCOMES.COULD_NOT_RUN, summary: {}, runUrl: RUN_URL }, sha)
 		replyOnPr(
 			pr.number,
-			`That proposal went unanswered, so I have dropped it. The check now says Action required — comment again and I will put up a fresh one.\n\n${proposalDroppedMarkerFor(sha, stale?.workflow)}`,
+			`That proposal went unanswered, so I have dropped it. The check now says Action required — comment again and I will put up a fresh one.\n\n${proposalDroppedMarkerFor(sha, stale?.workflow, stale?.id)}`,
 		)
 		notice(`Test Companion: dropped a stale proposal on #${pr.number}.`)
 	}
@@ -1465,12 +1522,18 @@ function markPlanSpent(planId, marker) {
 	gh(["api", `repos/${REPO}/issues/comments/${planId}`, "--method", "PATCH", "--input", "-"], { body: `${body}\n\n${marker}` })
 }
 
+/**
+ * One reply per request: a run asked for in a comment gets its own report, keyed to that
+ * comment. Automatic runs, with no request to answer, keep one status comment per PR updated.
+ */
 function postComment(pr, view) {
+	const requestId = env.GITHUB_EVENT_NAME === "issue_comment" ? readEvent().comment?.id : undefined
 	// --slurp: without it gh prints one array per page and JSON.parse fails.
 	const existing = flattenPages(gh(["api", `repos/${REPO}/issues/${pr}/comments`, "--paginate", "--slurp"]))
-	const choice = chooseCommentAction(existing, botLogin)
+	const choice = chooseCommentAction(existing, botLogin, { requestId })
 	// An approved proposal must stop looking like one.
-	const body = { body: renderComment(view) + (view.consumedMarker ? `\n${view.consumedMarker}` : "") }
+	const marker = requestMarkerFor(requestId)
+	const body = { body: renderComment(view, marker) + (view.consumedMarker ? `\n${view.consumedMarker}` : "") }
 	if (choice.action === "update") {
 		gh(["api", `repos/${REPO}/issues/comments/${choice.id}`, "--method", "PATCH", "--input", "-"], body)
 	} else {

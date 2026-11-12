@@ -51,7 +51,17 @@ export function savingFor(saving, job) {
 }
 
 /** May this run push? Every check fails closed. */
-export function shouldPushWork({ preview, sameRepo, branch, headAuthorEmail, onWantedCommit, defaultBranch, workflow, ourEmails = [] } = {}) {
+export function shouldPushWork({
+	preview,
+	sameRepo,
+	branch,
+	headAuthorEmail,
+	onWantedCommit,
+	defaultBranch,
+	workflow,
+	ourEmails = [],
+	requestedByPerson = false,
+} = {}) {
 	// A shell command the agent ran during preview is outside the brain's write refusal.
 	if (preview) return { ok: false, why: "this is a preview run, which writes nothing" }
 	// Anything such a job leaves in the checkout is a by-product, not work to save.
@@ -68,8 +78,11 @@ export function shouldPushWork({ preview, sameRepo, branch, headAuthorEmail, onW
 	if (base && String(branch).trim().toLowerCase() === base) {
 		return { ok: false, why: "that is the repository's default branch" }
 	}
-	// Loop guard: never push in reaction to our own commit.
-	if (authoredByUs(headAuthorEmail, ourEmails)) return { ok: false, why: "this run is reacting to our own commit" }
+	// Loop guard: an automatic run never pushes in reaction to our own commit. A run a person
+	// asked for or approved can't loop, so it may build on what an earlier run saved.
+	if (!requestedByPerson && authoredByUs(headAuthorEmail, ourEmails)) {
+		return { ok: false, why: "this run is reacting to our own commit" }
+	}
 	return { ok: true }
 }
 
