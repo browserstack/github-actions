@@ -8,6 +8,20 @@ const withMark = (outcome) => {
 	return mark ? `${mark} ${outcome}` : String(outcome ?? "")
 }
 
+/** `[#<id>](<url>)` for the comment that asked for this run; "" unless the URL names a comment. */
+export function requestLink(url) {
+	const u = String(url ?? "")
+	const id = /^https:\/\/[^\s)]+#issuecomment-(\d+)$/.exec(u)?.[1]
+	return id ? `[#${id}](${u})` : ""
+}
+
+/** `@<who> | [#<comment id>](<url>)`; the pipe is escaped so it stays inside the table cell. */
+export function askedByCell(askedBy, askedAt) {
+	if (!askedBy) return ""
+	const link = requestLink(askedAt)
+	return link ? `@${askedBy} \\| ${link}` : `@${askedBy}`
+}
+
 /**
  * Only comments posted by our own bot login count. Another App or workflow
  * could post our markers, and a `go` would then run their text as the plan.
@@ -147,7 +161,7 @@ export function renderJobSummary({
 		["Took", summary.duration],
 		["Cost", summary.credits ? `${summary.credits} credits` : ""],
 		["CLI", cliVersion],
-		["Asked by", askedBy ? (askedAt ? `[@${askedBy}](${askedAt})` : `@${askedBy}`) : ""],
+		["Asked by", askedByCell(askedBy, askedAt)],
 		["Plan", approvedPlan?.url ? `[#${approvedPlan.id}](${approvedPlan.url})` : ""],
 	].filter(([, v]) => v)
 
