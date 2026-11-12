@@ -33,10 +33,16 @@ describe("go approves the newest unspent plan", () => {
 		assert.equal(findProposal(comments, SHA, now, US, { id: 10 }), undefined)
 	})
 
-	test("a marker on the run report names the plan, so other plans stay open", () => {
-		const comments = [plan(10), plan(20), ours(30, `report\n${proposalConsumedMarkerFor(SHA, "generate", 10)}`)]
+	test("an approval settles the job's plans that existed then; one posted afterwards stays open", () => {
+		const comments = [plan(10), plan(20), ours(30, `report\n${proposalConsumedMarkerFor(SHA, "generate", 10)}`), plan(40)]
+		assert.equal(findProposal(comments, SHA, now, US)?.id, 40)
+		assert.equal(findProposal(comments, SHA, now, US, { id: 20 }), undefined)
+		assert.equal(findProposal(comments, SHA, now, US, { id: 40 })?.id, 40)
+	})
+
+	test("an approval of one job leaves another job's plans open", () => {
+		const comments = [plan(10), plan(20, "fix"), ours(30, `report\n${proposalConsumedMarkerFor(SHA, "generate", 10)}`)]
 		assert.equal(findProposal(comments, SHA, now, US)?.id, 20)
-		assert.equal(findProposal(comments, SHA, now, US, { id: 20 })?.id, 20)
 	})
 
 	test("an old marker without a plan id spends only plans posted before it", () => {

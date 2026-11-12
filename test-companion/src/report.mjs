@@ -317,31 +317,69 @@ export function proposalAlreadyUsed(comments, sha, us, workflow) {
 }
 
 /**
- * Is this plan comment spent? A marker naming a plan spends that plan and every older plan
- * of the same job on the commit, never a newer one: approving a later plan must not leave an
- * earlier one waiting. An older marker without a plan id spends the plans of its job (or
- * every job, if it names none) posted up to the comment carrying it.
+ * Is this plan comment spent? Returns the marker that spent it, or undefined.
+ *
+ * A marker naming a plan always spends that plan. An approval ("consumed") also spends every
+ * other plan of the same job on the commit that already existed when it was recorded (posted
+ * before the comment carrying the marker), older or newer than the approved one: one approval
+ * settles that job on that commit, so neither a second `go` nor the nightly sweep acts on the
+ * others. Plans posted after it stay approvable. Dropping an expired plan spends only it and
+ * older plans of its job, never a newer plan that may still be waiting. A marker naming no job
+ * spends only its named plan. An older marker without a plan id spends the plans of its job
+ * (or every job, if it names none) posted up to the comment carrying it.
  */
 function planSpentBy(planComment, marks) {
 	const id = Number(planComment?.id)
 	const job = readMarker(planComment?.body)?.workflow ?? ""
 	return marks.find((m) => {
+		if (m.plan) {
+			const named = Number(m.plan)
+			if (id === named) return true
+			if (!m.workflow || m.workflow !== job) return false
+			return m.kind === "consumed" ? id < Number(m.host) : id < named
+		}
 		const sameJob = !m.workflow || m.workflow === job
-		if (m.plan) return id === Number(m.plan) || (sameJob && id < Number(m.plan))
 		return sameJob && id <= Number(m.host)
 	})
 }
 
-/** "approved" or "dropped" when the plan comment `id` was spent, else undefined. */
+/** The reply to `go #<id>` when that plan can't be approved; `spentAs` is from planSpentState. */
+export function unavailablePlanReply(spentAs, id, sha) {
+	const plan = `Plan \`#${String(id ?? "").replace(/\D/g, "")}\``
+	if (spentAs === "superseded") {
+		return (
+			"A different plan for this job on this commit was already approved, so this one no longer applies. " +
+			"Push a new commit or ask again to get a fresh plan."
+		)
+	}
+	if (spentAs === "approved" || spentAs === "dropped") {
+		return (
+			`${plan} was already ${spentAs === "approved" ? "approved and run" : "dropped"}, so there is nothing left to approve on it. ` +
+			"Reply **go** on its own to approve the newest plan, or ask me again for a fresh one."
+		)
+	}
+	return (
+		`I have no plan \`#${String(id ?? "").replace(/\D/g, "")}\` still waiting on \`${String(sha ?? "").slice(0, 7)}\`. ` +
+		"It may have been written against an earlier commit. Reply **go** on its own to approve the most recent one."
+	)
+}
+
+/**
+ * "approved" or "dropped" when the plan comment `id` itself was approved or dropped,
+ * "superseded" when another plan of its job on the commit was approved instead, else undefined.
+ */
 export function planSpentState(comments, id, us) {
 	const plan = (comments ?? []).find((c) => isOurs(c, us) && String(c.id) === String(id) && readMarker(c.body))
 	if (!plan) return undefined
-	const hit = planSpentBy(
-		plan,
-		spentPlans(comments, us).filter((m) => m.sha === readMarker(plan.body).sha),
-	)
-	return hit ? (hit.kind === "consumed" ? "approved" : "dropped") : undefined
+	const marks = spentPlans(comments, us).filter((m) => m.sha === readMarker(plan.body).sha)
+	// Its own fate first: a marker naming this plan says exactly what happened to it.
+	const own = marks.find((m) => m.plan && Number(m.plan) === Number(plan.id))
+	const hit = own ?? planSpentBy(plan, marks)
+	if (!hit) return undefined
+	if (hit.kind === "dropped") return "dropped"
+	return hit.plan && Number(hit.plan) !== Number(plan.id) ? "superseded" : "approved"
 }
+
 
 // Only our own comments count; an unreadable timestamp counts as expired.
 export function findProposal(comments, sha, now = Date.now(), us, opts = {}) {

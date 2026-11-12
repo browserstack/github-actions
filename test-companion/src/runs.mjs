@@ -92,10 +92,16 @@ const tokens = (text) =>
 		.split(/[^a-z0-9]+/)
 		.filter(Boolean)
 
+// A matrix suffix ("E2E Tests (linux)") is not part of what people call the workflow.
+const nameTokens = (name) => tokens(String(name ?? "").replace(/\([^)]*\)/g, " "))
+const significant = (words) => words.filter((w) => w.length >= 2 && !NOT_A_NAME.has(w))
+
 /**
  * The failed run a comment names by workflow (e.g. "explain e2e"). The whole workflow name,
  * as words, wins (longest first, so "Lint Checks" beats "Lint"); otherwise every significant
  * word of a name must appear, the run with the most such words wins, ties go to the newest.
+ * A name made only of everyday words ("build", "Test", "CI", "explain") never matches: the
+ * comment uses those words anyway. Such a run is asked for by `run <id>`.
  * `failed` is newest first. Returns undefined when no workflow is named.
  */
 export function matchFailedByName(text, failed) {
@@ -105,8 +111,8 @@ export function matchFailedByName(text, failed) {
 	let best
 	let bestLen = 0
 	for (const r of runs) {
-		const name = tokens(r.name)
-		if (name.length && padded.includes(` ${name.join(" ")} `) && name.length > bestLen) {
+		const name = nameTokens(r.name)
+		if (significant(name).length && padded.includes(` ${name.join(" ")} `) && name.length > bestLen) {
 			best = r
 			bestLen = name.length
 		}
@@ -115,7 +121,7 @@ export function matchFailedByName(text, failed) {
 	const saidSet = new Set(said)
 	let most = 0
 	for (const r of runs) {
-		const words = tokens(r.name).filter((w) => w.length >= 2 && !NOT_A_NAME.has(w))
+		const words = significant(nameTokens(r.name))
 		if (words.length && words.every((w) => saidSet.has(w)) && words.length > most) {
 			best = r
 			most = words.length

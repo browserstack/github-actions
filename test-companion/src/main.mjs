@@ -54,6 +54,7 @@ import {
 	proposalConsumedMarkerFor,
 	proposalAlreadyUsed,
 	planSpentState,
+	unavailablePlanReply,
 	proposalNeedsDropping,
 	flattenPages,
 	hasApproverEdits,
@@ -542,15 +543,7 @@ async function main() {
 			waiting = findProposal(comments, plan.context.sha, Date.now(), botLogin, { id: intent.proposalId })
 			if (!waiting) {
 				const spentAs = planSpentState(comments, intent.proposalId, botLogin)
-				replyOnPr(
-					plan.context.pr,
-					spentAs
-						? `Plan \`#${intent.proposalId}\` was already ${spentAs === "approved" ? "approved and run" : "dropped"}, so there is nothing left to approve on it. ` +
-								`Reply **go** on its own to approve the newest plan, or ask me again for a fresh one.`
-						: `I have no plan \`#${intent.proposalId}\` still waiting on \`${String(plan.context.sha).slice(0, 7)}\`. ` +
-								`It may have been written against an earlier commit. ` +
-								`Reply **go** on its own to approve the most recent one.`,
-				)
+				replyOnPr(plan.context.pr, unavailablePlanReply(spentAs, intent.proposalId, plan.context.sha))
 				finishSkipped("proposal-not-found")
 			}
 		}
