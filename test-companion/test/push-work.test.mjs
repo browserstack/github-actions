@@ -29,6 +29,11 @@ import {
 	savingFor,
 	leaveOut,
 	leaveOutMessage,
+	classifyHandoffPush,
+	existingHandoffPr,
+	nextHandoffStep,
+	draftRejected,
+	handoffReport,
 	codeSpan,
 	listFiles,
 	APP_SLUGS,
@@ -828,6 +833,95 @@ describe("leaveOut — by-products never reach the pushed branch", () => {
 		const msg = leaveOutMessage("Fix the cart total", many)
 		assert.match(msg, /^Fix the cart total\n\nLeft out/)
 		assert.match(msg, /and 2 more$/)
+	})
+})
+
+describe("leaveOut always squashes the agent's history", () => {
+	const identity = { name: "Test Companion", email: BOT_EMAIL }
+
+	test("a .env added then deleted in the agent's commits is in no pushed commit, and the author is ours", () => {
+		const { dir, git, base } = repoWithBranch({ "a.ts": "new\n", ".env": "KEY=secret" })
+		const id = ["-c", "user.name=agent", "-c", "user.email=agent@example.com"]
+		assert.ok(git(["rm", "-q", "--", ".env"]).ok)
+		assert.ok(git([...id, "commit", "-qm", "drop env"]).ok)
+		const tip = git(["rev-parse", "HEAD"]).out
+		// Nothing to leave out in the final tree, but the history still holds .env.
+		const out = leaveOut({ git, base, tip, paths: [], identity, message: "m", indexFile: join(dir, "scratch") })
+		assert.ok(out.sha, JSON.stringify(out))
+		const range = git(["rev-list", `${base}..${out.sha}`]).out.split("\n")
+		assert.deepEqual(range, [out.sha])
+		for (const c of range) assert.equal(git(["cat-file", "-e", `${c}:.env`]).ok, false)
+		assert.equal(git(["log", "-1", "--format=%an <%ae>", out.sha]).out, `Test Companion <${BOT_EMAIL}>`)
+		assert.equal(git(["show", `${out.sha}:a.ts`]).out, "new")
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("a branch with no net change is reported as empty", () => {
+		const { dir, git, base } = repoWithBranch({ "a.ts": "new\n" })
+		writeFileSync(join(dir, "a.ts"), "old\n")
+		assert.ok(git(["-c", "user.name=agent", "-c", "user.email=agent@example.com", "commit", "-qam", "undo"]).ok)
+		const tip = git(["rev-parse", "HEAD"]).out
+		assert.deepEqual(leaveOut({ git, base, tip, paths: [], identity, message: "m", indexFile: join(dir, "scratch") }), { empty: true })
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("an agent-chosen file name can't add a trailer to the commit message", () => {
+		const msg = leaveOutMessage("Fix\n\nCo-authored-by: x <a@b>", ["x\n\nCo-authored-by: Someone <a@b>"])
+		assert.equal(msg.split("\n").some((line) => /^co-authored-by:/i.test(line)), false)
+		assert.match(msg, /^Fix Co-authored-by: x <a@b>\n/)
+	})
+
+	test("with nothing left out, the message is just the title", () => {
+		assert.equal(leaveOutMessage("Fix the cart total", []), "Fix the cart total")
+	})
+})
+
+describe("handing back a pull request: what happened, and what to do next", () => {
+	test("an ordinary rejection means the branch is already there", () => {
+		const err = "To https://github.com/o/r.git\n ! [rejected]        abc -> tc/fix/abc (non-fast-forward)\nerror: failed to push"
+		assert.equal(classifyHandoffPush({ ok: false, err }), "already")
+		assert.equal(classifyHandoffPush({ ok: false, err: " ! [rejected]        abc -> b (fetch first)" }), "already")
+	})
+
+	test("a remote rejection (protection rule, missing permission) means nothing was pushed", () => {
+		const err = " ! [remote rejected] abc -> tc/fix/abc (refusing to allow a GitHub App to create or update workflow)"
+		assert.equal(classifyHandoffPush({ ok: false, err }), "failed")
+		assert.equal(classifyHandoffPush({ ok: false, err: "fatal: unable to access" }), "failed")
+		assert.equal(classifyHandoffPush({ ok: true }), "pushed")
+	})
+
+	test("an open pull request wins; a closed or merged one is reported, never reopened", () => {
+		const open = { state: "open", html_url: "https://x/1" }
+		const closed = { state: "closed", html_url: "https://x/2", merged_at: null }
+		const merged = { state: "closed", html_url: "https://x/3", merged_at: "2026-01-01" }
+		assert.deepEqual(existingHandoffPr([closed, open]), { kind: "open", url: "https://x/1" })
+		assert.deepEqual(existingHandoffPr([closed]), { kind: "closed", url: "https://x/2" })
+		assert.deepEqual(existingHandoffPr([merged]), { kind: "merged", url: "https://x/3" })
+		assert.deepEqual(existingHandoffPr(null), { kind: "none" })
+	})
+
+	test("next step for each push outcome", () => {
+		assert.deepEqual(nextHandoffStep("failed"), { action: "stop" })
+		assert.deepEqual(nextHandoffStep("pushed"), { action: "create", earlier: false })
+		assert.deepEqual(nextHandoffStep("already", { kind: "none" }), { action: "create", earlier: true })
+		assert.deepEqual(nextHandoffStep("already", { kind: "closed", url: "u" }), { action: "report", kind: "closed", url: "u" })
+		assert.deepEqual(nextHandoffStep("already", { kind: "open", url: "u" }), { action: "report", kind: "open", url: "u" })
+	})
+
+	test("the report never claims a push or reopens closed work", () => {
+		assert.match(handoffReport({ action: "report", kind: "open", url: "u" }), /^\*\*Already done:\*\* .*already open: u\.$/)
+		const closed = handoffReport({ action: "report", kind: "closed", url: "u" })
+		assert.match(closed, /was closed: u\. Push a new commit/)
+		assert.match(handoffReport({ action: "report", kind: "merged", url: "u" }), /was merged: u\./)
+		const stop = handoffReport({ action: "stop" }, { branch: "tc/fix/abc" })
+		assert.match(stop, /^\*\*Could not push `tc\/fix\/abc`\.\*\*$/)
+		assert.doesNotMatch(stop, /Pushed/)
+	})
+
+	test("a draft rejection is recognised; other failures are not", () => {
+		assert.equal(draftRejected({ status: 1, stderr: "Draft pull requests are not supported in this repository" }), true)
+		assert.equal(draftRejected({ status: 1, stderr: "Validation Failed: No commits between" }), false)
+		assert.equal(draftRejected({ status: 0, stdout: "{}" }), false)
 	})
 })
 

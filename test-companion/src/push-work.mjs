@@ -401,10 +401,17 @@ export function handedOffPrRequest({ req, pr, prBranch, defaultBranch, onReviewe
 export function leaveOut({ git, base, tip, paths, identity, message, indexFile }) {
 	const scratch = { GIT_INDEX_FILE: indexFile, GIT_LITERAL_PATHSPECS: "1" }
 	if (!git(["read-tree", tip], scratch).ok) return { error: "could not read the branch" }
-	// Resetting to `base` restores a changed file and removes an added one. Paths on stdin:
-	// no argument-length limit, and no name read as an option.
-	const reset = git(["reset", "-q", base, "--pathspec-from-file=-", "--pathspec-file-nul"], scratch, paths.join("\0"))
-	if (!reset.ok) return { error: "could not leave out the by-products" }
+	if (paths.length) {
+		// Resetting to `base` restores a changed file and removes an added one. Paths on stdin:
+		// no argument-length limit, and no name read as an option. --no-refresh: don't re-read
+		// the checkout, which would run its clean filters.
+		const reset = git(
+			["reset", "-q", "--no-refresh", base, "--pathspec-from-file=-", "--pathspec-file-nul"],
+			scratch,
+			paths.join("\0"),
+		)
+		if (!reset.ok) return { error: "could not leave out the by-products" }
+	}
 	const tree = git(["write-tree"], scratch)
 	if (!tree.ok || !tree.out) return { error: "could not write the branch's files" }
 	if (tree.out === git(["rev-parse", `${base}^{tree}`]).out) return { empty: true }
@@ -415,7 +422,56 @@ export function leaveOut({ git, base, tip, paths, identity, message, indexFile }
 	return commit.ok && commit.out ? { sha: commit.out } : { error: "could not commit without the by-products" }
 }
 
-/** The commit message for a hand-off with files left out. */
-export function leaveOutMessage(title, paths) {
-	return `${String(title ?? "").trim() || "Test Companion changes"}\n\nLeft out, because Test Companion never commits them:\n${listFiles(paths, { render: (p) => `- ${p}`, separator: "\n" })}`
+// Agent-chosen text on one line, so it can't add a trailer such as Co-authored-by.
+const oneLine = (s) => String(s ?? "").replace(/[\x00-\x1f\x7f]+/g, " ").trim()
+
+/** The commit message for a hand-off: its title, and any files left out. */
+export function leaveOutMessage(title, paths = []) {
+	const head = oneLine(title) || "Test Companion changes"
+	if (!paths.length) return head
+	return `${head}\n\nLeft out, because Test Companion never commits them:\n${listFiles(paths, { render: (p) => `- ${oneLine(p)}`, separator: "\n" })}`
+}
+
+/**
+ * What a hand-off branch push means. Only an ordinary rejection says the branch is already
+ * there; `[remote rejected]` (a protection rule, a missing permission) means nothing was pushed.
+ */
+export function classifyHandoffPush({ ok, err } = {}) {
+	if (ok) return "pushed"
+	return /!\s*\[rejected\][^\n]*\((non-fast-forward|fetch first)\)/i.test(String(err ?? "")) ? "already" : "failed"
+}
+
+/** The pull request an earlier run opened for this branch, from a state=all listing. */
+export function existingHandoffPr(prs) {
+	const list = Array.isArray(prs) ? prs.filter(Boolean) : []
+	const open = list.find((p) => p.state === "open")
+	if (open) return { kind: "open", url: open.html_url }
+	const closed = list.find((p) => p.state === "closed")
+	if (closed) return { kind: closed.merged_at ? "merged" : "closed", url: closed.html_url }
+	return { kind: "none" }
+}
+
+/** Next step after the push: stop, report an existing pull request, or open one. */
+export function nextHandoffStep(pushKind, existing = { kind: "none" }) {
+	if (pushKind === "failed") return { action: "stop" }
+	if (pushKind === "pushed") return { action: "create", earlier: false }
+	if (existing.kind === "none") return { action: "create", earlier: true }
+	// A closed or merged one is reported, never reopened.
+	return { action: "report", ...existing }
+}
+
+/** Did creating the pull request fail only because drafts aren't available on this plan? */
+export function draftRejected(result) {
+	return Boolean(result) && result.status !== 0 && /draft/i.test(`${result.stdout ?? ""}${result.stderr ?? ""}`)
+}
+
+/** The comment line for a hand-off that did not end in a new pull request of this run's work. */
+export function handoffReport(step, { branch } = {}) {
+	if (step.action === "report" && step.kind === "open") {
+		return `**Already done:** this job's pull request is already open: ${step.url}.`
+	}
+	if (step.action === "report") {
+		return `**Already done:** an earlier run's pull request for this commit was ${step.kind}: ${step.url}. Push a new commit to run this job again.`
+	}
+	return `**Could not push ${codeSpan(branch)}.**`
 }
