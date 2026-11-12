@@ -14,6 +14,9 @@ import {
 	checkNamedRun,
 	renderCiStillRunning,
 	renderBuildNote,
+	classifyLookup,
+	prCommitShas,
+	LOOKUP_FAILED_REPLY,
 } from "./runs.mjs"
 import { decideGate, GATE, describeChangeSize, ANSWER_JOBS } from "./gate.mjs"
 import { mayAsk, describeTestRepoAccess } from "./access.mjs"
@@ -69,6 +72,7 @@ import {
 	splitPushable,
 	splitHandoffPaths,
 	savingFor,
+	isRequestedByPerson,
 	leaveOut,
 	leaveOutMessage,
 	listFiles,
@@ -678,11 +682,18 @@ async function main() {
 				finishSkipped("run-not-usable", "link")
 			}
 			if (named?.id) {
-				const prShas = flattenPages(gh(["api", `repos/${REPO}/pulls/${plan.context.pr}/commits?per_page=100`, "--paginate", "--slurp"]))
-					.map((c) => c?.sha)
-					.concat(plan.context.sha)
-				const check = checkNamedRun(gh(["api", `repos/${REPO}/actions/runs/${named.id}`]), {
-					prShas,
+				const lookup = classifyLookup(ghRaw(["api", `repos/${REPO}/actions/runs/${named.id}`]))
+				if (lookup.failed) {
+					replyOnPr(plan.context.pr, LOOKUP_FAILED_REPLY)
+					finishSkipped("lookup-failed", named.id)
+				}
+				const listed = prCommitShas(
+					gh(["api", `repos/${REPO}/pulls/${plan.context.pr}/commits?per_page=100`, "--paginate", "--slurp"]),
+					plan.context.sha,
+				)
+				const check = checkNamedRun(lookup.found, {
+					prShas: listed.shas,
+					shasComplete: listed.complete,
 					selfRunId: env.GITHUB_RUN_ID,
 					selfWorkflowName: env.TC_ACTION_SELF_WORKFLOW,
 				})
@@ -694,6 +705,11 @@ async function main() {
 				buildNote = renderBuildNote(check, { ask: ASK_WORD[plan.workflow] })
 			} else {
 				const runs = gh(["api", `repos/${REPO}/actions/runs?head_sha=${plan.context.sha}&per_page=100`])
+				if (!Array.isArray(runs?.workflow_runs)) {
+					// A failed lookup is not "nothing failed".
+					replyOnPr(plan.context.pr, LOOKUP_FAILED_REPLY)
+					finishSkipped("lookup-failed", plan.workflow)
+				}
 				const ci = ciOnCommit(runs?.workflow_runs, {
 					selfRunId: env.GITHUB_RUN_ID,
 					selfWorkflowName: env.TC_ACTION_SELF_WORKFLOW,
@@ -749,8 +765,12 @@ async function main() {
 		onWantedCommit: !needsCheckout({ headSha: git(["rev-parse", "HEAD"]).out, wantSha: plan.context.sha }),
 		defaultBranch: defaultBranchName(),
 		workflow: plan.workflow,
-		// Asked for in a comment (bots are filtered out earlier) or a manual run: may build on our commit.
-		requestedByPerson: plan.event === TC_EVENTS.PR_COMMENT || env.GITHUB_EVENT_NAME === "workflow_dispatch",
+		// Asked for by a person may build on our commit; automation keeps the loop guard.
+		requestedByPerson: isRequestedByPerson({
+			isPrComment: plan.event === TC_EVENTS.PR_COMMENT,
+			eventName: env.GITHUB_EVENT_NAME,
+			sender: readEvent().sender,
+		}),
 	})
 	if (plan.context.branch && !plan.preview && !saving.ok && !saving.quiet) {
 		notice(`Nothing will be saved to ${plan.context.branch}: ${saving.why}.`)
@@ -873,6 +893,7 @@ async function main() {
 
 	const view = {
 		workflow: plan.workflow ?? summary.workflow,
+		planWorkflow: plan.workflow,
 		approvedPlan,
 		workNote,
 		extraChecks,

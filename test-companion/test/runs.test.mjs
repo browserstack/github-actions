@@ -1,6 +1,6 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
-import { chooseRunsToCancel, runIdsFromChecks, latestFailedRun } from "../src/runs.mjs"
+import { chooseRunsToCancel, runIdsFromChecks, ciOnCommit } from "../src/runs.mjs"
 
 const inProgress = (id, over = {}) => ({
 	id,
@@ -90,7 +90,9 @@ describe("runIdsFromChecks — finding OUR in-flight runs on a commit", () => {
 	})
 })
 
-describe("latestFailedRun — which build 'explain the failure' means", () => {
+describe("ciOnCommit — which build 'explain the failure' means", () => {
+	// The newest failed run is failed[0].
+	const latestFailedRun = (runs, opts) => ciOnCommit(runs, opts).failed[0]?.url
 	// `rca`, `fix` and `verdict` need to know which build failed.
 	const run = (id, conclusion, name = "CI", status = "completed") => ({
 		id,

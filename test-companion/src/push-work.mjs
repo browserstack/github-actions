@@ -50,6 +50,17 @@ export function savingFor(saving, job) {
 	return saving
 }
 
+/**
+ * Was this run asked for by a person? A pull request comment (bots are filtered out before
+ * this) or a manual run started by a human account. A manual run started by automation, such
+ * as a workflow dispatched with a token, doesn't count, so it keeps the own-commit loop guard.
+ */
+export function isRequestedByPerson({ isPrComment, eventName, sender } = {}) {
+	if (isPrComment) return true
+	if (eventName !== "workflow_dispatch") return false
+	return sender?.type === "User" && !/\[bot\]$/i.test(String(sender?.login ?? ""))
+}
+
 /** May this run push? Every check fails closed. */
 export function shouldPushWork({
 	preview,

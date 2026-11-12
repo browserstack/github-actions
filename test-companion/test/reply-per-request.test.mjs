@@ -42,8 +42,8 @@ describe("one reply per request", () => {
 describe("the preview banner", () => {
 	test("read-only jobs say so instead of the preview banner", () => {
 		for (const workflow of ["rca", "verdict"]) {
-			const body = renderJobSummary({ workflow, outcome: "Succeeded", summary: { preview: "true" } })
-			assert.match(body, /Read-only: this job explains what happened and changes nothing/)
+			const body = renderJobSummary({ workflow, planWorkflow: workflow, outcome: "Succeeded", summary: { preview: "true" } })
+			assert.match(body, /Read-only: this job explains what happened; nothing it does is saved/)
 			assert.doesNotMatch(body, /\*\*Preview\*\*/)
 		}
 	})

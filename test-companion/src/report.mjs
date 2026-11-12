@@ -94,6 +94,7 @@ export function renderJobSummary({
 	warnings = [],
 	errorLine,
 	buildNote,
+	planWorkflow,
 } = {}) {
 	const lines = []
 	lines.push(`## Test Companion — ${withMark(outcome)}`)
@@ -129,10 +130,10 @@ export function renderJobSummary({
 
 	if (previewRun(summary)) {
 		// Explain and find-the-bad-PR always run this way on purpose; the banner reads as "nothing happened".
-		const job = workflow ?? summary.workflow
+		// Decided by the job asked for, never by the agent-written summary.
 		lines.push(
-			ANSWER_JOBS.has(job)
-				? "> Read-only: this job explains what happened and changes nothing."
+			ANSWER_JOBS.has(planWorkflow)
+				? "> Read-only: this job explains what happened; nothing it does is saved."
 				: // Preview blocks Test Companion's own write tools, not shell commands the agent runs.
 					"> **Preview** — Test Companion refused every one of its own write tools, so it created, changed and saved nothing itself. Shell commands the agent ran are not covered by that.",
 		)
@@ -316,16 +317,19 @@ export function proposalAlreadyUsed(comments, sha, us, workflow) {
 }
 
 /**
- * Is this plan comment spent? A marker naming a plan spends only that plan. An older marker
- * without one spends the plans of its job (or every job, if it names none) posted up to the
- * comment carrying it, so a plan posted after it is still approvable.
+ * Is this plan comment spent? A marker naming a plan spends that plan and every older plan
+ * of the same job on the commit, never a newer one: approving a later plan must not leave an
+ * earlier one waiting. An older marker without a plan id spends the plans of its job (or
+ * every job, if it names none) posted up to the comment carrying it.
  */
 function planSpentBy(planComment, marks) {
 	const id = Number(planComment?.id)
 	const job = readMarker(planComment?.body)?.workflow ?? ""
-	return marks.find((m) =>
-		m.plan ? m.plan === String(planComment?.id) : (!m.workflow || m.workflow === job) && id <= Number(m.host),
-	)
+	return marks.find((m) => {
+		const sameJob = !m.workflow || m.workflow === job
+		if (m.plan) return id === Number(m.plan) || (sameJob && id < Number(m.plan))
+		return sameJob && id <= Number(m.host)
+	})
 }
 
 /** "approved" or "dropped" when the plan comment `id` was spent, else undefined. */
