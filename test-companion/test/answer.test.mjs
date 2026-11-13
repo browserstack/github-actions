@@ -1,6 +1,6 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
-import { createAnswerCapture, runCapturingAnswer, MAX_PARTIAL_LINE } from "../src/answer.mjs"
+import { createAnswerCapture, runCapturingAnswer, MAX_PARTIAL_LINE, redactSecrets, redactDeep, secretsFrom } from "../src/answer.mjs"
 
 // One `answer` event as the CLI prints it under --json.
 const said = (text) => JSON.stringify({ event: "answer", text }) + "\n"
@@ -172,5 +172,111 @@ describe("runCapturingAnswer", () => {
 		const r = await runCapturingAnswer("tc-does-not-exist-anywhere", [], process.env)
 		assert.equal(r.status, null)
 		assert.equal(r.answer, undefined)
+	})
+})
+
+describe("the CLI's reason for stopping is kept", () => {
+	const node = process.execPath
+
+	test("from an `Error:` line on stderr", async () => {
+		const r = await runCapturingAnswer(node, ["-e", `process.stderr.write('Error: project "x" not found\\n'); process.exit(1)`], process.env)
+		assert.equal(r.error, 'project "x" not found')
+	})
+
+	test("from an error event on stdout", async () => {
+		const ev = JSON.stringify({ event: "error", fatal: true, message: "You've hit your Free credit limit." })
+		const r = await runCapturingAnswer(node, ["-e", `process.stdout.write(${JSON.stringify(ev)} + "\\n"); process.exit(1)`], process.env)
+		assert.equal(r.error, "You've hit your Free credit limit.")
+	})
+
+	test("the CLI's structured error wins over a plain Error: line", async () => {
+		const ev = JSON.stringify({ event: "error", message: "You've hit your Free credit limit." })
+		const r = await runCapturingAnswer(
+			node,
+			["-e", `process.stdout.write(${JSON.stringify(ev)} + "\\n"); process.stderr.write("Error: task failed\\n"); process.exit(1)`],
+			process.env,
+		)
+		assert.equal(r.error, "You've hit your Free credit limit.")
+	})
+
+	test("an Error: line in the agent's test output on stdout is not the reason", async () => {
+		const r = await runCapturingAnswer(
+			node,
+			["-e", `process.stdout.write("Error: expect(received).toBe(expected)\\n"); process.stderr.write("Error: test failed\\n"); process.exit(1)`],
+			process.env,
+		)
+		assert.equal(r.error, "test failed")
+	})
+
+	test("stdout alone with only test output gives no reason", async () => {
+		const r = await runCapturingAnswer(node, ["-e", `process.stdout.write("Error: boom\\n"); process.exit(1)`], process.env)
+		assert.equal(r.error, undefined)
+	})
+
+	test("a clean run has none", async () => {
+		const r = await runCapturingAnswer(node, ["-e", "process.exit(0)"], process.env)
+		assert.equal(r.error, undefined)
+	})
+})
+
+describe("redactSecrets", () => {
+	test("known secrets are replaced", () => {
+		assert.equal(redactSecrets("key abc123secret in use", ["abc123secret"]), "key *** in use")
+	})
+
+	test("credentials in a URL are hidden even when not known", () => {
+		assert.equal(
+			redactSecrets("connect https://alice:s3cr3tkey@hub-cloud.browserstack.com/wd/hub failed"),
+			"connect https://***@hub-cloud.browserstack.com/wd/hub failed",
+		)
+	})
+
+	test("a longer secret is replaced whole before a shorter one inside it", () => {
+		assert.equal(redactSecrets("tok=abcdef123456", ["abcdef", "abcdef123456"]), "tok=***")
+	})
+
+	test("short or empty values are not treated as secrets", () => {
+		assert.equal(redactSecrets("a b c", ["", "a", undefined]), "a b c")
+	})
+
+	test("nothing to redact passes through, and undefined stays undefined", () => {
+		assert.equal(redactSecrets("plain"), "plain")
+		assert.equal(redactSecrets(undefined), undefined)
+	})
+})
+
+describe("secretsFrom", () => {
+	test("credential-named variables are collected, others are not", () => {
+		const got = secretsFrom({
+			BROWSERSTACK_ACCESS_KEY: "k1",
+			GH_TOKEN: "t1",
+			TC_ACTION_APP_PRIVATE_KEY: "p1",
+			BROWSERSTACK_USERNAME: "alice",
+			HOME: "/home/runner",
+		})
+		assert.deepEqual(got.sort(), ["k1", "p1", "t1"])
+	})
+})
+
+describe("redactDeep — every string in a payload sent to GitHub", () => {
+	test("hides secrets in nested comment, check and pull request payloads", () => {
+		const payload = {
+			body: "ran with key abc123secret",
+			output: { title: "t", summary: "https://u:p4ss@hub/x", annotations: [{ message: "abc123secret" }] },
+			draft: true,
+			n: 3,
+		}
+		assert.deepEqual(redactDeep(payload, ["abc123secret"]), {
+			body: "ran with key ***",
+			output: { title: "t", summary: "https://***@hub/x", annotations: [{ message: "***" }] },
+			draft: true,
+			n: 3,
+		})
+	})
+
+	test("the original token stays hidden after the environment changes", () => {
+		const startup = secretsFrom({ GH_TOKEN: "ghs_workflowtoken1" })
+		const later = secretsFrom({ GH_TOKEN: "ghs_apptoken22222" })
+		assert.equal(redactDeep({ body: "ghs_workflowtoken1 ghs_apptoken22222" }, [...startup, ...later]).body, "*** ***")
 	})
 })

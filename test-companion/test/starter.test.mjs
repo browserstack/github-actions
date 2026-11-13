@@ -200,6 +200,86 @@ describe("a comment that is not for us does not start a job", () => {
 		assert.match(job, /startsWith\(github\.event\.comment\.body, 'approve'\)/)
 	})
 
+	// Evaluates the job's `if:` the way GitHub does, for the operators it uses.
+	const condition = job
+		.slice(job.indexOf("if: >-") + "if: >-".length, job.indexOf("\n        #", job.indexOf("if: >-")))
+		.replace(/\s+/g, " ")
+		.trim()
+	function evaluate(expr, ctx) {
+		const tokens = expr.match(/'[^']*'|\|\||&&|!=|==|[(),]|[A-Za-z_][\w.]*/g)
+		let i = 0
+		const peek = () => tokens[i]
+		const take = () => tokens[i++]
+		const value = (path) => path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), ctx)
+		const lower = (v) => String(v ?? "").toLowerCase()
+		function primary() {
+			const t = take()
+			if (t === "(") {
+				const v = or()
+				take()
+				return v
+			}
+			if (t.startsWith("'")) return t.slice(1, -1)
+			if (peek() === "(") {
+				take()
+				const a = or()
+				take()
+				const b = or()
+				take()
+				if (t === "contains") return lower(a).includes(lower(b))
+				if (t === "startsWith") return lower(a).startsWith(lower(b))
+				throw new Error(`unknown function ${t}`)
+			}
+			return value(t)
+		}
+		function compare() {
+			const a = primary()
+			if (peek() === "!=" || peek() === "==") {
+				const op = take()
+				const eq = lower(a) === lower(primary())
+				return op === "==" ? eq : !eq
+			}
+			return a
+		}
+		function and() {
+			let v = compare()
+			while (peek() === "&&") {
+				take()
+				const r = compare()
+				v = Boolean(v) && Boolean(r)
+			}
+			return v
+		}
+		function or() {
+			let v = and()
+			while (peek() === "||") {
+				take()
+				const r = and()
+				v = Boolean(v) || Boolean(r)
+			}
+			return v
+		}
+		return Boolean(or())
+	}
+	const comment = (body, type) => ({ github: { event_name: "issue_comment", event: { comment: { body, user: { type } } } } })
+
+	test("a bot's comment, the App's own included, never boots a runner", () => {
+		for (const body of ["@browserstack go", "go", "approve", "Reply go to run this"]) {
+			assert.equal(evaluate(condition, comment(body, "Bot")), false, `a bot's "${body}" would start a runner`)
+		}
+	})
+
+	test("a person's request, approval or mention still boots one", () => {
+		for (const body of ["@browserstack explain", "go", "Go", "approve"]) {
+			assert.equal(evaluate(condition, comment(body, "User")), true, `"${body}" from a person was filtered out`)
+		}
+		assert.equal(evaluate(condition, comment("thanks!", "User")), false)
+	})
+
+	test("other events are never filtered", () => {
+		assert.equal(evaluate(condition, { github: { event_name: "pull_request", event: {} } }), true)
+	})
+
 	test("every other event is untouched, so pushes and schedules still run", () => {
 		// The filter opens with the non-comment case for exactly this reason.
 		const mentionCheck = job.indexOf("contains(github.event.comment.body, '@browserstack')")

@@ -142,6 +142,9 @@ function route({ eventName, payload, inputs, repo, sha, ref }) {
 function fromComment(payload, inputs) {
 	if (payload.action !== "created") return skip("comment-edited", payload.action)
 	if (!payload.issue?.pull_request) return skip("not-a-pull-request")
+	// Our own comments quote "@browserstack go"; reacting to them loops and can push a real request out of the queue.
+	const author = payload.comment?.user
+	if (author?.type === "Bot" || /\[bot\]$/i.test(author?.login ?? "")) return skip("bot-comment", author?.login)
 
 	const body = payload.comment?.body ?? ""
 	const addressed = MENTION.test(body)

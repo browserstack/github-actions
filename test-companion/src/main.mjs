@@ -1,19 +1,47 @@
 /** The Action's entry point: I/O only. Decisions live in the pure modules beside it. */
-import { readFileSync, appendFileSync, writeFileSync, existsSync, rmSync, readdirSync, accessSync, mkdtempSync, lstatSync, constants } from "node:fs"
+import { readFileSync, appendFileSync, writeFileSync, existsSync, rmSync, readdirSync, accessSync, mkdtempSync, mkdirSync, lstatSync, constants } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { planRun, contextArgs, withPullRequestHead, TC_EVENTS } from "./plan-run.mjs"
 import { readIntent, INTENT } from "./intent.mjs"
-import { chooseRunsToCancel, runIdsFromChecks, latestFailedRun } from "./runs.mjs"
+import {
+	chooseRunsToCancel,
+	runIdsFromChecks,
+	ciOnCommit,
+	parseRunReference,
+	matchFailedByName,
+	checkNamedRun,
+	renderCiStillRunning,
+	renderBuildNote,
+	classifyLookup,
+	prCommitShas,
+	LOOKUP_FAILED_REPLY,
+} from "./runs.mjs"
 import { decideGate, GATE, describeChangeSize, ANSWER_JOBS } from "./gate.mjs"
-import { mayAsk, describeTestRepoAccess } from "./access.mjs"
+import { mayAsk, describeTestRepoAccess, pickupReactionTarget, addPickupReaction } from "./access.mjs"
 import { findTicket } from "./ticket.mjs"
 import { childEnvFor } from "./child-env.mjs"
+import {
+	approvedSavePlan,
+	readCasesDestination,
+	pickCasesArtifact,
+	casesSubject,
+	checkCasesSubject,
+	parseTmAddReport,
+	renderCasesUnavailable,
+	renderExactSave,
+	exactSaveSummary,
+	exactSaveOutcome,
+	EDITED_GO_NOTE,
+	CASES_ARTIFACT,
+	CASES_DATA_FILE,
+	CASES_SUBJECT_FILE,
+} from "./approved-cases.mjs"
 import { canIsolate, prepareSandbox, stopSandbox, handToAgent, writeAgentEnv, readAgentFile } from "./sandbox.mjs"
 import { agentEnvFrom, asAgentCommand, checkPrHandoff, readClaimResult } from "./sandbox-policy.mjs"
 import { startRelay } from "./relay.mjs"
-import { runCapturingAnswer } from "./answer.mjs"
+import { runCapturingAnswer, redactSecrets, redactDeep, secretsFrom } from "./answer.mjs"
 import {
 	appCredentials,
 	signJwt,
@@ -21,11 +49,12 @@ import {
 	appApi,
 	installationLookupMessage,
 } from "./app-auth.mjs"
-import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent } from "./outcome.mjs"
+import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent, runDidNotWork } from "./outcome.mjs"
 import {
 	renderJobSummary,
 	renderCheckSummary,
 	renderComment,
+	requestMarkerFor,
 	chooseCommentAction,
 	checkSha,
 	checkSubjectFor,
@@ -40,6 +69,8 @@ import {
 	renderStopRemoved,
 	proposalConsumedMarkerFor,
 	proposalAlreadyUsed,
+	planSpentState,
+	unavailablePlanReply,
 	proposalNeedsDropping,
 	flattenPages,
 	hasApproverEdits,
@@ -56,6 +87,14 @@ import {
 	shouldPushWork,
 	changedPaths,
 	splitPushable,
+	splitHandoffPaths,
+	checkHandoffDescends,
+	REWROTE_HISTORY,
+	savingFor,
+	isRequestedByPerson,
+	leaveOut,
+	leaveOutMessage,
+	listFiles,
 	renderPushNote,
 	needsCheckout,
 	isSameRepo,
@@ -69,9 +108,20 @@ import {
 	ghEnvFrom,
 	gitEnvFrom,
 	GIT_SAFE_ARGS,
+	commitIdentity,
+	handedOffPrRequest,
+	classifyHandoffPush,
+	pushFailureReason,
+	existingHandoffPr,
+	nextHandoffStep,
+	draftRejected,
+	handoffReport,
 } from "./push-work.mjs"
 
 const env = process.env
+// Taken before the App token replaces GH_TOKEN and the key is deleted, so both are still hidden.
+const STARTUP_SECRETS = secretsFrom(env)
+const secretsNow = () => [...STARTUP_SECRETS, ...secretsFrom(env)]
 const REPO = env.GITHUB_REPOSITORY ?? ""
 const RUN_URL = `${env.GITHUB_SERVER_URL ?? "https://github.com"}/${REPO}/actions/runs/${env.GITHUB_RUN_ID ?? ""}`
 // RUNNER_TEMP is cleared per job; /tmp may hold an earlier job's files on a reused runner.
@@ -82,6 +132,8 @@ const RESULT_FILE = join(REPORT_DIR, "test-companion-result.md")
 
 // Must match the upload step in action.yml.
 const RESULT_ARTIFACT = "test-companion-result"
+// A generate plan's cases as data, uploaded as the CASES_ARTIFACT so approving it can save them as they are.
+const CASES_DIR = join(REPORT_DIR, "test-companion-cases")
 
 const setOutput = (k, v) => env.GITHUB_OUTPUT && appendFileSync(env.GITHUB_OUTPUT, `${k}=${v}\n`)
 const addToJobSummary = (md) => env.GITHUB_STEP_SUMMARY && appendFileSync(env.GITHUB_STEP_SUMMARY, md + "\n")
@@ -117,7 +169,26 @@ function runGh(args, { token, input } = {}) {
 }
 
 function ghRaw(args, body) {
-	return runGh(args, { token: env.GH_TOKEN, input: body ? JSON.stringify(body) : undefined })
+	// Every comment, check and pull request we send passes through here, so it's hidden once.
+	return runGh(args, { token: env.GH_TOKEN, input: body ? JSON.stringify(redactDeep(body, secretsNow())) : undefined })
+}
+
+/** 👀 on the request comment once it is picked up. Never fails the run. */
+function reactToPickup(plan, allowed, approvalHasPlan) {
+	const commentId = pickupReactionTarget({
+		eventName: env.GITHUB_EVENT_NAME,
+		comment: readEvent().comment,
+		plan,
+		allowed,
+		approvalHasPlan,
+	})
+	if (!commentId) return
+	const added = addPickupReaction({
+		repo: REPO,
+		commentId,
+		post: (path, body) => ghRaw(["api", path, "--method", "POST", "--input", "-"], body).status === 0,
+	})
+	if (!added) notice("Test Companion: could not add the 👀 reaction to the request; carrying on.")
 }
 
 /** `gh api`, returning parsed JSON or null. Never throws. */
@@ -134,6 +205,9 @@ function gh(args, body) {
 		return null
 	}
 }
+
+// Who the Action's commits are by; the App's bot account once we act as it.
+let identity = commitIdentity()
 
 // The login our comments appear under: github-actions[bot], or <app-slug>[bot] with the App.
 // Used to tell our proposals from another bot's.
@@ -156,6 +230,9 @@ const ALLOW_UNISOLATED = /^true$/i.test(String(env.TC_ACTION_ALLOW_UNISOLATED ??
 
 /** The proposal this run is carrying out, so the report can link it. */
 let approvedPlan
+
+/** Which failed run a build-reading job looked at, and what it left out. */
+let buildNote = ""
 
 // No --depth: it would make the full clone shallow. The URL carries its own credential
 // because the starter sets persist-credentials: false.
@@ -183,7 +260,11 @@ async function appInstallationToken() {
 	}
 
 	// The JWT authenticates the App; only the installation token can touch a repository.
-	const asApp = (path, opts) => appApi(path, { jwt, apiUrl: env.GITHUB_API_URL, ...opts })
+	const asApp = async (path, opts) => {
+		const r = await appApi(path, { jwt, apiUrl: env.GITHUB_API_URL, ...opts })
+		if (r.ok && r.attempts > 1) notice(`Test Companion: reaching GitHub as the App took ${r.attempts} tries.`)
+		return r
+	}
 
 	const found = await asApp(`repos/${REPO}/installation`)
 	if (!found.ok) {
@@ -225,7 +306,13 @@ async function appInstallationToken() {
 
 	// Mask before first use.
 	console.log(`::add-mask::${token}`)
-	if (appLogin) botLogin = appLogin
+	if (appLogin) {
+		botLogin = appLogin
+		// The bot account's id makes the noreply email GitHub links to the App.
+		const user = runGh(["api", `users/${encodeURIComponent(appLogin)}`, "--jq", ".id"], { token })
+		if (user.status !== 0) warn(`Test Companion: could not look up ${appLogin}'s account, so commits use the plain Test Companion name.`)
+		identity = commitIdentity({ appSlug: found.data?.app_slug, appUserId: user.status === 0 ? String(user.stdout ?? "").trim() : "" })
+	}
 	return token
 }
 
@@ -278,11 +365,12 @@ const GIT_BIN = trustedGitPath({
 	},
 })
 
-function git(args, extraEnv = {}) {
+function git(args, extraEnv = {}, input = undefined) {
 	// Near-empty environment and no hooks: the agent has had write access to the tree.
 	if (!GIT_BIN) return { ok: false, out: "", raw: "", err: "no trusted git binary" }
 	const r = spawnSync(GIT_BIN, [...GIT_SAFE_ARGS, ...args], {
 		encoding: "utf8",
+		input,
 		env: { ...gitEnvFrom(env), ...extraEnv },
 	})
 	// `raw` keeps porcelain's leading space; trimming would lose the first line's status column.
@@ -444,6 +532,8 @@ async function main() {
 	const CARRIES_A_PLAN = new Set(["test-pr"])
 	// Jobs that cannot run without knowing which build failed.
 	const NEEDS_A_BUILD = new Set(["rca", "fix", "verdict"])
+	// How to ask each of those for a named run.
+	const ASK_WORD = { rca: "explain", fix: "fix", verdict: "find the bad PR" }
 	const COMMENT_TRIGGERS = new Set(["issue_comment"])
 	if (COMMENT_TRIGGERS.has(env.GITHUB_EVENT_NAME) || plan.requiresWriteAccess) {
 		const who = plan.commenter ?? readEvent().comment?.user?.login
@@ -458,12 +548,16 @@ async function main() {
 			if (!plan.approvalOnly) replyOnPr(plan.context?.pr, renderNotAuthorized(who ?? "there", askTeam))
 			finishSkipped("not-authorized", who)
 		}
+		// A request addressed to us is picked up now; a bare "go" once we know it has a plan.
+		reactToPickup(plan, allowed, false)
 	}
 
 	// Place the request before spawning the CLI, so one we can't place costs nothing.
 	let proposing = false
 	let approvalNote = ""
 	if (plan.event === TC_EVENTS.PR_COMMENT) {
+		// Kept for naming a run: an approval deletes plan.context.instructions below.
+		const requestText = plan.context.instructions
 		// Fetched before reading intent: with a plan waiting, "go, and fix case 3" is an approval with an edit.
 		const comments = flattenPages(gh(["api", `repos/${REPO}/issues/${plan.context.pr}/comments`, "--paginate", "--slurp"]))
 		let waiting = findProposal(comments, plan.context.sha, Date.now(), botLogin)
@@ -492,12 +586,8 @@ async function main() {
 		if (intent.kind === INTENT.GO && intent.proposalId) {
 			waiting = findProposal(comments, plan.context.sha, Date.now(), botLogin, { id: intent.proposalId })
 			if (!waiting) {
-				replyOnPr(
-					plan.context.pr,
-					`I have no plan \`#${intent.proposalId}\` still waiting on \`${String(plan.context.sha).slice(0, 7)}\`. ` +
-						`It may have been approved, dropped, or written against an earlier commit. ` +
-						`Reply **go** on its own to approve the most recent one.`,
-				)
+				const spentAs = planSpentState(comments, intent.proposalId, botLogin)
+				replyOnPr(plan.context.pr, unavailablePlanReply(spentAs, intent.proposalId, plan.context.sha))
 				finishSkipped("proposal-not-found")
 			}
 		}
@@ -543,6 +633,7 @@ async function main() {
 			}
 			finishSkipped("not-addressed-to-us")
 		}
+		if (plan.approvalOnly) reactToPickup(plan, true, true)
 		const gate = decideGate({
 			intent,
 			approval: binding?.approval,
@@ -587,7 +678,7 @@ async function main() {
 			)
 			if (pending) rememberCheck(plan.context.sha, pending)
 			// Per job, so approving one doesn't spend another job's plan.
-			consumedMarker = proposalConsumedMarkerFor(plan.context.sha, plan.workflow)
+			consumedMarker = proposalConsumedMarkerFor(plan.context.sha, plan.workflow, waiting?.id)
 			approvedPlan = waiting?.url ? { id: waiting.id, url: waiting.url } : undefined
 
 			// The approved plan, edits included, goes in a file: --context strips punctuation.
@@ -606,6 +697,15 @@ async function main() {
 					: ` Approved by @${plan.commenter}, who also asked for it.`
 				notice(`Test Companion:${approvalNote}`)
 			}
+
+			// A plain go on a generate plan saves the plan's own cases; nothing is generated again.
+			const save = approvedSavePlan({ workflow: plan.workflow, replyText, runId: waiting?.runId })
+			if (save.mode === "exact" || save.mode === "unavailable") {
+				saveApprovedCases(plan, save, approvalNote)
+				// saveApprovedCases always ends the run. Never fall through to generating again.
+				process.exit(0)
+			}
+			if (save.edited) approvalNote = `${approvalNote} ${EDITED_GO_NOTE}`
 		} else {
 			// A large change: the run covers what matters and lists what it skipped.
 			const size = describeChangeSize(pull)
@@ -620,22 +720,66 @@ async function main() {
 		if (gate.preview || intent.preview) plan.preview = true
 
 		// Last, because the job isn't final until approval is handled ("go" names none).
-		// rca, fix and verdict need a failed build: default to the newest red run on this commit.
+		// rca, fix and verdict need a failed build: one the comment names, else the newest red run on this commit.
 		if (NEEDS_A_BUILD.has(plan.workflow) && !plan.context.build) {
-			const runs = gh(["api", `repos/${REPO}/actions/runs?head_sha=${plan.context.sha}&per_page=100`])
-			const failed = latestFailedRun(runs?.workflow_runs, {
-				selfRunId: env.GITHUB_RUN_ID,
-				selfWorkflowName: env.TC_ACTION_SELF_WORKFLOW,
-			})
-			if (!failed) {
-				replyOnPr(
-					plan.context.pr,
-					`Nothing has failed on \`${String(plan.context.sha).slice(0, 7)}\`, so there is no build for me to look at. Re-run me once something is red, or say what you want tested instead.`,
-				)
-				finishSkipped("nothing-failed", plan.workflow)
+			const short = String(plan.context.sha).slice(0, 7)
+			const named = parseRunReference(requestText, { repo: REPO, serverUrl: env.GITHUB_SERVER_URL })
+			if (named?.error) {
+				replyOnPr(plan.context.pr, named.error)
+				finishSkipped("run-not-usable", "link")
 			}
-			plan.context.build = failed
-			notice(`Test Companion: reading the failure from ${failed}`)
+			if (named?.id) {
+				const lookup = classifyLookup(ghRaw(["api", `repos/${REPO}/actions/runs/${named.id}`]))
+				if (lookup.failed) {
+					replyOnPr(plan.context.pr, LOOKUP_FAILED_REPLY)
+					finishSkipped("lookup-failed", named.id)
+				}
+				const listed = prCommitShas(
+					gh(["api", `repos/${REPO}/pulls/${plan.context.pr}/commits?per_page=100`, "--paginate", "--slurp"]),
+					plan.context.sha,
+				)
+				const check = checkNamedRun(lookup.found, {
+					prShas: listed.shas,
+					shasComplete: listed.complete,
+					selfRunId: env.GITHUB_RUN_ID,
+					selfWorkflowName: env.TC_ACTION_SELF_WORKFLOW,
+				})
+				if (!check.ok) {
+					replyOnPr(plan.context.pr, `I can't use run \`${named.id}\`: ${check.why}`)
+					finishSkipped("run-not-usable", named.id)
+				}
+				plan.context.build = check.url
+				buildNote = renderBuildNote(check, { ask: ASK_WORD[plan.workflow] })
+			} else {
+				const runs = gh(["api", `repos/${REPO}/actions/runs?head_sha=${plan.context.sha}&per_page=100`])
+				if (!Array.isArray(runs?.workflow_runs)) {
+					// A failed lookup is not "nothing failed".
+					replyOnPr(plan.context.pr, LOOKUP_FAILED_REPLY)
+					finishSkipped("lookup-failed", plan.workflow)
+				}
+				const ci = ciOnCommit(runs?.workflow_runs, {
+					selfRunId: env.GITHUB_RUN_ID,
+					selfWorkflowName: env.TC_ACTION_SELF_WORKFLOW,
+				})
+				const chosen = matchFailedByName(requestText, ci.failed) ?? ci.failed[0]
+				if (!chosen) {
+					// A build still going is not "nothing failed": its failures just aren't in yet.
+					replyOnPr(
+						plan.context.pr,
+						ci.running.length
+							? renderCiStillRunning(plan.context.sha, ci.running)
+							: `Nothing has failed on \`${short}\`, so there is no build for me to look at. Re-run me once something is red, or say what you want tested instead.`,
+					)
+					finishSkipped(ci.running.length ? "ci-still-running" : "nothing-failed", plan.workflow)
+				}
+				plan.context.build = chosen.url
+				buildNote = renderBuildNote(chosen, {
+					otherFailed: ci.failed.filter((r) => r !== chosen),
+					running: ci.running,
+					ask: ASK_WORD[plan.workflow],
+				})
+			}
+			notice(`Test Companion: reading the failure from ${plan.context.build}`)
 		}
 	}
 
@@ -663,11 +807,19 @@ async function main() {
 		sameRepo: isSameRepo(prForTicket?.head?.repo?.full_name, REPO),
 		branch: plan.context.branch,
 		headAuthorEmail: git(["log", "-1", "--format=%ae"]).out,
+		ourEmails: [identity.email],
 		// The earlier checkout is advisory, so confirm we are on the reviewed commit before pushing.
 		onWantedCommit: !needsCheckout({ headSha: git(["rev-parse", "HEAD"]).out, wantSha: plan.context.sha }),
 		defaultBranch: defaultBranchName(),
+		workflow: plan.workflow,
+		// Asked for by a person may build on our commit; automation keeps the loop guard.
+		requestedByPerson: isRequestedByPerson({
+			isPrComment: plan.event === TC_EVENTS.PR_COMMENT,
+			eventName: env.GITHUB_EVENT_NAME,
+			sender: readEvent().sender,
+		}),
 	})
-	if (plan.context.branch && !plan.preview && !saving.ok) {
+	if (plan.context.branch && !plan.preview && !saving.ok && !saving.quiet) {
 		notice(`Nothing will be saved to ${plan.context.branch}: ${saving.why}.`)
 	}
 
@@ -716,9 +868,9 @@ async function main() {
 	headBeforeRun = git(["rev-parse", "HEAD"]).out
 	notice(`tc ${args.join(" ")}`)
 	// Remove stale files so a run that produces nothing can't report an earlier run's work.
-	for (const f of [SUMMARY_FILE, RESULT_FILE]) {
+	for (const f of [SUMMARY_FILE, RESULT_FILE, `${RESULT_FILE}.json`, CASES_DIR]) {
 		try {
-			rmSync(f, { force: true })
+			rmSync(f, { force: true, recursive: true })
 		} catch {
 			// Not worth failing over.
 		}
@@ -737,9 +889,12 @@ async function main() {
 			const text = readAgentFile(from)
 			if (text !== undefined) writeFileSync(to, text)
 		}
+		keepCases(readAgentFile(`${runFiles.result}.json`), plan)
 		if (claim.held && exitCode !== 0) releaseClaim(claim)
 		if (!plan.preview) handoffNote = openHandedOffPr(runFiles.handoff, plan)
 	}
+
+	if (!sandbox) keepCases(readOptional(`${RESULT_FILE}.json`), plan)
 
 	// Absent if the process was killed.
 	let summaryText
@@ -782,10 +937,13 @@ async function main() {
 	})
 
 	// automate and fix hand back a pull request; other jobs save to this branch.
-	const workNote = handoffNote ?? saveWork(saving, plan)
+	// Re-checked with the job the pipeline chose: an event run didn't know it before the run.
+	// summary.workflow comes from a file the agent can write; savingFor can only make saving stricter.
+	const workNote = handoffNote ?? saveWork(savingFor(saving, plan.workflow ?? summary.workflow), plan)
 
 	const view = {
 		workflow: plan.workflow ?? summary.workflow,
+		planWorkflow: plan.workflow,
 		approvedPlan,
 		workNote,
 		extraChecks,
@@ -801,11 +959,18 @@ async function main() {
 		askedAt: plan.askedAt,
 		// rca and verdict leave no artefact: the answer is the agent's closing words. The result
 		// file is the fallback, only for ANSWER_JOBS (for generate it holds test cases).
-		answer: run.answer || (hasResult && ANSWER_JOBS.has(plan.workflow ?? summary.workflow) ? readResult() : undefined),
+		answer: redactSecrets(
+			run.answer || (hasResult && ANSWER_JOBS.has(plan.workflow ?? summary.workflow) ? readResult() : undefined),
+			secretsNow(),
+		),
 		failedTests,
+		// Only where the run didn't work, so a stray error line never colours a success.
+		errorLine: runDidNotWork(outcome) ? redactSecrets(run.error, secretsNow()) : undefined,
+		buildNote,
 	}
-	// Proposing: post what it would do and stop. Nothing has been written.
-	if (proposing) {
+	// Proposing: post what it would do and stop. A run that broke has nothing to approve,
+	// so it is reported like any other run, which also completes its check.
+	if (proposing && !runDidNotWork(outcome)) {
 		const sha = checkSha(plan.context, summary, env.GITHUB_SHA)
 		addToJobSummary(renderJobSummary(view))
 		const size = describeChangeSize(pull)
@@ -828,9 +993,15 @@ async function main() {
 				plan.commenter,
 				// Record the job, so approving can't run a different one.
 				plan.workflow ?? summary.workflow,
+				// And the run, so approving can fetch the cases it kept.
+				env.GITHUB_RUN_ID,
 			),
 		)
 		postCheck(outcome, view, sha, [], "in_progress")
+		// A plan's files are attached too: approving a generate plan saves these cases.
+		if (summaryText) setOutput("summary-file", SUMMARY_FILE)
+		if (hasResult) setOutput("result-file", RESULT_FILE)
+		if (existsSync(join(CASES_DIR, CASES_DATA_FILE))) setOutput("cases-dir", CASES_DIR)
 		setOutput("outcome", "Proposed")
 		setOutput("should-fail", "false")
 		process.exit(0)
@@ -892,7 +1063,7 @@ function saveWork(saving, plan) {
 	if (unexpected.length) {
 		return [
 			`**Could not save this work to \`${branch}\`:** the repository's git config carries`,
-			`${unexpected.map((k) => `\`${k}\``).join(", ")}, which \`actions/checkout\` does not write. Config is`,
+			`${listFiles(unexpected)}, which \`actions/checkout\` does not write. Config is`,
 			'where git keeps its "run this program" hooks and its URL rewrites, so Test Companion will not',
 			"commit against a config it does not recognise. Nothing was committed or pushed — the run's",
 			"changes are in the job's workspace only.",
@@ -924,7 +1095,7 @@ function saveWork(saving, plan) {
 		`Written by Test Companion for ${plan.context.pr ? `#${plan.context.pr}` : plan.context.sha}.`,
 		`Run: ${RUN_URL}`,
 	].join("\n")
-	const committed = git(["commit", "-m", body])
+	const committed = git(["-c", `user.name=${identity.name}`, "-c", `user.email=${identity.email}`, "commit", "-m", body])
 	if (!committed.ok) {
 		return renderPushNote({
 			branch,
@@ -956,7 +1127,7 @@ function isolateAgent(plan) {
 	let why = can.why
 	if (can.ok) {
 		try {
-			const layout = prepareSandbox({ repoDir: process.cwd(), tcPath: TC_PATH })
+			const layout = prepareSandbox({ repoDir: process.cwd(), tcPath: TC_PATH, identity })
 			notice("Test Companion: the agent runs as a separate, locked-down user with no access to this job's tokens.")
 			return layout
 		} catch (e) {
@@ -1104,12 +1275,20 @@ function openHandedOffPr(path, plan) {
 	if (!GIT_BIN) return "**Could not open the pull request:** no trusted `git` was found on this runner."
 	const unexpected = unexpectedConfigKeys(git(CONFIG_READ_ARGS).raw)
 	if (unexpected.length) {
-		return `**Did not open a pull request:** the repository's git config carries ${unexpected.map((k) => `\`${k}\``).join(", ")}, which \`actions/checkout\` does not write.`
+		return `**Did not open a pull request:** the repository's git config carries ${listFiles(unexpected)}, which \`actions/checkout\` does not write.`
 	}
 	const tip = git(["rev-parse", "--verify", "--quiet", `refs/heads/${req.branch}^{commit}`])
 	if (!tip.ok || !tip.out) return `**Did not open a pull request:** the run did not leave a \`${req.branch}\` branch.`
-	const from = git(["merge-base", headBeforeRun || "HEAD", tip.out])
-	if (!from.ok) return `**Did not open a pull request:** \`${req.branch}\` does not share history with this commit.`
+	// The squash goes onto the commit the run started on, and only if the agent's branch builds
+	// on it: a branch that reset or rebased past it would hand back a diff that undoes that work.
+	// Never fall back to HEAD here: after the run, the agent decides where HEAD points.
+	if (!headBeforeRun) return "**Could not open the pull request:** could not read the commit the run started on."
+	const reviewed = git(["rev-parse", "--verify", "--quiet", `${headBeforeRun}^{commit}`])
+	if (!reviewed.ok || !reviewed.out) return "**Could not open the pull request:** could not read the commit the run started on."
+	const descends = checkHandoffDescends({ git, reviewed: reviewed.out, tip: tip.out })
+	if (descends.error) return `**Could not open the pull request:** ${descends.error}.`
+	if (!descends.ok) return `**Did not open a pull request:** ${REWROTE_HISTORY}.`
+	const from = { ok: true, out: reviewed.out }
 	// --raw gives file modes, so a symlink is caught from the commit itself.
 	const diff = git(["-c", "core.quotePath=false", "diff", "--raw", "--no-renames", "-z", from.out, tip.out])
 	if (!diff.ok) return `**Could not open the pull request:** ${diff.err || "could not list its changes"}.`
@@ -1121,29 +1300,73 @@ function openHandedOffPr(path, plan) {
 		paths.push(fields[i + 1])
 		if (meta[1] === "120000") links.add(fields[i + 1])
 	}
-	const { skip } = splitPushable(paths, { isSymlink: (p) => links.has(p) })
-	if (skip.length) {
-		return `**Did not open a pull request:** the branch changes files Test Companion never pushes: ${skip.map((f) => `\`${f}\``).join(", ")}.`
+	const { refused, dropped } = splitHandoffPaths(paths, { isSymlink: (p) => links.has(p) })
+	if (refused.length) {
+		return `**Did not open a pull request:** the branch changes files Test Companion never pushes: ${listFiles(refused)}.`
 	}
+	// Always one squashed commit on the base, under our name: the agent's own commits (and
+	// anything it added then deleted in them) never reach GitHub, and what was checked above is
+	// exactly what is pushed.
+	const indexFile = join(REPORT_DIR, `tc-handoff-index-${process.pid}`)
+	let left
+	try {
+		left = leaveOut({
+			git,
+			base: from.out,
+			tip: tip.out,
+			paths: dropped,
+			identity,
+			message: redactSecrets(leaveOutMessage(req.title, dropped), secretsNow()),
+			indexFile,
+		})
+	} finally {
+		rmSync(indexFile, { force: true })
+	}
+	if (left.error) return `**Could not open the pull request:** ${left.error}.`
+	if (left.empty) {
+		return dropped.length
+			? `**Did not open a pull request:** the run's only changes were files Test Companion never commits: ${listFiles(dropped)}.`
+			: `**Did not open a pull request:** the run's branch has no changes.`
+	}
+	const head = left.sha
+	const leftOutNote = dropped.length ? ` Left out ${listFiles(dropped)}, which Test Companion never commits.` : ""
 	const target = pushUrlFor(REPO, env.GITHUB_SERVER_URL)
 	if (!target) return `**Could not open the pull request:** bad repository name "${REPO}".`
-	const pushed = git(["push", target, `${tip.out}:refs/heads/${req.branch}`], pushCredentialEnv(env.GH_TOKEN, target))
-	if (!pushed.ok) {
-		return /rejected|non-fast-forward|already exists/i.test(pushed.err)
-			? `**Already done:** \`${req.branch}\` already exists, so this job's pull request was opened by an earlier run.`
-			: `**Could not open the pull request:** ${pushed.err || "git push failed"}.`
-	}
-	// actions/checkout doesn't record the remote HEAD, so the CLI's base is only a fallback.
-	const opened = ghRaw(["api", `repos/${REPO}/pulls`, "--method", "POST", "--input", "-"], {
-		head: req.branch,
-		base: defaultBranchName() || req.base,
-		title: req.title,
-		body: req.body,
+	const onReviewedCommit = String(headBeforeRun ?? "").toLowerCase() === String(plan.context.sha ?? "").toLowerCase()
+	const request = handedOffPrRequest({
+		req,
+		pr: plan.context.pr,
+		prBranch: plan.context.branch,
+		defaultBranch: defaultBranchName(),
+		onReviewedCommit,
 	})
+	const baseNote =
+		plan.context.pr && !onReviewedCommit
+			? ` It targets \`${request.base}\`, not #${plan.context.pr}'s branch, because the run did not start on that pull request's commit.`
+			: ""
+	const pushed = git(["push", target, `${head}:refs/heads/${req.branch}`], pushCredentialEnv(env.GH_TOKEN, target))
+	const pushKind = classifyHandoffPush(pushed)
+	let existing
+	if (pushKind === "already") {
+		// The branch is from an earlier run of this job on this commit; never reopen its closed PR.
+		const owner = REPO.split("/")[0]
+		existing = existingHandoffPr(gh(["api", `repos/${REPO}/pulls?head=${encodeURIComponent(`${owner}:${req.branch}`)}&state=all`]))
+	}
+	const step = nextHandoffStep(pushKind, existing)
+	if (step.action === "stop") {
+		const why = step.unknown ? "" : pushFailureReason(pushed.err)
+		return `${handoffReport(step, { branch: req.branch })} ${why ? `${why}.` : ""}`.trim()
+	}
+	if (step.action === "report") return handoffReport(step, { branch: req.branch })
+
+	const create = (body) => ghRaw(["api", `repos/${REPO}/pulls`, "--method", "POST", "--input", "-"], body)
+	let opened = create(request)
+	if (draftRejected(opened)) opened = create({ ...request, draft: false })
 	if (opened.status !== 0) {
-		return /already exists/i.test(`${opened.stdout}${opened.stderr}`)
-			? `**Already done:** a pull request for \`${req.branch}\` is already open.`
-			: `**Pushed \`${req.branch}\` but could not open the pull request:** ${String(opened.stderr ?? "").trim().split("\n")[0]}.`
+		const why = String(opened.stderr ?? "").trim().split("\n")[0]
+		return step.earlier
+			? `**Could not open a pull request** for an earlier run's ${listFiles([req.branch])}: ${why}.`
+			: `**Pushed ${listFiles([req.branch])} but could not open the pull request:** ${why}.`
 	}
 	let url = ""
 	try {
@@ -1151,8 +1374,13 @@ function openHandedOffPr(path, plan) {
 	} catch {
 		// The link is a nicety.
 	}
-	return `**Opened a pull request** with this run's changes${url ? `: ${url}` : ` from \`${req.branch}\``}.`
+	const where = url ? `: ${url}` : ` from ${listFiles([req.branch])}`
+	// This run's notes describe this run's tree, not what an earlier run left on the branch.
+	return step.earlier
+		? `**Opened a pull request** from an earlier run's branch for this commit${where}.`
+		: `**Opened a pull request** with this run's changes${where}.${leftOutNote}${baseNote}`
 }
+
 
 /** Create or update this run's check on `sha`. */
 function postCheck(outcome, view, sha, annotations = [], status = "completed", title = undefined) {
@@ -1325,7 +1553,7 @@ function sweepExpiredProposals() {
 		postCheck(OUTCOMES.COULD_NOT_RUN, { outcome: OUTCOMES.COULD_NOT_RUN, summary: {}, runUrl: RUN_URL }, sha)
 		replyOnPr(
 			pr.number,
-			`That proposal went unanswered, so I have dropped it. The check now says Action required — comment again and I will put up a fresh one.\n\n${proposalDroppedMarkerFor(sha, stale?.workflow)}`,
+			`That proposal went unanswered, so I have dropped it. The check now says Action required — comment again and I will put up a fresh one.\n\n${proposalDroppedMarkerFor(sha, stale?.workflow, stale?.id)}`,
 		)
 		notice(`Test Companion: dropped a stale proposal on #${pr.number}.`)
 	}
@@ -1358,6 +1586,93 @@ function readBindings(configFile, event, branch) {
 	}
 }
 
+function readOptional(path) {
+	try {
+		return readFileSync(path, "utf8")
+	} catch {
+		return undefined
+	}
+}
+
+/** Keep the run's cases file, with the repo and commit it was made for, for the cases artifact. */
+function keepCases(text, plan) {
+	if (text === undefined) return
+	try {
+		mkdirSync(CASES_DIR, { recursive: true })
+		writeFileSync(join(CASES_DIR, CASES_DATA_FILE), text)
+		writeFileSync(join(CASES_DIR, CASES_SUBJECT_FILE), JSON.stringify(casesSubject({ repo: REPO, sha: plan.context?.sha })))
+	} catch {
+		// Without it a plan can still be read; approving it says the cases are missing.
+	}
+}
+
+/**
+ * Save an approved generate plan's own cases with `tc tm add` and finish the run. No AI runs, so
+ * what was reviewed is what is saved. Any problem is reported and nothing is generated instead.
+ */
+function saveApprovedCases(plan, save, approvalNote) {
+	const sha = plan.context.sha
+	const base = {
+		workflow: "generate",
+		planWorkflow: "generate",
+		approvedPlan,
+		approvalNote,
+		runUrl: RUN_URL,
+		cliVersion: env.TC_ACTION_CLI_VERSION,
+		askedBy: plan.commenter,
+		askedAt: plan.askedAt,
+		summary: { workflow: "generate", event: plan.event },
+	}
+	const finish = (view, spend) => {
+		addToJobSummary(renderJobSummary(view))
+		setOutput("outcome", view.outcome)
+		setOutput("should-fail", String(stepShouldFail(env.TC_ACTION_BUILD_EFFECT, view.outcome)))
+		postCheck(view.outcome, view, sha)
+		if (spend) markPlanSpent(approvedPlan?.id, consumedMarker)
+		if (plan.context.pr) postComment(plan.context.pr, { ...view, consumedMarker: spend ? consumedMarker : "" })
+		process.exit(0)
+	}
+	const unavailable = (reason, detail) =>
+		finish({ ...base, outcome: OUTCOMES.COULD_NOT_RUN, answer: renderCasesUnavailable(reason, detail) }, false)
+
+	if (save.mode !== "exact") return unavailable(save.reason)
+	// Anything unexpected is reported too: a plain go must never turn into a new generate run.
+	try {
+		saveExactly(plan, save, sha, base, finish, unavailable)
+	} catch (e) {
+		unavailable("save-failed", redactSecrets(String(e?.message ?? e), secretsNow()))
+	}
+}
+
+function saveExactly(plan, save, sha, base, finish, unavailable) {
+	const picked = pickCasesArtifact(gh(["api", `repos/${REPO}/actions/runs/${save.runId}/artifacts?per_page=100`]), save.runId)
+	if (picked.error) return unavailable(picked.error)
+
+	const dir = mkdtempSync(join(REPORT_DIR, "tc-approved-cases-"))
+	const got = runGh(["run", "download", save.runId, "-R", REPO, "-n", CASES_ARTIFACT, "-D", dir], { token: env.GH_TOKEN })
+	if (got.status !== 0) return unavailable("download-failed")
+	const subject = checkCasesSubject(readOptional(join(dir, CASES_SUBJECT_FILE)), { repo: REPO, sha })
+	if (!subject.ok) return unavailable(subject.why)
+	const casesFile = join(dir, CASES_DATA_FILE)
+	// The destination comes from the approved file itself, so the cases go where the plan said.
+	const where = readCasesDestination(readOptional(casesFile))
+	if (where.error) return unavailable(where.error)
+
+	notice(`Test Companion: saving the approved plan's cases from run ${save.runId} to ${where.folder} in ${where.project}.`)
+	const r = spawnSync(TC_PATH, ["tm", "add", "--from-file", casesFile, "--json"], {
+		encoding: "utf8",
+		env: childEnvFor(env),
+		timeout: 300_000,
+	})
+	const report = parseTmAddReport(r.stdout)
+	if (!report) {
+		const why = String(r.stderr ?? "").trim().split("\n").filter(Boolean).at(-1)
+		return unavailable("save-failed", redactSecrets(why, secretsNow()))
+	}
+	const { outcome, spend } = exactSaveOutcome(report, OUTCOMES)
+	finish({ ...base, outcome, summary: { ...base.summary, ...exactSaveSummary(report, where) }, answer: renderExactSave(report, where) }, spend)
+}
+
 /** The binding a comment is asking for, or the one bound to the event. */
 function pickBinding(doc, workflow) {
 	const list = (doc?.bindings ?? []).filter((b) => b.enabled)
@@ -1379,12 +1694,18 @@ function markPlanSpent(planId, marker) {
 	gh(["api", `repos/${REPO}/issues/comments/${planId}`, "--method", "PATCH", "--input", "-"], { body: `${body}\n\n${marker}` })
 }
 
+/**
+ * One reply per request: a run asked for in a comment gets its own report, keyed to that
+ * comment. Automatic runs, with no request to answer, keep one status comment per PR updated.
+ */
 function postComment(pr, view) {
+	const requestId = env.GITHUB_EVENT_NAME === "issue_comment" ? readEvent().comment?.id : undefined
 	// --slurp: without it gh prints one array per page and JSON.parse fails.
 	const existing = flattenPages(gh(["api", `repos/${REPO}/issues/${pr}/comments`, "--paginate", "--slurp"]))
-	const choice = chooseCommentAction(existing, botLogin)
+	const choice = chooseCommentAction(existing, botLogin, { requestId })
 	// An approved proposal must stop looking like one.
-	const body = { body: renderComment(view) + (view.consumedMarker ? `\n${view.consumedMarker}` : "") }
+	const marker = requestMarkerFor(requestId)
+	const body = { body: renderComment(view, marker) + (view.consumedMarker ? `\n${view.consumedMarker}` : "") }
 	if (choice.action === "update") {
 		gh(["api", `repos/${REPO}/issues/comments/${choice.id}`, "--method", "PATCH", "--input", "-"], body)
 	} else {

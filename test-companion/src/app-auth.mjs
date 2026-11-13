@@ -28,8 +28,51 @@ export function jwtClaims(appId, nowSeconds) {
  * and GitHub accepts an App's JWT only as `Authorization: Bearer`.
  * Returns { ok, status, data, reason }; `reason` is GitHub's message, never the JWT.
  */
-export async function appApi(path, { jwt, method = "GET", body, apiUrl, fetchImpl = fetch } = {}) {
+export async function appApi(
+	path,
+	{ jwt, method = "GET", body, apiUrl, fetchImpl = fetch, attempts = 3, sleep = defaultSleep, timeoutMs = APP_CALL_TIMEOUT_MS } = {},
+) {
+	let result
+	for (let attempt = 1; attempt <= attempts; attempt++) {
+		result = await appApiOnce(path, { jwt, method, body, apiUrl, fetchImpl, timeoutMs })
+		if (!isRetryable(result) || attempt === attempts) return { ...result, attempts: attempt }
+		await sleep(retryDelayMs(result, attempt))
+	}
+	return { ...result, attempts }
+}
+
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** One App call gives up after this long; a timeout counts as a network error, so it is retried. */
+export const APP_CALL_TIMEOUT_MS = 10_000
+
+/** A network failure, a 5xx or a 429 may pass on a second try; 401/403/404/422 never will. */
+export function isRetryable(result) {
+	const status = Number(result?.status)
+	return status === 0 || status === 429 || (status >= 500 && status <= 599)
+}
+
+/** 1s, then 3s; a Retry-After from GitHub wins, capped at 10s. */
+export function retryDelayMs(result, attempt) {
+	const after = Number(result?.retryAfter)
+	if (Number.isFinite(after) && after > 0) return Math.min(after, 10) * 1000
+	return attempt === 1 ? 1000 : 3000
+}
+
+async function appApiOnce(path, { jwt, method, body, apiUrl, fetchImpl, timeoutMs }) {
 	const base = String(apiUrl || "https://api.github.com").replace(/\/+$/, "")
+	// Without a limit a stalled connection waits ~5 minutes, and each retry again. Covers the
+	// body too; aborting rejects fetch, which reads below as a network error and is retried.
+	const controller = new AbortController()
+	const timer = setTimeout(() => controller.abort(new Error(`no reply within ${timeoutMs / 1000}s`)), timeoutMs)
+	try {
+		return await appApiCall(base, path, { jwt, method, body, fetchImpl, signal: controller.signal })
+	} finally {
+		clearTimeout(timer)
+	}
+}
+
+async function appApiCall(base, path, { jwt, method, body, fetchImpl, signal }) {
 	let response
 	try {
 		response = await fetchImpl(`${base}/${path}`, {
@@ -41,13 +84,15 @@ export async function appApi(path, { jwt, method = "GET", body, apiUrl, fetchImp
 				...(body === undefined ? {} : { "Content-Type": "application/json" }),
 			},
 			body: body === undefined ? undefined : JSON.stringify(body),
+			signal,
 		})
 	} catch (e) {
 		return { ok: false, status: 0, data: undefined, reason: `could not reach GitHub: ${e?.message ?? e}` }
 	}
 	const data = await response.json().catch(() => undefined)
 	const reason = response.ok ? "" : `${data?.message || response.statusText || "no detail from GitHub"} (HTTP ${response.status})`
-	return { ok: response.ok, status: response.status, data, reason }
+	const retryAfter = response.headers?.get?.("retry-after") ?? undefined
+	return { ok: response.ok, status: response.status, data, reason, ...(retryAfter ? { retryAfter } : {}) }
 }
 
 /** What to log when looking up the App's installation on this repository fails. */

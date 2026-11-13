@@ -7,6 +7,8 @@ import {
 	signJwt,
 	installationTokenRequest,
 	appApi,
+	isRetryable,
+	retryDelayMs,
 	installationLookupMessage,
 } from "../src/app-auth.mjs"
 
@@ -107,7 +109,7 @@ describe("appApi", () => {
 		const r = await appApi("repos/o/r/installation", { jwt: "J", fetchImpl: fakeFetch(200, { id: 7 }, seen) })
 		assert.equal(seen.init.headers.Authorization, "Bearer J")
 		assert.equal(seen.url, "https://api.github.com/repos/o/r/installation")
-		assert.deepEqual(r, { ok: true, status: 200, data: { id: 7 }, reason: "" })
+		assert.deepEqual(r, { ok: true, status: 200, data: { id: 7 }, reason: "", attempts: 1 })
 	})
 
 	test("uses the server's API address when given", async () => {
@@ -132,7 +134,7 @@ describe("appApi", () => {
 	})
 
 	test("a network failure is reported, not thrown", async () => {
-		const r = await appApi("x", { jwt: "J", fetchImpl: async () => { throw new Error("ECONNRESET") } })
+		const r = await appApi("x", { jwt: "J", sleep: async () => {}, fetchImpl: async () => { throw new Error("ECONNRESET") } })
 		assert.equal(r.ok, false)
 		assert.equal(r.status, 0)
 		assert.match(r.reason, /ECONNRESET/)
@@ -151,5 +153,100 @@ describe("installationLookupMessage", () => {
 		assert.equal(m.level, "warning")
 		assert.match(m.text, /A JSON web token could not be decoded \(HTTP 401\)/)
 		assert.doesNotMatch(m.text, /not installed/)
+	})
+})
+
+describe("appApi retries a passing failure", () => {
+	// A response whose status and body change call by call; `throws` makes that call a network error.
+	const sequence = (steps) => {
+		let i = 0
+		const fetchImpl = async () => {
+			const step = steps[Math.min(i++, steps.length - 1)]
+			if (step.throws) throw new Error(step.throws)
+			return {
+				ok: step.status >= 200 && step.status < 300,
+				status: step.status,
+				statusText: "",
+				headers: { get: (h) => (h.toLowerCase() === "retry-after" ? (step.retryAfter ?? null) : null) },
+				json: async () => step.body ?? {},
+			}
+		}
+		return { fetchImpl, calls: () => i }
+	}
+	const noSleep = []
+	const sleep = async (ms) => {
+		noSleep.push(ms)
+	}
+
+	test("a network error, then success", async () => {
+		const s = sequence([{ throws: "fetch failed" }, { status: 200, body: { id: 7 } }])
+		const r = await appApi("x", { jwt: "J", fetchImpl: s.fetchImpl, sleep })
+		assert.equal(r.ok, true)
+		assert.equal(r.attempts, 2)
+		assert.equal(s.calls(), 2)
+	})
+
+	test("a 502, then success", async () => {
+		const s = sequence([{ status: 502 }, { status: 201, body: { token: "t" } }])
+		const r = await appApi("x", { jwt: "J", method: "POST", body: {}, fetchImpl: s.fetchImpl, sleep })
+		assert.equal(r.ok, true)
+		assert.equal(r.data.token, "t")
+		assert.equal(r.attempts, 2)
+	})
+
+	test("401, 403, 404 and 422 are never retried", async () => {
+		for (const status of [401, 403, 404, 422]) {
+			const s = sequence([{ status, body: { message: "no" } }, { status: 200 }])
+			const r = await appApi("x", { jwt: "J", fetchImpl: s.fetchImpl, sleep })
+			assert.equal(r.ok, false, String(status))
+			assert.equal(s.calls(), 1, String(status))
+		}
+	})
+
+	test("three failures in a row give up with the last failure, as before", async () => {
+		const s = sequence([{ throws: "fetch failed" }])
+		const r = await appApi("x", { jwt: "J", fetchImpl: s.fetchImpl, sleep })
+		assert.equal(r.ok, false)
+		assert.equal(r.status, 0)
+		assert.equal(r.attempts, 3)
+		assert.equal(s.calls(), 3)
+		assert.match(r.reason, /could not reach GitHub: fetch failed/)
+		assert.match(installationLookupMessage(r).text, /could not sign in as the GitHub App \(could not reach GitHub: fetch failed\)/)
+	})
+
+	test("waits 1s then 3s, and a Retry-After wins, capped at 10s", () => {
+		assert.equal(retryDelayMs({ status: 0 }, 1), 1000)
+		assert.equal(retryDelayMs({ status: 502 }, 2), 3000)
+		assert.equal(retryDelayMs({ status: 429, retryAfter: "2" }, 1), 2000)
+		assert.equal(retryDelayMs({ status: 429, retryAfter: "120" }, 1), 10000)
+	})
+
+	test("only network errors, 429 and 5xx are worth another try", () => {
+		assert.equal(isRetryable({ status: 0 }), true)
+		assert.equal(isRetryable({ status: 429 }), true)
+		assert.equal(isRetryable({ status: 503 }), true)
+		for (const status of [200, 201, 401, 403, 404, 422]) assert.equal(isRetryable({ status }), false, String(status))
+	})
+})
+
+describe("appApi gives each call a time limit", () => {
+	test("every request carries an abort signal", async () => {
+		let seen
+		await appApi("x", { jwt: "J", fetchImpl: async (_u, init) => ((seen = init), { ok: true, status: 200, json: async () => ({}) }) })
+		assert.ok(seen.signal instanceof AbortSignal)
+	})
+
+	test("a call that stalls is aborted, counted as a network error and retried", async () => {
+		let calls = 0
+		const fetchImpl = (_u, init) =>
+			new Promise((_resolve, reject) => {
+				calls++
+				init.signal.addEventListener("abort", () => reject(init.signal.reason))
+			})
+		const r = await appApi("x", { jwt: "J", fetchImpl, sleep: async () => {}, timeoutMs: 5 })
+		assert.equal(r.ok, false)
+		assert.equal(r.status, 0)
+		assert.match(r.reason, /no reply within/)
+		assert.equal(calls, 3)
 	})
 })

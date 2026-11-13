@@ -234,6 +234,18 @@ runs:
               path: ${{ steps.run.outputs.result-file }}
               if-no-files-found: ignore
 
+        # A generate plan's cases as data. Approving the plan saves exactly these, so nothing
+        # is generated again. Only a plan sets cases-dir.
+        - name: Keep the planned test cases for approval
+          if: always() && steps.run.outputs.cases-dir != ''
+          # v4.6.2, pinned to a commit: a tag can be repointed.
+          uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+          with:
+              name: test-companion-cases
+              path: ${{ steps.run.outputs.cases-dir }}
+              if-no-files-found: ignore
+              retention-days: 7
+
         # Matters on a self-hosted runner, which outlives the job.
         - name: Take gh's credentials back off the runner
           if: always()

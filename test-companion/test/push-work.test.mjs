@@ -1,13 +1,14 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
-import { execFileSync } from "node:child_process"
-import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs"
+import { execFileSync, spawnSync } from "node:child_process"
+import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import {
 	shouldPushWork,
 	changedPaths,
 	splitPushable,
+	splitHandoffPaths,
 	renderPushNote,
 	authoredByUs,
 	needsCheckout,
@@ -23,6 +24,22 @@ import {
 	GIT_SAFE_ARGS,
 	pushUrlFor,
 	BOT_EMAIL,
+	handedOffPrRequest,
+	commitIdentity,
+	savingFor,
+	leaveOut,
+	checkHandoffDescends,
+	REWROTE_HISTORY,
+	leaveOutMessage,
+	classifyHandoffPush,
+	pushFailureReason,
+	existingHandoffPr,
+	nextHandoffStep,
+	draftRejected,
+	handoffReport,
+	codeSpan,
+	listFiles,
+	APP_SLUGS,
 } from "../src/push-work.mjs"
 
 const live = { preview: false, sameRepo: true, branch: "feat/x", headAuthorEmail: "dev@example.com", onWantedCommit: true }
@@ -643,5 +660,444 @@ describe("splitPushable refuses .github and symlinks", () => {
 		const { push, skip } = splitPushable(["tests/fixtures/link", "tests/a.spec.ts"], { isSymlink })
 		assert.deepEqual(push, ["tests/a.spec.ts"])
 		assert.deepEqual(skip, ["tests/fixtures/link"])
+	})
+})
+
+describe("jobs that don't produce code never push", () => {
+	const live = { preview: false, sameRepo: true, branch: "feature/x", onWantedCommit: true, defaultBranch: "main" }
+
+	for (const workflow of ["generate", "rca", "verdict", "validate"]) {
+		test(`${workflow} saves nothing to the branch`, () => {
+			const out = shouldPushWork({ ...live, workflow })
+			assert.equal(out.ok, false)
+			assert.match(out.why, /does not change code/)
+		})
+	}
+
+	test("a job that writes code still may", () => {
+		assert.equal(shouldPushWork({ ...live, workflow: "test-pr" }).ok, true)
+		assert.equal(shouldPushWork({ ...live, workflow: "fix" }).ok, true)
+	})
+})
+
+describe("BrowserStack tooling's by-products are never committed", () => {
+	test("browserstack.err and .browserstack files are skipped", () => {
+		const { push, skip } = splitPushable(["browserstack.err", ".browserstack-local.json", "src/a.test.ts", "nested/browserstack.err"])
+		assert.deepEqual(push, ["src/a.test.ts"])
+		assert.deepEqual(skip, ["browserstack.err", ".browserstack-local.json", "nested/browserstack.err"])
+	})
+})
+
+describe("handedOffPrRequest — a fix asked for on a pull request targets that pull request", () => {
+	const req = { workflow: "fix", branch: "tc/fix/abc", base: "main", title: "tc fix: abc", body: "What changed." }
+
+	test("on a pull request: base is its branch, a draft, a title that names it", () => {
+		const out = handedOffPrRequest({ req, pr: "42", prBranch: "feat/cart", defaultBranch: "main" })
+		assert.equal(out.base, "feat/cart")
+		assert.equal(out.head, "tc/fix/abc")
+		assert.equal(out.draft, true)
+		assert.equal(out.title, "Test Companion fix for #42")
+		assert.match(out.body, /Requested on #42\./)
+	})
+
+	test("the title names the job from the hand-off, not the plan", () => {
+		const out = handedOffPrRequest({ req: { ...req, workflow: "automate" }, pr: "42", prBranch: "feat/cart" })
+		assert.equal(out.title, "Test Companion automate for #42")
+	})
+
+	test("if the run didn't start on the pull request's commit, the default branch is the base", () => {
+		const out = handedOffPrRequest({ req, pr: "42", prBranch: "feat/cart", defaultBranch: "main", onReviewedCommit: false })
+		assert.equal(out.base, "main")
+	})
+
+	test("without a pull request: the default branch, the CLI's own title", () => {
+		const out = handedOffPrRequest({ req, defaultBranch: "main" })
+		assert.equal(out.base, "main")
+		assert.equal(out.title, "tc fix: abc")
+		assert.equal(out.draft, true)
+	})
+
+	test("no default branch known: the CLI's base", () => {
+		assert.equal(handedOffPrRequest({ req, workflow: "automate" }).base, "main")
+	})
+})
+
+describe("commitIdentity — commits are credited to the App when acting as it", () => {
+	test("the App's bot account, with the noreply email GitHub links to it", () => {
+		assert.deepEqual(commitIdentity({ appSlug: "browserstack", appUserId: "355331011" }), {
+			name: "browserstack[bot]",
+			email: "355331011+browserstack[bot]@users.noreply.github.com",
+		})
+	})
+
+	test("without the App, or without its id, the fixed identity", () => {
+		assert.deepEqual(commitIdentity(), { name: "Test Companion", email: BOT_EMAIL })
+		assert.deepEqual(commitIdentity({ appSlug: "browserstack", appUserId: "" }), { name: "Test Companion", email: BOT_EMAIL })
+		assert.deepEqual(commitIdentity({ appSlug: "browserstack", appUserId: "not-a-number" }), { name: "Test Companion", email: BOT_EMAIL })
+	})
+
+	test("the loop guard knows the App's commits are ours too", () => {
+		const app = "355331011+browserstack[bot]@users.noreply.github.com"
+		assert.equal(authoredByUs(app, [app]), true)
+		assert.equal(authoredByUs(BOT_EMAIL), true)
+		assert.equal(authoredByUs("dev@example.com", [app]), false)
+		assert.equal(authoredByUs("", [""]), false)
+	})
+})
+
+describe("splitHandoffPaths — a handed-back branch", () => {
+	test("tool by-products are dropped, not a reason to refuse", () => {
+		const { refused, dropped } = splitHandoffPaths(["src/a.ts", "browserstack.err", ".browserstack-cache/x", "run.log"])
+		assert.deepEqual(refused, [])
+		assert.deepEqual(dropped, ["browserstack.err", ".browserstack-cache/x", "run.log"])
+	})
+
+	test(".github files and symlinks still refuse the branch", () => {
+		const { refused, dropped } = splitHandoffPaths([".github/workflows/x.yml", "link", "browserstack.err"], {
+			isSymlink: (p) => p === "link",
+		})
+		assert.deepEqual(refused, [".github/workflows/x.yml", "link"])
+		assert.deepEqual(dropped, ["browserstack.err"])
+	})
+
+	test("ordinary files are neither refused nor dropped", () => {
+		assert.deepEqual(splitHandoffPaths(["src/a.ts", "tests/a.spec.ts"]), { refused: [], dropped: [] })
+	})
+})
+
+// A real git, with the Action's own environment, for the git-level tests below.
+function realGit(cwd) {
+	const env = gitEnvFrom(process.env)
+	return (args, extraEnv = {}, input = undefined) => {
+		const r = spawnSync("git", args, { cwd, encoding: "utf8", input, env: { ...env, ...extraEnv } })
+		return { ok: r.status === 0, out: (r.stdout ?? "").trim(), err: (r.stderr ?? "").trim() }
+	}
+}
+
+function repoWithBranch(files) {
+	const dir = mkdtempSync(join(tmpdir(), "tc-leaveout-"))
+	const git = realGit(dir)
+	const id = ["-c", "user.name=t", "-c", "user.email=t@example.com"]
+	const must = (args) => {
+		const r = git(args)
+		assert.ok(r.ok, `${args.join(" ")}: ${r.err}`)
+		return r.out
+	}
+	must(["init", "-q"])
+	writeFileSync(join(dir, "a.ts"), "old\n")
+	must(["add", "a.ts"])
+	must([...id, "commit", "-qm", "base"])
+	const base = must(["rev-parse", "HEAD"])
+	for (const [name, content] of Object.entries(files)) {
+		mkdirSync(dirname(join(dir, name)), { recursive: true })
+		writeFileSync(join(dir, name), content)
+	}
+	must(["add", "--", ...Object.keys(files)])
+	must([...id, "commit", "-qm", "work"])
+	return { dir, git, base, tip: must(["rev-parse", "HEAD"]) }
+}
+
+describe("leaveOut — by-products never reach the pushed branch", () => {
+	const identity = { name: "Test Companion", email: BOT_EMAIL }
+
+	test("one commit on the base: the work survives, the by-product is in no pushed commit", () => {
+		const { dir, git, base, tip } = repoWithBranch({ "a.ts": "new\n", "browserstack.err": "[object Object]", ".env": "KEY=secret" })
+		const out = leaveOut({ git, base, tip, paths: ["browserstack.err", ".env"], identity, message: "m", indexFile: join(dir, "scratch") })
+		assert.ok(out.sha, JSON.stringify(out))
+		// Only the new commit between base and the head: the agent's commit is not reachable.
+		assert.deepEqual(git(["rev-list", `${base}..${out.sha}`]).out.split("\n"), [out.sha])
+		assert.equal(git(["diff", "--name-only", base, out.sha]).out, "a.ts")
+		assert.equal(git(["show", `${out.sha}:a.ts`]).out, "new")
+		assert.equal(git(["cat-file", "-e", `${out.sha}:browserstack.err`]).ok, false)
+		assert.equal(git(["cat-file", "-e", `${out.sha}:.env`]).ok, false)
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("a file named like pathspec magic is treated as a file name", () => {
+		const { dir, git, base, tip } = repoWithBranch({ "a.ts": "new\n", ":!keep/.env": "KEY=secret" })
+		const out = leaveOut({ git, base, tip, paths: [":!keep/.env"], identity, message: "m", indexFile: join(dir, "scratch") })
+		assert.ok(out.sha, JSON.stringify(out))
+		assert.equal(git(["show", `${out.sha}:a.ts`]).out, "new", "the work was reset along with the by-product")
+		assert.equal(git(["diff", "--name-only", base, out.sha]).out, "a.ts")
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("when the by-products were the only changes, it says so and makes no commit", () => {
+		const { dir, git, base, tip } = repoWithBranch({ "browserstack.err": "[object Object]" })
+		assert.deepEqual(
+			leaveOut({ git, base, tip, paths: ["browserstack.err"], identity, message: "m", indexFile: join(dir, "scratch") }),
+			{ empty: true },
+		)
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("the commit message names the job and the left-out files, capped", () => {
+		const many = Array.from({ length: 12 }, (_, i) => `log/${i}.log`)
+		const msg = leaveOutMessage("Fix the cart total", many)
+		assert.match(msg, /^Fix the cart total\n\nLeft out/)
+		assert.match(msg, /and 2 more$/)
+	})
+})
+
+describe("leaveOut always squashes the agent's history", () => {
+	const identity = { name: "Test Companion", email: BOT_EMAIL }
+
+	test("a .env added then deleted in the agent's commits is in no pushed commit, and the author is ours", () => {
+		const { dir, git, base } = repoWithBranch({ "a.ts": "new\n", ".env": "KEY=secret" })
+		const id = ["-c", "user.name=agent", "-c", "user.email=agent@example.com"]
+		assert.ok(git(["rm", "-q", "--", ".env"]).ok)
+		assert.ok(git([...id, "commit", "-qm", "drop env"]).ok)
+		const tip = git(["rev-parse", "HEAD"]).out
+		// Nothing to leave out in the final tree, but the history still holds .env.
+		const out = leaveOut({ git, base, tip, paths: [], identity, message: "m", indexFile: join(dir, "scratch") })
+		assert.ok(out.sha, JSON.stringify(out))
+		const range = git(["rev-list", `${base}..${out.sha}`]).out.split("\n")
+		assert.deepEqual(range, [out.sha])
+		for (const c of range) assert.equal(git(["cat-file", "-e", `${c}:.env`]).ok, false)
+		assert.equal(git(["log", "-1", "--format=%an <%ae>", out.sha]).out, `Test Companion <${BOT_EMAIL}>`)
+		assert.equal(git(["show", `${out.sha}:a.ts`]).out, "new")
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("a branch with no net change is reported as empty", () => {
+		const { dir, git, base } = repoWithBranch({ "a.ts": "new\n" })
+		writeFileSync(join(dir, "a.ts"), "old\n")
+		assert.ok(git(["-c", "user.name=agent", "-c", "user.email=agent@example.com", "commit", "-qam", "undo"]).ok)
+		const tip = git(["rev-parse", "HEAD"]).out
+		assert.deepEqual(leaveOut({ git, base, tip, paths: [], identity, message: "m", indexFile: join(dir, "scratch") }), { empty: true })
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("an agent-chosen file name can't add a trailer to the commit message", () => {
+		const msg = leaveOutMessage("Fix\n\nCo-authored-by: x <a@b>", ["x\n\nCo-authored-by: Someone <a@b>"])
+		assert.equal(msg.split("\n").some((line) => /^co-authored-by:/i.test(line)), false)
+		assert.match(msg, /^Fix Co-authored-by: x <a@b>\n/)
+	})
+
+	test("with nothing left out, the message is just the title", () => {
+		assert.equal(leaveOutMessage("Fix the cart total", []), "Fix the cart total")
+	})
+})
+
+describe("handing back a pull request: what happened, and what to do next", () => {
+	test("an ordinary rejection means the branch is already there", () => {
+		const err = "To https://github.com/o/r.git\n ! [rejected]        abc -> tc/fix/abc (non-fast-forward)\nerror: failed to push"
+		assert.equal(classifyHandoffPush({ ok: false, err }), "already")
+		assert.equal(classifyHandoffPush({ ok: false, err: " ! [rejected]        abc -> b (fetch first)" }), "already")
+	})
+
+	test("a remote rejection (protection rule, missing permission) means nothing was pushed", () => {
+		const err = " ! [remote rejected] abc -> tc/fix/abc (refusing to allow a GitHub App to create or update workflow)"
+		assert.equal(classifyHandoffPush({ ok: false, err }), "failed")
+		assert.equal(classifyHandoffPush({ ok: false, err: "fatal: unable to access" }), "failed")
+		assert.equal(classifyHandoffPush({ ok: true }), "pushed")
+	})
+
+	test("an open pull request wins; a closed or merged one is reported, never reopened", () => {
+		const open = { state: "open", html_url: "https://x/1" }
+		const closed = { state: "closed", html_url: "https://x/2", merged_at: null }
+		const merged = { state: "closed", html_url: "https://x/3", merged_at: "2026-01-01" }
+		assert.deepEqual(existingHandoffPr([closed, open]), { kind: "open", url: "https://x/1" })
+		assert.deepEqual(existingHandoffPr([closed]), { kind: "closed", url: "https://x/2" })
+		assert.deepEqual(existingHandoffPr([merged]), { kind: "merged", url: "https://x/3" })
+		assert.deepEqual(existingHandoffPr([]), { kind: "none" })
+	})
+
+	test("next step for each push outcome", () => {
+		assert.deepEqual(nextHandoffStep("failed"), { action: "stop" })
+		assert.deepEqual(nextHandoffStep("pushed"), { action: "create", earlier: false })
+		assert.deepEqual(nextHandoffStep("already", { kind: "none" }), { action: "create", earlier: true })
+		assert.deepEqual(nextHandoffStep("already", { kind: "closed", url: "u" }), { action: "report", kind: "closed", url: "u" })
+		assert.deepEqual(nextHandoffStep("already", { kind: "open", url: "u" }), { action: "report", kind: "open", url: "u" })
+	})
+
+	test("the report never claims a push or reopens closed work", () => {
+		assert.match(handoffReport({ action: "report", kind: "open", url: "u" }), /^\*\*Already done:\*\* .*already open: u\.$/)
+		const closed = handoffReport({ action: "report", kind: "closed", url: "u" })
+		assert.match(closed, /was closed: u\. Push a new commit/)
+		assert.match(handoffReport({ action: "report", kind: "merged", url: "u" }), /was merged: u\./)
+		const stop = handoffReport({ action: "stop" }, { branch: "tc/fix/abc" })
+		assert.match(stop, /^\*\*Could not push `tc\/fix\/abc`\.\*\*$/)
+		assert.doesNotMatch(stop, /Pushed/)
+	})
+
+	test("a draft rejection is recognised; other failures are not", () => {
+		assert.equal(draftRejected({ status: 1, stderr: "Draft pull requests are not supported in this repository" }), true)
+		assert.equal(draftRejected({ status: 1, stderr: "Validation Failed: No commits between" }), false)
+		assert.equal(draftRejected({ status: 0, stdout: "{}" }), false)
+	})
+})
+
+describe("git reads file names literally", () => {
+	test("the Action's git environment turns pathspec magic off", () => {
+		assert.equal(gitEnvFrom({}).GIT_LITERAL_PATHSPECS, "1")
+	})
+
+	test("adding a file named `:!x` stages only that file", () => {
+		const dir = mkdtempSync(join(tmpdir(), "tc-literal-"))
+		const git = realGit(dir)
+		assert.ok(git(["init", "-q"]).ok)
+		writeFileSync(join(dir, ":!x"), "1")
+		writeFileSync(join(dir, ".env"), "KEY=secret")
+		assert.ok(git(["add", "--", ":!x"]).ok)
+		assert.equal(git(["diff", "--cached", "--name-only"]).out, ":!x")
+		rmSync(dir, { recursive: true, force: true })
+	})
+})
+
+describe("savingFor — the job the pipeline chose still decides", () => {
+	test("an event run that turned out to be generate saves nothing, quietly", () => {
+		const out = savingFor({ ok: true }, "generate")
+		assert.equal(out.ok, false)
+		assert.equal(out.quiet, true)
+	})
+
+	test("a job that writes code keeps the earlier decision", () => {
+		assert.deepEqual(savingFor({ ok: true }, "test-pr"), { ok: true })
+		assert.deepEqual(savingFor({ ok: false, why: "x" }, undefined), { ok: false, why: "x" })
+	})
+
+	test("shouldPushWork marks the no-code refusal quiet", () => {
+		assert.equal(shouldPushWork({ ...live, workflow: "rca" }).quiet, true)
+		assert.equal(shouldPushWork({ ...live, preview: true }).quiet, undefined)
+	})
+})
+
+describe("authoredByUs — the App's commits are ours whatever this run is", () => {
+	test("the App's noreply email is recognised without this run's identity", () => {
+		assert.equal(authoredByUs("355331011+browserstack[bot]@users.noreply.github.com"), true)
+		assert.ok(APP_SLUGS.includes("browserstack"))
+	})
+
+	test("another app's bot is not ours", () => {
+		assert.equal(authoredByUs("49699333+dependabot[bot]@users.noreply.github.com"), false)
+	})
+
+	test("this run's own identity, compared trimmed and in any case", () => {
+		assert.equal(authoredByUs("Me@Example.com", ["  me@example.com "]), true)
+		assert.equal(authoredByUs("", [""]), false)
+	})
+})
+
+describe("file names in comments", () => {
+	test("a plain name is ordinary code", () => {
+		assert.equal(codeSpan("src/a.ts"), "`src/a.ts`")
+	})
+
+	test("a backtick in the name can't break out of the code span", () => {
+		assert.equal(codeSpan("a`b"), "`` a`b ``")
+		assert.equal(codeSpan("x``y"), "``` x``y ```")
+	})
+
+	test("newlines in a name are flattened", () => {
+		assert.equal(codeSpan("a\nb"), "`a b`")
+	})
+
+	test("lists stop at 10 names", () => {
+		const names = Array.from({ length: 13 }, (_, i) => `f${i}`)
+		const out = listFiles(names)
+		assert.equal(out.split(", ").length, 11)
+		assert.match(out, /and 3 more$/)
+	})
+})
+
+describe("hand-off: failed lookups and push reasons", () => {
+	test("a failed PR lookup is unknown, and stops rather than opening a pull request", () => {
+		assert.deepEqual(existingHandoffPr(null), { kind: "unknown" })
+		assert.deepEqual(existingHandoffPr({ message: "Not Found" }), { kind: "unknown" })
+		const step = nextHandoffStep("already", existingHandoffPr(null))
+		assert.deepEqual(step, { action: "stop", unknown: true })
+		assert.match(handoffReport(step, { branch: "tc/fix/abc" }), /could not check whether that run's pull request was closed/)
+	})
+
+	test("a server-side refusal reports the rule, not git's generic last line", () => {
+		const err = [
+			"remote: error: GH013: Repository rule violations found for refs/heads/tc/fix/abc.",
+			"To https://github.com/o/r.git",
+			" ! [remote rejected] abc -> tc/fix/abc (push declined due to repository rule violations)",
+			"error: failed to push some refs to 'https://github.com/o/r.git'",
+		].join("\n")
+		assert.match(pushFailureReason(err), /^! \[remote rejected\].*repository rule violations/)
+	})
+
+	test("a hook refusal without [remote rejected] falls back to the remote error line", () => {
+		const err = "remote: error: commits must be signed\nerror: failed to push some refs to 'x'"
+		assert.equal(pushFailureReason(err), "remote: error: commits must be signed")
+	})
+
+	test("fatal lines and plain last lines are used when nothing better is there", () => {
+		assert.equal(pushFailureReason("fatal: unable to access 'x': 403\n"), "fatal: unable to access 'x': 403")
+		assert.equal(pushFailureReason("something odd"), "something odd")
+		assert.equal(pushFailureReason(""), "")
+	})
+})
+
+describe("leaveOut on a git without --no-refresh", () => {
+	test("retries the reset without the option", () => {
+		const calls = []
+		const git = (args, _env, input) => {
+			calls.push(args)
+			if (args[0] === "reset" && args.includes("--no-refresh")) return { ok: false, err: "error: unknown option `no-refresh'" }
+			if (args[0] === "write-tree") return { ok: true, out: "tree2" }
+			if (args[0] === "rev-parse") return { ok: true, out: "tree1" }
+			if (args.includes("commit-tree")) return { ok: true, out: "sha2" }
+			return { ok: true, out: "" }
+		}
+		const r = leaveOut({ git, base: "b", tip: "t", paths: ["browserstack.err"], identity: { name: "n", email: "e" }, message: "m", indexFile: "/tmp/x" })
+		assert.deepEqual(r, { sha: "sha2" })
+		assert.equal(calls.filter((a) => a[0] === "reset").length, 2)
+		assert.ok(!calls.filter((a) => a[0] === "reset")[1].includes("--no-refresh"))
+	})
+})
+
+describe("a hand-off branch must build on the reviewed commit", () => {
+	const identity = { name: "Test Companion", email: BOT_EMAIL }
+	const id = ["-c", "user.name=t", "-c", "user.email=t@example.com"]
+
+	// main → R (the reviewed PR head, with the PR's own work in a.ts and tests).
+	function reviewedRepo() {
+		const { dir, git, base: main, tip: reviewed } = repoWithBranch({ "a.ts": "fixed\n", "a.test.ts": "ten tests\n" })
+		const must = (args) => {
+			const r = git(args)
+			assert.ok(r.ok, `${args.join(" ")}: ${r.err}`)
+			return r.out
+		}
+		return { dir, git, must, main, reviewed }
+	}
+
+	test("an agent that reset past the reviewed commit is refused", () => {
+		const { dir, git, must, main, reviewed } = reviewedRepo()
+		// What the agent did on the pilot: `git reset HEAD^`, then committed on its own branch.
+		must(["checkout", "-q", "-b", "tc/fix/x", reviewed])
+		must(["reset", "-q", "--hard", main])
+		writeFileSync(join(dir, "a.ts"), "old again\n")
+		must(["add", "a.ts"])
+		must([...id, "commit", "-qm", "undo"])
+		const tip = must(["rev-parse", "HEAD"])
+		assert.deepEqual(checkHandoffDescends({ git, reviewed, tip }), { refused: true })
+		assert.match(REWROTE_HISTORY, /doesn't build on the commit that was reviewed/)
+	})
+
+	test("an agent that builds on the reviewed commit is accepted, and the squash sits on it", () => {
+		const { dir, git, must, reviewed } = reviewedRepo()
+		must(["checkout", "-q", "-b", "tc/fix/y", reviewed])
+		writeFileSync(join(dir, "a.ts"), "fixed better\n")
+		writeFileSync(join(dir, "browserstack.err"), "[object Object]")
+		must(["add", "a.ts", "browserstack.err"])
+		must([...id, "commit", "-qm", "fix"])
+		const tip = must(["rev-parse", "HEAD"])
+		assert.deepEqual(checkHandoffDescends({ git, reviewed, tip }), { ok: true })
+		const out = leaveOut({ git, base: reviewed, tip, paths: ["browserstack.err"], identity, message: "m", indexFile: join(dir, "scratch") })
+		assert.ok(out.sha, JSON.stringify(out))
+		// Parent is the reviewed commit itself, and the diff on top of it is only the agent's change.
+		assert.equal(git(["rev-parse", `${out.sha}^`]).out, reviewed)
+		assert.equal(git(["diff", "--name-only", reviewed, out.sha]).out, "a.ts")
+		assert.equal(git(["show", `${out.sha}:a.test.ts`]).out, "ten tests")
+	})
+
+	test("missing commits are refused; a git failure is reported, not taken as yes", () => {
+		assert.deepEqual(checkHandoffDescends({ git: () => ({ ok: true }), reviewed: "", tip: "t" }), { refused: true })
+		const broken = () => ({ ok: false, err: "fatal: Not a valid commit name zzz" })
+		assert.deepEqual(checkHandoffDescends({ git: broken, reviewed: "zzz", tip: "t" }), { error: "fatal: Not a valid commit name zzz" })
 	})
 })

@@ -1133,14 +1133,20 @@ describe("the report says which request it is answering", () => {
 		assert.ok(body.includes(asked), "the asking comment is not linked")
 	})
 
-	test("the link is labelled with who asked", () => {
+	test("Asked by reads `@who | #comment id`, the id linking to the asking comment", () => {
 		const body = renderJobSummary(view({ askedBy: "octocat", askedAt: asked }))
-		assert.ok(body.includes(`[@octocat](${asked})`))
+		assert.ok(body.includes(`| Asked by | @octocat \\| [#6579040229](${asked}) |`))
+	})
+
+	test("the escaped pipe keeps the table at two columns", () => {
+		const body = renderJobSummary(view({ askedBy: "octocat", askedAt: asked }))
+		const row = body.split("\n").find((l) => l.startsWith("| Asked by |"))
+		assert.equal(row.replace(/\\\|/g, "").split("|").length - 2, 2)
 	})
 
 	test("knowing who asked but not where still names them", () => {
 		const body = renderJobSummary(view({ askedBy: "octocat" }))
-		assert.ok(body.includes("@octocat"))
+		assert.ok(body.includes("| Asked by | @octocat |"))
 	})
 
 	// A run nobody asked for — opened on a pull request, a red build, a timer.
@@ -1242,5 +1248,22 @@ describe("a plan cannot choose which job its approval runs", () => {
 		assert.equal(isApprovableJob("-generate", ["-generate"]), false)
 		assert.equal(isApprovableJob("", enabled), false)
 		assert.equal(isApprovableJob("generate", undefined), false)
+	})
+})
+
+describe("a run that didn't work says why", () => {
+	test("the error line leads the comment, on one line", () => {
+		const md = renderJobSummary({ ...base, outcome: OUTCOMES.RUN_BROKE, errorLine: 'project "rag_assignment"\nnot found' })
+		assert.match(md, /> \*\*Why:\*\* project "rag_assignment" not found/)
+	})
+
+	test("a very long reason is cut", () => {
+		const md = renderJobSummary({ ...base, outcome: OUTCOMES.RUN_BROKE, errorLine: "x".repeat(1000) })
+		const why = md.split("\n").find((l) => l.startsWith("> **Why:**"))
+		assert.ok(why.length < 330)
+	})
+
+	test("no error line, no Why", () => {
+		assert.doesNotMatch(renderJobSummary(base), /\*\*Why:\*\*/)
 	})
 })

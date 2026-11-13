@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process"
 import { closeSync, constants, copyFileSync, existsSync, fstatSync, openSync, readSync, writeFileSync } from "node:fs"
 import { userInfo } from "node:os"
 import { AGENT_USER, LAUNCHER_SOURCE, sandboxLayout } from "./sandbox-policy.mjs"
+import { BOT_EMAIL, BOT_NAME } from "./push-work.mjs"
 
 const SUDO = "/usr/bin/sudo"
 
@@ -38,7 +39,7 @@ function must(r, what) {
 	return r
 }
 
-export function prepareSandbox({ repoDir, tcPath }) {
+export function prepareSandbox({ repoDir, tcPath, identity = { name: BOT_NAME, email: BOT_EMAIL } }) {
 	const layout = sandboxLayout()
 	const me = userInfo().username
 
@@ -90,7 +91,7 @@ export function prepareSandbox({ repoDir, tcPath }) {
 	// safe.directory: git refuses a repository owned by another user.
 	writeAs(
 		`${layout.home}/.gitconfig`,
-		`[safe]\n\tdirectory = ${layout.work}\n[user]\n\tname = Test Companion\n\temail = test-companion[bot]@users.noreply.github.com\n`,
+		`[safe]\n\tdirectory = ${layout.work}\n[user]\n\tname = ${identity.name}\n\temail = ${identity.email}\n`,
 		`${AGENT_USER}:${AGENT_USER}`,
 		"644",
 	)
