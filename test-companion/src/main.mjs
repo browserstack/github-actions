@@ -1,5 +1,5 @@
 /** The Action's entry point: I/O only. Decisions live in the pure modules beside it. */
-import { readFileSync, appendFileSync, writeFileSync, existsSync, rmSync, readdirSync, accessSync, mkdtempSync, lstatSync, constants } from "node:fs"
+import { readFileSync, appendFileSync, writeFileSync, existsSync, rmSync, readdirSync, accessSync, mkdtempSync, mkdirSync, lstatSync, constants } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -22,6 +22,21 @@ import { decideGate, GATE, describeChangeSize, ANSWER_JOBS } from "./gate.mjs"
 import { mayAsk, describeTestRepoAccess, pickupReactionTarget, addPickupReaction } from "./access.mjs"
 import { findTicket } from "./ticket.mjs"
 import { childEnvFor } from "./child-env.mjs"
+import {
+	approvedSavePlan,
+	pickCasesArtifact,
+	casesSubject,
+	checkCasesSubject,
+	parseTmAddReport,
+	renderCasesUnavailable,
+	renderExactSave,
+	exactSaveSummary,
+	exactSaveOutcome,
+	EDITED_GO_NOTE,
+	CASES_ARTIFACT,
+	CASES_DATA_FILE,
+	CASES_SUBJECT_FILE,
+} from "./approved-cases.mjs"
 import { canIsolate, prepareSandbox, stopSandbox, handToAgent, writeAgentEnv, readAgentFile } from "./sandbox.mjs"
 import { agentEnvFrom, asAgentCommand, checkPrHandoff, readClaimResult } from "./sandbox-policy.mjs"
 import { startRelay } from "./relay.mjs"
@@ -116,6 +131,8 @@ const RESULT_FILE = join(REPORT_DIR, "test-companion-result.md")
 
 // Must match the upload step in action.yml.
 const RESULT_ARTIFACT = "test-companion-result"
+// A generate plan's cases as data, uploaded as the CASES_ARTIFACT so approving it can save them as they are.
+const CASES_DIR = join(REPORT_DIR, "test-companion-cases")
 
 const setOutput = (k, v) => env.GITHUB_OUTPUT && appendFileSync(env.GITHUB_OUTPUT, `${k}=${v}\n`)
 const addToJobSummary = (md) => env.GITHUB_STEP_SUMMARY && appendFileSync(env.GITHUB_STEP_SUMMARY, md + "\n")
@@ -679,6 +696,16 @@ async function main() {
 					: ` Approved by @${plan.commenter}, who also asked for it.`
 				notice(`Test Companion:${approvalNote}`)
 			}
+
+			// A plain go on a generate plan saves the plan's own cases; nothing is generated again.
+			const save = approvedSavePlan({
+				workflow: plan.workflow,
+				replyText,
+				binding: pickBinding(bindings, plan.workflow),
+				runId: waiting?.runId,
+			})
+			if (save.mode === "exact" || save.mode === "unavailable") saveApprovedCases(plan, save, approvalNote)
+			if (save.edited) approvalNote = `${approvalNote} ${EDITED_GO_NOTE}`
 		} else {
 			// A large change: the run covers what matters and lists what it skipped.
 			const size = describeChangeSize(pull)
@@ -841,9 +868,9 @@ async function main() {
 	headBeforeRun = git(["rev-parse", "HEAD"]).out
 	notice(`tc ${args.join(" ")}`)
 	// Remove stale files so a run that produces nothing can't report an earlier run's work.
-	for (const f of [SUMMARY_FILE, RESULT_FILE]) {
+	for (const f of [SUMMARY_FILE, RESULT_FILE, `${RESULT_FILE}.json`, CASES_DIR]) {
 		try {
-			rmSync(f, { force: true })
+			rmSync(f, { force: true, recursive: true })
 		} catch {
 			// Not worth failing over.
 		}
@@ -862,9 +889,12 @@ async function main() {
 			const text = readAgentFile(from)
 			if (text !== undefined) writeFileSync(to, text)
 		}
+		keepCases(readAgentFile(`${runFiles.result}.json`), plan)
 		if (claim.held && exitCode !== 0) releaseClaim(claim)
 		if (!plan.preview) handoffNote = openHandedOffPr(runFiles.handoff, plan)
 	}
+
+	if (!sandbox) keepCases(readOptional(`${RESULT_FILE}.json`), plan)
 
 	// Absent if the process was killed.
 	let summaryText
@@ -963,9 +993,15 @@ async function main() {
 				plan.commenter,
 				// Record the job, so approving can't run a different one.
 				plan.workflow ?? summary.workflow,
+				// And the run, so approving can fetch the cases it kept.
+				env.GITHUB_RUN_ID,
 			),
 		)
 		postCheck(outcome, view, sha, [], "in_progress")
+		// A plan's files are attached too: approving a generate plan saves these cases.
+		if (summaryText) setOutput("summary-file", SUMMARY_FILE)
+		if (hasResult) setOutput("result-file", RESULT_FILE)
+		if (existsSync(join(CASES_DIR, CASES_DATA_FILE))) setOutput("cases-dir", CASES_DIR)
 		setOutput("outcome", "Proposed")
 		setOutput("should-fail", "false")
 		process.exit(0)
@@ -1548,6 +1584,82 @@ function readBindings(configFile, event, branch) {
 	} catch {
 		return undefined
 	}
+}
+
+function readOptional(path) {
+	try {
+		return readFileSync(path, "utf8")
+	} catch {
+		return undefined
+	}
+}
+
+/** Keep the run's cases file, with the repo and commit it was made for, for the cases artifact. */
+function keepCases(text, plan) {
+	if (text === undefined) return
+	try {
+		mkdirSync(CASES_DIR, { recursive: true })
+		writeFileSync(join(CASES_DIR, CASES_DATA_FILE), text)
+		writeFileSync(join(CASES_DIR, CASES_SUBJECT_FILE), JSON.stringify(casesSubject({ repo: REPO, sha: plan.context?.sha })))
+	} catch {
+		// Without it a plan can still be read; approving it says the cases are missing.
+	}
+}
+
+/**
+ * Save an approved generate plan's own cases with `tc tm add` and finish the run. No AI runs, so
+ * what was reviewed is what is saved. Any problem is reported and nothing is generated instead.
+ */
+function saveApprovedCases(plan, save, approvalNote) {
+	const sha = plan.context.sha
+	const base = {
+		workflow: "generate",
+		planWorkflow: "generate",
+		approvedPlan,
+		approvalNote,
+		runUrl: RUN_URL,
+		cliVersion: env.TC_ACTION_CLI_VERSION,
+		askedBy: plan.commenter,
+		askedAt: plan.askedAt,
+		summary: { workflow: "generate", event: plan.event },
+	}
+	const finish = (view, spend) => {
+		addToJobSummary(renderJobSummary(view))
+		setOutput("outcome", view.outcome)
+		setOutput("should-fail", String(stepShouldFail(env.TC_ACTION_BUILD_EFFECT, view.outcome)))
+		postCheck(view.outcome, view, sha)
+		if (spend) markPlanSpent(approvedPlan?.id, consumedMarker)
+		if (plan.context.pr) postComment(plan.context.pr, { ...view, consumedMarker: spend ? consumedMarker : "" })
+		process.exit(0)
+	}
+	const unavailable = (reason, detail) =>
+		finish({ ...base, outcome: OUTCOMES.COULD_NOT_RUN, answer: renderCasesUnavailable(reason, detail) }, false)
+
+	if (save.mode !== "exact") return unavailable(save.reason)
+	const picked = pickCasesArtifact(gh(["api", `repos/${REPO}/actions/runs/${save.runId}/artifacts?per_page=100`]), save.runId)
+	if (picked.error) return unavailable(picked.error)
+
+	const dir = mkdtempSync(join(REPORT_DIR, "tc-approved-cases-"))
+	const got = runGh(["run", "download", save.runId, "-R", REPO, "-n", CASES_ARTIFACT, "-D", dir], { token: env.GH_TOKEN })
+	if (got.status !== 0) return unavailable("download-failed")
+	const subject = checkCasesSubject(readOptional(join(dir, CASES_SUBJECT_FILE)), { repo: REPO, sha })
+	if (!subject.ok) return unavailable(subject.why)
+	const casesFile = join(dir, CASES_DATA_FILE)
+	if (!existsSync(casesFile)) return unavailable("unreadable")
+
+	notice(`Test Companion: saving the approved plan's cases from run ${save.runId} to ${save.folder} in ${save.project}.`)
+	const r = spawnSync(
+		TC_PATH,
+		["tm", "add", "--from-file", casesFile, "--project", save.project, "--folder", save.folder, "--json"],
+		{ encoding: "utf8", env: childEnvFor(env), timeout: 300_000 },
+	)
+	const report = parseTmAddReport(r.stdout)
+	if (!report) {
+		const why = String(r.stderr ?? "").trim().split("\n").filter(Boolean).at(-1)
+		return unavailable("save-failed", redactSecrets(why, secretsNow()))
+	}
+	const { outcome, spend } = exactSaveOutcome(report, OUTCOMES)
+	finish({ ...base, outcome, summary: { ...base.summary, ...exactSaveSummary(report, save) }, answer: renderExactSave(report, save) }, spend)
 }
 
 /** The binding a comment is asking for, or the one bound to the event. */
