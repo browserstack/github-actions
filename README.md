@@ -9,7 +9,7 @@
   <a href="https://github.com/browserstack/github-actions/actions?query=workflow%3Asetup-local"><img alt="setup-local build status" src="https://github.com/browserstack/github-actions/workflows/setup-local/badge.svg"></a>
 </p>
 
-This respository contains a library of GitHub Actions to help you integrate your test suite with the [BrowserStack](https://www.browserstack.com/?utm_source=github&utm_medium=partnered) device cloud. 
+This repository contains a library of GitHub Actions to help you integrate your test suite with the [BrowserStack](https://www.browserstack.com/?utm_source=github&utm_medium=partnered) device cloud. 
 
 You need a BrowserStack username and access-key to run your tests on the BrowserStack device cloud. You can [sign-up for free trial](https://www.browserstack.com/users/sign_up/?utm_source=github&utm_medium=partnered) if you do not have an existing account.
 
