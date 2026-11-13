@@ -281,21 +281,23 @@ export function renderStopRemoved() {
 export const PROPOSAL_WINDOW_MS = 24 * 60 * 60 * 1000
 
 // Keyed to the commit, so a new push makes an old proposal unapprovable.
-export function proposalMarkerFor(sha, requester, workflow) {
+// `run` is the run that made the plan, so approving it can fetch the cases that run kept.
+export function proposalMarkerFor(sha, requester, workflow, runId) {
 	const by = String(requester ?? "").trim()
 	const job = String(workflow ?? "").trim()
-	return `<!-- test-companion-proposal sha=${sha}${by ? ` by=${by}` : ""}${job ? ` workflow=${job}` : ""} -->`
+	const run = /^\d+$/.test(String(runId ?? "")) ? String(runId) : ""
+	return `<!-- test-companion-proposal sha=${sha}${by ? ` by=${by}` : ""}${job ? ` workflow=${job}` : ""}${run ? ` run=${run}` : ""} -->`
 }
 
-// Groups: 1 = sha, 2 = requester, 3 = workflow. The sha is captured and compared,
+// Groups: 1 = sha, 2 = requester, 3 = workflow, 4 = run id. The sha is captured and compared,
 // never built into the regex.
-const MARKER = /<!-- test-companion-proposal sha=([^\s>]+)(?: by=([^\s>]+))?(?: workflow=([^\s>]+))? -->/
+const MARKER = /<!-- test-companion-proposal sha=([^\s>]+)(?: by=([^\s>]+))?(?: workflow=([^\s>]+))?(?: run=(\d+))? -->/
 
 // The last marker, since ours ends the comment and anything earlier could be planted.
 const readMarker = (body) => {
 	const all = [...String(body ?? "").matchAll(new RegExp(MARKER.source, "g"))]
 	const found = all.at(-1)
-	return found ? { sha: found[1], requester: found[2], workflow: found[3] } : undefined
+	return found ? { sha: found[1], requester: found[2], workflow: found[3], runId: found[4] } : undefined
 }
 
 // The commit our in-progress check went on (the PR head), which on a comment run is not GITHUB_SHA.
@@ -310,13 +312,13 @@ export function isApprovableJob(workflow, enabledWorkflows) {
 	return job !== "" && !job.startsWith("-") && (enabledWorkflows ?? []).includes(job)
 }
 
-export function renderProposal(body, sha, requester, workflow) {
+export function renderProposal(body, sha, requester, workflow, runId) {
 	return [
 		body,
 		"",
 		"Reply **go** to run this for real. Nothing is written until you do. To change the list first, reply **@browserstack go** with your edits. Leave it and it stops being approvable after a day.",
 		"",
-		proposalMarkerFor(sha, requester, workflow),
+		proposalMarkerFor(sha, requester, workflow, runId),
 	].join("\n")
 }
 
@@ -416,6 +418,7 @@ export function findProposal(comments, sha, now = Date.now(), us, opts = {}) {
 		expired: !(age <= PROPOSAL_WINDOW_MS),
 		requester: mark?.requester,
 		workflow: mark?.workflow,
+		runId: mark?.runId,
 		body: newest.body ?? "",
 	}
 }
