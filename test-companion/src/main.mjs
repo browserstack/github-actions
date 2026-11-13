@@ -24,6 +24,7 @@ import { findTicket } from "./ticket.mjs"
 import { childEnvFor } from "./child-env.mjs"
 import {
 	approvedSavePlan,
+	readCasesDestination,
 	pickCasesArtifact,
 	casesSubject,
 	checkCasesSubject,
@@ -698,13 +699,12 @@ async function main() {
 			}
 
 			// A plain go on a generate plan saves the plan's own cases; nothing is generated again.
-			const save = approvedSavePlan({
-				workflow: plan.workflow,
-				replyText,
-				binding: pickBinding(bindings, plan.workflow),
-				runId: waiting?.runId,
-			})
-			if (save.mode === "exact" || save.mode === "unavailable") saveApprovedCases(plan, save, approvalNote)
+			const save = approvedSavePlan({ workflow: plan.workflow, replyText, runId: waiting?.runId })
+			if (save.mode === "exact" || save.mode === "unavailable") {
+				saveApprovedCases(plan, save, approvalNote)
+				// saveApprovedCases always ends the run. Never fall through to generating again.
+				process.exit(0)
+			}
 			if (save.edited) approvalNote = `${approvalNote} ${EDITED_GO_NOTE}`
 		} else {
 			// A large change: the run covers what matters and lists what it skipped.
@@ -1636,6 +1636,15 @@ function saveApprovedCases(plan, save, approvalNote) {
 		finish({ ...base, outcome: OUTCOMES.COULD_NOT_RUN, answer: renderCasesUnavailable(reason, detail) }, false)
 
 	if (save.mode !== "exact") return unavailable(save.reason)
+	// Anything unexpected is reported too: a plain go must never turn into a new generate run.
+	try {
+		saveExactly(plan, save, sha, base, finish, unavailable)
+	} catch (e) {
+		unavailable("save-failed", redactSecrets(String(e?.message ?? e), secretsNow()))
+	}
+}
+
+function saveExactly(plan, save, sha, base, finish, unavailable) {
 	const picked = pickCasesArtifact(gh(["api", `repos/${REPO}/actions/runs/${save.runId}/artifacts?per_page=100`]), save.runId)
 	if (picked.error) return unavailable(picked.error)
 
@@ -1645,21 +1654,23 @@ function saveApprovedCases(plan, save, approvalNote) {
 	const subject = checkCasesSubject(readOptional(join(dir, CASES_SUBJECT_FILE)), { repo: REPO, sha })
 	if (!subject.ok) return unavailable(subject.why)
 	const casesFile = join(dir, CASES_DATA_FILE)
-	if (!existsSync(casesFile)) return unavailable("unreadable")
+	// The destination comes from the approved file itself, so the cases go where the plan said.
+	const where = readCasesDestination(readOptional(casesFile))
+	if (where.error) return unavailable(where.error)
 
-	notice(`Test Companion: saving the approved plan's cases from run ${save.runId} to ${save.folder} in ${save.project}.`)
-	const r = spawnSync(
-		TC_PATH,
-		["tm", "add", "--from-file", casesFile, "--project", save.project, "--folder", save.folder, "--json"],
-		{ encoding: "utf8", env: childEnvFor(env), timeout: 300_000 },
-	)
+	notice(`Test Companion: saving the approved plan's cases from run ${save.runId} to ${where.folder} in ${where.project}.`)
+	const r = spawnSync(TC_PATH, ["tm", "add", "--from-file", casesFile, "--json"], {
+		encoding: "utf8",
+		env: childEnvFor(env),
+		timeout: 300_000,
+	})
 	const report = parseTmAddReport(r.stdout)
 	if (!report) {
 		const why = String(r.stderr ?? "").trim().split("\n").filter(Boolean).at(-1)
 		return unavailable("save-failed", redactSecrets(why, secretsNow()))
 	}
 	const { outcome, spend } = exactSaveOutcome(report, OUTCOMES)
-	finish({ ...base, outcome, summary: { ...base.summary, ...exactSaveSummary(report, save) }, answer: renderExactSave(report, save) }, spend)
+	finish({ ...base, outcome, summary: { ...base.summary, ...exactSaveSummary(report, where) }, answer: renderExactSave(report, where) }, spend)
 }
 
 /** The binding a comment is asking for, or the one bound to the event. */

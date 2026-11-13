@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import {
 	approvedSavePlan,
+	readCasesDestination,
 	pickCasesArtifact,
 	casesSubject,
 	checkCasesSubject,
@@ -14,42 +15,97 @@ import {
 	CASES_ARTIFACT,
 } from "../src/approved-cases.mjs"
 import { OUTCOMES } from "../src/outcome.mjs"
+import { isApprovalOnly } from "../src/intent.mjs"
 import { proposalMarkerFor, renderProposal, findProposal } from "../src/report.mjs"
 
-const BINDING = { workflow: "generate", input: { "save-to-tm": "true", tm_project: "Checkout", tm_folder: "Web" } }
+// `tc workflow bindings --json`, as the CLI really prints it: no `input`, so a binding can't say
+// where cases go. The destination is in the plan's cases file instead.
+const REAL_BINDINGS = JSON.parse(
+	'{"settings":{"ask_team":"","platform":"auto","tests_repo":"","tests_path":"","targets":[],"wcag":"","fail_on_new":false,"visual":false},' +
+		'"bindings":[{"name":"generate-on-comment","workflow":"generate","on":"pr_comment","mode":"live","approval":"review-before-run","enabled":true}]}',
+)
+const GENERATE_BINDING = REAL_BINDINGS.bindings[0]
+
+// A generate preview's result.md.json, shaped like the CLI's.
+const CASES_FILE = {
+	version: 1,
+	workflow: "generate",
+	preview: true,
+	generated: 1,
+	savedToTestManagement: 0,
+	note: "None reached Test Management — this was a preview run.",
+	cases: [
+		{
+			id: "T001",
+			title: "First retry uses the base delay",
+			description: "The first attempt waits exactly the base delay.",
+			preconditions: "The helper is importable.",
+			steps: [{ step: "Call the helper with attempt 1", result: "Returns the base delay" }],
+			priority: "high",
+			type: "functional",
+		},
+	],
+}
+const withDestination = { ...CASES_FILE, destination: { project: "Checkout", folder: "Web / Cart" } }
 
 describe("approvedSavePlan: a plain go on a generate plan saves the plan's own cases", () => {
-	test("plain go with a destination and a recorded run: exact save", () => {
-		assert.deepEqual(approvedSavePlan({ workflow: "generate", replyText: "go", binding: BINDING, runId: "1234567890" }), {
+	test("reproduces the live failure: real binding shape, plain go, run id present → exact, not run", () => {
+		assert.equal("input" in GENERATE_BINDING, false)
+		assert.deepEqual(approvedSavePlan({ workflow: GENERATE_BINDING.workflow, replyText: "go", binding: GENERATE_BINDING, runId: "1234567890" }), {
 			mode: "exact",
-			project: "Checkout",
-			folder: "Web",
 			runId: "1234567890",
 		})
 	})
 
 	test("go with edits regenerates, and says it is because of the edits", () => {
-		assert.deepEqual(approvedSavePlan({ workflow: "generate", replyText: "@browserstack go, drop T003", binding: BINDING, runId: "1" }), {
+		assert.deepEqual(approvedSavePlan({ workflow: "generate", replyText: "@browserstack go, drop T003", runId: "1" }), {
 			mode: "run",
 			edited: true,
 		})
 	})
 
 	test("a plan with no recorded run is unavailable, never regenerated", () => {
-		assert.deepEqual(approvedSavePlan({ workflow: "generate", replyText: "go", binding: BINDING, runId: undefined }), {
-			mode: "unavailable",
-			reason: "no-run",
-		})
-		assert.equal(approvedSavePlan({ workflow: "generate", replyText: "go", binding: BINDING, runId: "12; rm -rf /" }).mode, "unavailable")
+		assert.deepEqual(approvedSavePlan({ workflow: "generate", replyText: "go", runId: undefined }), { mode: "unavailable", reason: "no-run" })
+		assert.equal(approvedSavePlan({ workflow: "generate", replyText: "go", runId: "12; rm -rf /" }).mode, "unavailable")
 	})
 
-	test("other jobs, and generate with nowhere to save, run as before", () => {
-		assert.deepEqual(approvedSavePlan({ workflow: "test-pr", replyText: "go", binding: BINDING, runId: "1" }), { mode: "run" })
-		assert.deepEqual(approvedSavePlan({ workflow: "generate", replyText: "go", binding: { input: {} }, runId: "1" }), { mode: "run" })
-		assert.deepEqual(
-			approvedSavePlan({ workflow: "generate", replyText: "go", binding: { input: { ...BINDING.input, "save-to-tm": "false" } }, runId: "1" }),
-			{ mode: "run" },
-		)
+	test("other jobs run as before", () => {
+		assert.deepEqual(approvedSavePlan({ workflow: "test-pr", replyText: "go", runId: "1" }), { mode: "run" })
+		assert.deepEqual(approvedSavePlan({ workflow: "fix", replyText: "go", runId: "1" }), { mode: "run" })
+	})
+
+	test("safety rule: a plain go on a generate plan with a run id never becomes a new generate run", () => {
+		// The reply as the Action passes it: the @browserstack mention is already stripped
+		// (plan-run.mjs), so "@browserstack go" arrives as "go".
+		const plainGoes = ["go", "Go", "GO", "go!", "go.", " go ", "go #123456"]
+		const bindings = [GENERATE_BINDING, undefined, {}, { input: {} }, { input: { "save-to-tm": "false" } }]
+		for (const replyText of plainGoes) {
+			assert.equal(isApprovalOnly(replyText), true, `"${replyText}" should be a plain approval`)
+			for (const binding of bindings) {
+				assert.equal(approvedSavePlan({ workflow: "generate", replyText, binding, runId: "77" }).mode, "exact", `"${replyText}" with ${JSON.stringify(binding)}`)
+			}
+		}
+	})
+})
+
+describe("readCasesDestination: where the cases go comes from the approved file", () => {
+	test("the file's destination", () => {
+		assert.deepEqual(readCasesDestination(JSON.stringify(withDestination)), { project: "Checkout", folder: "Web / Cart" })
+	})
+	test("no destination (none configured, or an older CLI): nowhere to save", () => {
+		assert.deepEqual(readCasesDestination(JSON.stringify(CASES_FILE)), { error: "no-destination" })
+		assert.deepEqual(readCasesDestination(JSON.stringify({ ...CASES_FILE, destination: { project: "Checkout" } })), { error: "no-destination" })
+	})
+	test("not a cases file: unreadable", () => {
+		assert.deepEqual(readCasesDestination("not json"), { error: "unreadable" })
+		assert.deepEqual(readCasesDestination(JSON.stringify({ destination: withDestination.destination })), { error: "unreadable" })
+		assert.deepEqual(readCasesDestination(undefined), { error: "unreadable" })
+	})
+	test("no destination says so, saves nothing and does not regenerate", () => {
+		const text = renderCasesUnavailable("no-destination")
+		assert.match(text, /I did not save anything: the plan recorded no Test Management destination/)
+		assert.match(text, /I have not generated a new set/)
+		assert.match(text, /`tm_project` and `tm_folder`/)
 	})
 })
 
@@ -173,8 +229,20 @@ describe("the wiring", () => {
 	test("a plan attaches its cases, and approving one saves them with tm add instead of running again", () => {
 		assert.match(main, /setOutput\("cases-dir", CASES_DIR\)/)
 		assert.match(main, /env\.GITHUB_RUN_ID,\n\s*\),\n\s*\)/)
-		assert.match(main, /"tm", "add", "--from-file", casesFile, "--project", save\.project, "--folder", save\.folder, "--json"/)
-		assert.match(main, /if \(save\.mode === "exact" \|\| save\.mode === "unavailable"\) saveApprovedCases\(plan, save, approvalNote\)/)
+		// No --project/--folder: tm add takes the destination from the approved file.
+		assert.match(main, /\["tm", "add", "--from-file", casesFile, "--json"\]/)
+		assert.doesNotMatch(main, /binding\?\.input|\.input\?\.tm_/)
+	})
+
+	test("safety rule in the wiring: an exact or unavailable go always ends the run", () => {
+		assert.match(
+			main,
+			/if \(save\.mode === "exact" \|\| save\.mode === "unavailable"\) \{\n\s*saveApprovedCases\(plan, save, approvalNote\)\n[^\n]*\n\s*process\.exit\(0\)\n\s*\}/,
+		)
+		const fn = main.slice(main.indexOf("function saveApprovedCases("), main.indexOf("function saveExactly("))
+		assert.match(fn, /try \{\n\s*saveExactly\(/)
+		assert.match(fn, /catch \(e\) \{\n\s*unavailable\("save-failed"/)
+		assert.match(fn, /process\.exit\(0\)/)
 	})
 
 	test("action.yml uploads the cases artifact, and a plan's report and result too", () => {
