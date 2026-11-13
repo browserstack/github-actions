@@ -70,11 +70,13 @@ someone with write access to reply `go`. Read the plan before you reply.
 Test Companion reacts 👀 to a request, or a `go`, once it picks it up.
 
 For `generate`, a plain `go` saves exactly the test cases in the plan to Test
-Management: the plan's run keeps them (the `test-companion-cases` artifact,
-for 7 days) and nothing is generated again. A `@browserstack go` with changes
-generates the cases again with your changes as guidance, and says so. If the
-plan's cases can't be found, nothing is saved and you are asked to generate a
-fresh plan.
+Management, in the project and folder the plan recorded: the plan's run keeps
+them (the `test-companion-cases` artifact, for 7 days) and nothing is generated
+again. A `@browserstack go` with changes generates the cases again with your
+changes as guidance, and says so. If the plan's cases can't be found, or the
+plan recorded no Test Management destination (set `tm_project` and `tm_folder`
+for generate in the pipeline file), nothing is saved and you are asked to
+generate a fresh plan.
 
 Without the GitHub App, Test Companion posts as `github-actions[bot]`, the
 account every workflow in your repository shares, and recognises its own plans

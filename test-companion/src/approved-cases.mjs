@@ -19,23 +19,38 @@ export const CASES_SUBJECT_FILE = "subject.json"
 /**
  * How a `go` on a plan is carried out:
  *   - "exact": save the plan's own cases with tm add, no new run;
- *   - "unavailable": should be exact, but the plan's cases can't be found (say so, never regenerate);
- *   - "run": today's behaviour, a real run of the job. `edited` is set when that is because the
- *     approver changed the plan, which tm add cannot apply.
- * Only generate with a Test Management destination is saved exactly; other jobs, and a generate
- * with nowhere to save, run as before.
+ *   - "unavailable": should be exact, but there is nothing to fetch (say so, never regenerate);
+ *   - "run": a real run of the job. For generate that only happens when the approver changed the
+ *     plan (`edited`), which tm add cannot apply.
+ * Where the cases go is read from the plan's own cases file, not from here.
+ *
+ * Safety rule: a plain go on a generate plan never becomes "run". Generating again would save
+ * cases nobody reviewed, so every problem after this point is reported instead.
  */
-export function approvedSavePlan({ workflow, replyText, binding, runId } = {}) {
+export function approvedSavePlan({ workflow, replyText, runId } = {}) {
 	if (workflow !== "generate") return { mode: "run" }
-	const input = binding?.input ?? {}
-	const project = String(input.tm_project ?? "").trim()
-	const folder = String(input.tm_folder ?? "").trim()
-	const saveSetting = String(input["save-to-tm"] ?? "").trim().toLowerCase()
-	if (!project || !folder || saveSetting === "false") return { mode: "run" }
 	if (hasApproverEdits(replyText)) return { mode: "run", edited: true }
 	// Plans made before the run id was recorded have nothing to fetch.
 	if (!/^\d+$/.test(String(runId ?? ""))) return { mode: "unavailable", reason: "no-run" }
-	return { mode: "exact", project, folder, runId: String(runId) }
+	return { mode: "exact", runId: String(runId) }
+}
+
+/**
+ * Where the approved cases go, from the cases file the plan's run kept (its top-level
+ * `destination`). The CLI writes it only when a Test Management destination is configured.
+ */
+export function readCasesDestination(casesText) {
+	let data
+	try {
+		data = JSON.parse(String(casesText ?? ""))
+	} catch {
+		return { error: "unreadable" }
+	}
+	if (!data || typeof data !== "object" || !Array.isArray(data.cases)) return { error: "unreadable" }
+	const project = String(data.destination?.project ?? "").trim()
+	const folder = String(data.destination?.folder ?? "").trim()
+	if (!project || !folder) return { error: "no-destination" }
+	return { project, folder }
 }
 
 /** The plan run's cases artifact from a `GET .../runs/<id>/artifacts` reply, or why there is none. */
@@ -103,6 +118,7 @@ const UNAVAILABLE_WHY = {
 	unreadable: "the plan's saved cases could not be read",
 	"other-repo": "the saved cases are not from this repository",
 	"other-commit": "the saved cases are for a different commit than this plan",
+	"no-destination": "the plan recorded no Test Management destination, so there is nowhere to save its cases",
 	"save-failed": "Test Management refused the cases before any were saved",
 }
 
@@ -113,7 +129,9 @@ export function renderCasesUnavailable(reason, detail) {
 	return [
 		`I did not save anything: ${why}${extra ? ` (${extra})` : ""}.`,
 		"",
-		"I have not generated a new set in its place, because that would save cases nobody reviewed. Ask me to **generate** again and approve the fresh plan.",
+		reason === "no-destination"
+			? "I have not generated a new set in its place, because that would save cases nobody reviewed. Set `tm_project` and `tm_folder` for generate in the pipeline file, then ask me to **generate** again and approve the fresh plan."
+			: "I have not generated a new set in its place, because that would save cases nobody reviewed. Ask me to **generate** again and approve the fresh plan.",
 	].join("\n")
 }
 
