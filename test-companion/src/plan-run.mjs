@@ -95,8 +95,8 @@ function cleanContext(pairs) {
  * Decide what this event should run: `{skip}` or
  * `{event?, workflow?, preview?, context}`. No event means ignore the bindings.
  */
-export function planRun({ eventName, payload = {}, inputs = {}, repo, sha, ref } = {}) {
-	const built = route({ eventName, payload, inputs, repo, sha, ref })
+export function planRun({ eventName, payload = {}, inputs = {}, repo, sha, ref, selfLogin } = {}) {
+	const built = route({ eventName, payload, inputs, repo, sha, ref, selfLogin })
 	if (built.skip) return built
 
 	// A named job wins on any trigger and bypasses the bindings.
@@ -116,10 +116,10 @@ export function planRun({ eventName, payload = {}, inputs = {}, repo, sha, ref }
 	return { ...built, context }
 }
 
-function route({ eventName, payload, inputs, repo, sha, ref }) {
+function route({ eventName, payload, inputs, repo, sha, ref, selfLogin }) {
 	switch (eventName) {
 		case "issue_comment":
-			return fromComment(payload, inputs)
+			return fromComment(payload, inputs, selfLogin)
 		case "pull_request":
 		case "pull_request_target":
 			return fromPullRequest(payload, repo)
@@ -139,12 +139,16 @@ function route({ eventName, payload, inputs, repo, sha, ref }) {
 	}
 }
 
-function fromComment(payload, inputs) {
+function fromComment(payload, inputs, selfLogin) {
 	if (payload.action !== "created") return skip("comment-edited", payload.action)
 	if (!payload.issue?.pull_request) return skip("not-a-pull-request")
 	// Our own comments quote "@browserstack go"; reacting to them loops and can push a real request out of the queue.
 	const author = payload.comment?.user
 	if (author?.type === "Bot" || /\[bot\]$/i.test(author?.login ?? "")) return skip("bot-comment", author?.login)
+	// The account we post as, whatever its type: with a person's token our comments are that
+	// person's, and they quote "@browserstack go" too.
+	const self = String(selfLogin ?? "").trim().toLowerCase()
+	if (self && String(author?.login ?? "").toLowerCase() === self) return skip("own-comment", author?.login)
 
 	const body = payload.comment?.body ?? ""
 	const addressed = MENTION.test(body)
