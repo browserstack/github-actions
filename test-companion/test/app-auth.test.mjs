@@ -1,5 +1,6 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
 import { generateKeyPairSync, createVerify } from "node:crypto"
 import {
 	appCredentials,
@@ -7,6 +8,7 @@ import {
 	signJwt,
 	installationTokenRequest,
 	appApi,
+	APP_SIGN_IN_BUDGET_MS,
 	isRetryable,
 	retryDelayMs,
 	installationLookupMessage,
@@ -248,5 +250,74 @@ describe("appApi gives each call a time limit", () => {
 		assert.equal(r.status, 0)
 		assert.match(r.reason, /no reply within/)
 		assert.equal(calls, 3)
+	})
+})
+
+describe("the whole App sign-in fits in about 30 seconds", () => {
+	// A fake clock: each GitHub call "takes" `callMs`, each wait takes its length.
+	function clock(callMs) {
+		let t = 0
+		const calls = []
+		return {
+			now: () => t,
+			sleep: async (ms) => {
+				t += ms
+			},
+			fetchImpl: async () => {
+				calls.push(t)
+				t += callMs
+				return { ok: false, status: 503, statusText: "Service Unavailable", json: async () => ({}), headers: { get: () => null } }
+			},
+			calls,
+			get t() {
+				return t
+			},
+		}
+	}
+
+	test("the budget is 30 seconds", () => {
+		assert.equal(APP_SIGN_IN_BUDGET_MS, 30_000)
+	})
+
+	test("two slow calls share one budget and stop by the deadline", async () => {
+		const c = clock(10_000)
+		const deadline = c.now() + APP_SIGN_IN_BUDGET_MS
+		const opts = { jwt: "J", fetchImpl: c.fetchImpl, sleep: c.sleep, now: c.now, deadline }
+		const first = await appApi("repos/o/r/installation", opts)
+		const second = await appApi("app/installations/1/access_tokens", { ...opts, method: "POST", body: {} })
+		assert.equal(first.ok, false)
+		assert.equal(second.ok, false)
+		assert.ok(c.t <= 30_000 + 10_000, `took ${c.t}ms`)
+		assert.ok(c.calls.every((started) => started < deadline), "no call starts after the deadline")
+	})
+
+	test("no wait that would end past the deadline", async () => {
+		const c = clock(0)
+		const r = await appApi("x", { jwt: "J", fetchImpl: c.fetchImpl, sleep: c.sleep, now: c.now, deadline: 2_000 })
+		// 1s wait after the first try fits; the 3s wait after the second would not.
+		assert.equal(r.attempts, 2)
+		assert.equal(c.t, 1_000)
+	})
+
+	test("past the deadline, nothing is tried", async () => {
+		const c = clock(0)
+		const r = await appApi("x", { jwt: "J", fetchImpl: c.fetchImpl, sleep: c.sleep, now: () => 5, deadline: 5 })
+		assert.equal(c.calls.length, 0)
+		assert.equal(r.ok, false)
+		assert.equal(r.status, 0)
+	})
+
+	test("without a deadline the retry rules are unchanged", async () => {
+		const c = clock(0)
+		const r = await appApi("x", { jwt: "J", fetchImpl: c.fetchImpl, sleep: c.sleep, now: c.now })
+		assert.equal(r.attempts, 3)
+		assert.equal(c.t, 4_000)
+	})
+
+	test("the sign-in passes one deadline to every call", () => {
+		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
+		const fn = main.slice(main.indexOf("async function appInstallationToken("), main.indexOf("return token\n}"))
+		assert.match(fn, /const deadline = Date\.now\(\) \+ APP_SIGN_IN_BUDGET_MS/)
+		assert.match(fn, /appApi\(path, \{ jwt, apiUrl: env\.GITHUB_API_URL, deadline, \.\.\.opts \}\)/)
 	})
 })
