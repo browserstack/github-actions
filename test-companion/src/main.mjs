@@ -93,6 +93,7 @@ import {
 	savingFor,
 	isRequestedByPerson,
 	leaveOut,
+	commitPaths,
 	leaveOutMessage,
 	listFiles,
 	renderPushNote,
@@ -1084,10 +1085,6 @@ function saveWork(saving, plan) {
 	})
 	if (push.length === 0) return undefined
 
-	// Named paths only, never `git add -A`.
-	const added = git(["add", "--", ...push])
-	if (!added.ok) return renderPushNote({ branch, files: push, skipped: skip, error: added.err || "git add failed" })
-
 	const subject = `test: ${plan.workflow ?? "Test Companion"} on ${String(plan.context.sha ?? "").slice(0, 7)}`
 	const body = [
 		subject,
@@ -1095,14 +1092,17 @@ function saveWork(saving, plan) {
 		`Written by Test Companion for ${plan.context.pr ? `#${plan.context.pr}` : plan.context.sha}.`,
 		`Run: ${RUN_URL}`,
 	].join("\n")
-	const committed = git(["-c", `user.name=${identity.name}`, "-c", `user.email=${identity.email}`, "commit", "-m", body])
-	if (!committed.ok) {
-		return renderPushNote({
-			branch,
-			files: push,
-			skipped: skip,
-			error: committed.err || committed.out || "nothing to commit",
-		})
+	// Exactly the files above, on the commit the run started on. Never the real index: the
+	// agent can stage files there itself, and `git commit` would take them all.
+	const indexFile = join(REPORT_DIR, `tc-save-index-${process.pid}`)
+	let made
+	try {
+		made = commitPaths({ git, base: headBeforeRun, paths: push, identity, message: body, indexFile })
+	} finally {
+		rmSync(indexFile, { force: true })
+	}
+	if (!made.sha) {
+		return renderPushNote({ branch, files: push, skipped: skip, error: made.error || "nothing to commit" })
 	}
 
 	// Push to a URL built from GITHUB_REPOSITORY, not `origin`: an insteadOf rewrite in
@@ -1110,7 +1110,7 @@ function saveWork(saving, plan) {
 	const target = pushUrlFor(REPO, env.GITHUB_SERVER_URL)
 	if (!target)
 		return renderPushNote({ branch, files: push, skipped: skip, error: `cannot push: bad repository name "${REPO}"` })
-	const pushed = git(["push", target, `HEAD:refs/heads/${branch}`], pushCredentialEnv(env.GH_TOKEN, target))
+	const pushed = git(["push", target, `${made.sha}:refs/heads/${branch}`], pushCredentialEnv(env.GH_TOKEN, target))
 	if (!pushed.ok) {
 		// The workflow token is read-only by default.
 		const hint = /403|permission|denied|protected/i.test(pushed.err)
@@ -1118,7 +1118,7 @@ function saveWork(saving, plan) {
 			: pushed.err || "git push failed"
 		return renderPushNote({ branch, files: push, skipped: skip, error: hint })
 	}
-	return renderPushNote({ branch, sha: git(["rev-parse", "HEAD"]).out, files: push, skipped: skip })
+	return renderPushNote({ branch, sha: made.sha, files: push, skipped: skip })
 }
 
 /** Set up the locked-down user. Without it, stop unless allow-unisolated is set. */

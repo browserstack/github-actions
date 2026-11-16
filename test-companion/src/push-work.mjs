@@ -290,6 +290,10 @@ export function gitEnvFrom(env = {}) {
 	out.GIT_ATTR_NOSYSTEM = "1"
 	// File names come from the agent: `:!x` must name a file, not mean "everything but x".
 	out.GIT_LITERAL_PATHSPECS = "1"
+	// The agent can write .git/refs/replace and .git/info/grafts. Either makes git read a
+	// commit as a different tree or with different parents, so ignore both.
+	out.GIT_NO_REPLACE_OBJECTS = "1"
+	out.GIT_GRAFT_FILE = "/dev/null"
 	return out
 }
 
@@ -395,6 +399,10 @@ export const GIT_SAFE_ARGS = Object.freeze([
 	"gpg.program=false",
 	"-c",
 	"core.attributesFile=/dev/null",
+	// gitEnvFrom points GIT_GRAFT_FILE at /dev/null; without this git prints a hint on stderr,
+	// which callers read as an error.
+	"-c",
+	"advice.graftFileDeprecated=false",
 ])
 
 /**
@@ -460,6 +468,30 @@ export function leaveOut({ git, base, tip, paths, identity, message, indexFile }
 		scratch,
 	)
 	return commit.ok && commit.out ? { sha: commit.out } : { error: "could not commit without the by-products" }
+}
+
+/**
+ * One commit on `base` holding exactly `paths` as they are in the checkout, and nothing else.
+ * Built in a scratch index started from `base`: the agent can write the real index, so a
+ * file it staged itself (a .github file, a symlink, a deletion) would otherwise ride along.
+ *
+ * `git(args, extraEnv, input)` runs git; it must apply literal pathspecs.
+ * Returns { sha }, { empty } when the paths match `base`, or { error }.
+ */
+export function commitPaths({ git, base, paths, identity, message, indexFile }) {
+	const scratch = { GIT_INDEX_FILE: indexFile, GIT_LITERAL_PATHSPECS: "1" }
+	if (!git(["read-tree", base], scratch).ok) return { error: "could not read the commit the run started on" }
+	// A path that is gone from the checkout is recorded as deleted.
+	const added = git(["add", "--", ...paths], scratch)
+	if (!added.ok) return { error: added.err || "git add failed" }
+	const tree = git(["write-tree"], scratch)
+	if (!tree.ok || !tree.out) return { error: "could not write the run's files" }
+	if (tree.out === git(["rev-parse", `${base}^{tree}`]).out) return { empty: true }
+	const commit = git(
+		["-c", `user.name=${identity.name}`, "-c", `user.email=${identity.email}`, "commit-tree", tree.out, "-p", base, "-m", message],
+		scratch,
+	)
+	return commit.ok && commit.out ? { sha: commit.out } : { error: commit.err || "could not commit" }
 }
 
 // Agent-chosen text on one line, so it can't add a trailer such as Co-authored-by.

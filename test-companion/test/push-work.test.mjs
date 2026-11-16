@@ -1,7 +1,7 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { execFileSync, spawnSync } from "node:child_process"
-import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync, symlinkSync, unlinkSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import {
@@ -28,6 +28,7 @@ import {
 	commitIdentity,
 	savingFor,
 	leaveOut,
+	commitPaths,
 	checkHandoffDescends,
 	REWROTE_HISTORY,
 	leaveOutMessage,
@@ -769,7 +770,7 @@ describe("splitHandoffPaths — a handed-back branch", () => {
 function realGit(cwd) {
 	const env = gitEnvFrom(process.env)
 	return (args, extraEnv = {}, input = undefined) => {
-		const r = spawnSync("git", args, { cwd, encoding: "utf8", input, env: { ...env, ...extraEnv } })
+		const r = spawnSync("git", [...GIT_SAFE_ARGS, ...args], { cwd, encoding: "utf8", input, env: { ...env, ...extraEnv } })
 		return { ok: r.status === 0, out: (r.stdout ?? "").trim(), err: (r.stderr ?? "").trim() }
 	}
 }
@@ -1101,3 +1102,130 @@ describe("a hand-off branch must build on the reviewed commit", () => {
 		assert.deepEqual(checkHandoffDescends({ git: broken, reviewed: "zzz", tip: "t" }), { error: "fatal: Not a valid commit name zzz" })
 	})
 })
+
+describe("commitPaths — only the files the Action chose are committed", () => {
+	const identity = { name: "Test Companion", email: BOT_EMAIL }
+
+	// The agent can write the real index: it stages files the push filter refuses, then stops.
+	function agentStagedRepo() {
+		const dir = mkdtempSync(join(tmpdir(), "tc-commitpaths-"))
+		const git = realGit(dir)
+		const id = ["-c", "user.name=t", "-c", "user.email=t@example.com"]
+		const must = (args) => {
+			const r = git(args)
+			assert.ok(r.ok, `${args.join(" ")}: ${r.err}`)
+			return r.out
+		}
+		must(["init", "-q"])
+		writeFileSync(join(dir, "a.ts"), "old\n")
+		writeFileSync(join(dir, "keep.ts"), "keep\n")
+		must(["add", "a.ts", "keep.ts"])
+		must([...id, "commit", "-qm", "base"])
+		const base = must(["rev-parse", "HEAD"])
+		// The run's real work: one changed file and one deleted file.
+		writeFileSync(join(dir, "a.ts"), "new\n")
+		writeFileSync(join(dir, "gone.ts"), "x\n")
+		// What a prompt-injected agent stages on its own, without committing.
+		mkdirSync(join(dir, ".github/actions/x"), { recursive: true })
+		writeFileSync(join(dir, ".github/actions/x/action.yml"), "runs: evil\n")
+		writeFileSync(join(dir, "CODEOWNERS"), "* @mallory\n")
+		writeFileSync(join(dir, ".env"), "KEY=secret\n")
+		symlinkSync("/etc/passwd", join(dir, "link"))
+		must(["add", "--", ".github/actions/x/action.yml", "CODEOWNERS", ".env", "link"])
+		must(["rm", "-q", "--cached", "keep.ts"])
+		return { dir, git, base }
+	}
+
+	test("files the agent staged itself are not in the commit", () => {
+		const { dir, git, base } = agentStagedRepo()
+		const out = commitPaths({ git, base, paths: ["a.ts"], identity, message: "m", indexFile: join(dir, "scratch") })
+		assert.ok(out.sha, JSON.stringify(out))
+		assert.equal(git(["diff", "--name-only", base, out.sha]).out, "a.ts")
+		assert.equal(git(["show", `${out.sha}:a.ts`]).out, "new")
+		for (const p of [".github/actions/x/action.yml", "CODEOWNERS", ".env", "link"]) {
+			assert.equal(git(["cat-file", "-e", `${out.sha}:${p}`]).ok, false, `${p} was committed`)
+		}
+		// The agent's staged deletion of keep.ts did not ride along either.
+		assert.equal(git(["show", `${out.sha}:keep.ts`]).out, "keep")
+		assert.equal(git(["rev-list", "--parents", "-n", "1", out.sha]).out, `${out.sha} ${base}`)
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("a file the run deleted is committed as deleted", () => {
+		const { dir, git, base } = agentStagedRepo()
+		unlinkSync(join(dir, "keep.ts"))
+		const out = commitPaths({ git, base, paths: ["a.ts", "keep.ts"], identity, message: "m", indexFile: join(dir, "scratch") })
+		assert.ok(out.sha, JSON.stringify(out))
+		assert.equal(git(["diff", "--name-only", base, out.sha]).out.split("\n").sort().join(","), "a.ts,keep.ts")
+		assert.equal(git(["cat-file", "-e", `${out.sha}:keep.ts`]).ok, false)
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("nothing changed in the chosen files: no commit", () => {
+		const { dir, git, base } = agentStagedRepo()
+		writeFileSync(join(dir, "a.ts"), "old\n")
+		assert.deepEqual(commitPaths({ git, base, paths: ["a.ts"], identity, message: "m", indexFile: join(dir, "scratch") }), { empty: true })
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("the real index is left alone", () => {
+		const { dir, git, base } = agentStagedRepo()
+		const before = readFileSync(join(dir, ".git/index"))
+		commitPaths({ git, base, paths: ["a.ts"], identity, message: "m", indexFile: join(dir, "scratch") })
+		assert.ok(readFileSync(join(dir, ".git/index")).equals(before))
+		assert.equal(existsSync(join(dir, "scratch")), true, "the caller removes the scratch index")
+		rmSync(dir, { recursive: true, force: true })
+	})
+})
+
+describe("git ignores replace refs and grafts the agent could plant", () => {
+	test("the environment turns both off", () => {
+		const got = gitEnvFrom({})
+		assert.equal(got.GIT_NO_REPLACE_OBJECTS, "1")
+		assert.equal(got.GIT_GRAFT_FILE, "/dev/null")
+	})
+
+	test("a replace ref can't swap the base's files, and a graft can't fake ancestry", () => {
+		const { dir, git, base, tip } = repoWithBranch({ "a.ts": "new\n" })
+		const plain = (args) => spawnSync("git", args, { cwd: dir, encoding: "utf8" })
+		// A commit whose tree carries a .github file, swapped in for base by a replace ref.
+		mkdirSync(join(dir, ".github/actions/x"), { recursive: true })
+		writeFileSync(join(dir, ".github/actions/x/action.yml"), "runs: evil\n")
+		const idx = { ...process.env, GIT_INDEX_FILE: join(dir, "evil-index") }
+		spawnSync("git", ["read-tree", base], { cwd: dir, env: idx })
+		spawnSync("git", ["add", ".github/actions/x/action.yml"], { cwd: dir, env: idx })
+		const evilTree = spawnSync("git", ["write-tree"], { cwd: dir, env: idx, encoding: "utf8" }).stdout.trim()
+		const evil = plain(["-c", "user.name=t", "-c", "user.email=t@e", "commit-tree", evilTree, "-m", "evil"]).stdout.trim()
+		assert.equal(plain(["replace", base, evil]).status, 0)
+		assert.match(plain(["ls-tree", "-r", "--name-only", base]).stdout, /\.github/, "plain git does follow the replace ref")
+		assert.doesNotMatch(git(["ls-tree", "-r", "--name-only", base]).out, /\.github/)
+		plain(["replace", "-d", base])
+		// A graft that claims the reviewed commit is an ancestor of an unrelated one.
+		const lone = plain(["-c", "user.name=t", "-c", "user.email=t@e", "commit-tree", evilTree, "-m", "lone"]).stdout.trim()
+		mkdirSync(join(dir, ".git/info"), { recursive: true })
+		writeFileSync(join(dir, ".git/info/grafts"), `${lone} ${tip}\n`)
+		assert.equal(plain(["merge-base", "--is-ancestor", tip, lone]).status, 0, "plain git does follow the graft")
+		assert.equal(checkHandoffDescends({ git, reviewed: tip, tip: lone }).refused, true)
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("a planted hook does not run, and a URL rewrite stops the commit", () => {
+		const { dir, git } = repoWithBranch({ "a.ts": "new\n" })
+		const marker = join(dir, "hook-ran")
+		mkdirSync(join(dir, ".git/hooks"), { recursive: true })
+		writeFileSync(join(dir, ".git/hooks/pre-commit"), `#!/bin/sh\ntouch "${marker}"\n`, { mode: 0o755 })
+		writeFileSync(join(dir, ".git/hooks/post-commit"), `#!/bin/sh\ntouch "${marker}"\n`, { mode: 0o755 })
+		const safe = git
+		writeFileSync(join(dir, "b.ts"), "b\n")
+		assert.ok(safe(["add", "b.ts"]).ok)
+		assert.ok(safe(["-c", "user.name=t", "-c", "user.email=t@e", "commit", "-qm", "c"]).ok)
+		assert.equal(existsSync(marker), false, "a hook ran")
+		assert.equal(plain(dir, ["config", "url.https://evil.test/.insteadOf", "https://github.com/"]).status, 0)
+		assert.deepEqual(unexpectedConfigKeys(git(CONFIG_READ_ARGS).out), ["url.https://evil.test/.insteadof"])
+		rmSync(dir, { recursive: true, force: true })
+	})
+})
+
+function plain(cwd, args) {
+	return spawnSync("git", args, { cwd, encoding: "utf8" })
+}
