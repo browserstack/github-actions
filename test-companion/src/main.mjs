@@ -26,6 +26,7 @@ import { childEnvFor } from "./child-env.mjs"
 import {
 	approvedSavePlan,
 	readCasesDestination,
+	unshownFields,
 	renderSaveInterrupted,
 	tmAddSavedNothing,
 	missingDestinationReason,
@@ -60,6 +61,8 @@ import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail
 import {
 	renderJobSummary,
 	renderCheckSummary,
+	renderSummaryWithin,
+	COMMENT_LIMIT,
 	renderComment,
 	requestMarkerFor,
 	chooseCommentAction,
@@ -242,6 +245,11 @@ let approvedPlan
 
 /** Which failed run a build-reading job looked at, and what it left out. */
 let buildNote = ""
+/** A generate plan's room: the run's report above the cases is kept to this. */
+const PLAN_SUMMARY_LIMIT = 12_000
+/** The proposal's own text and marker, around the plan. */
+const PROPOSAL_OVERHEAD = 2_000
+
 /** That run's id, recorded in a plan so approving it reads the same run. */
 let buildRunId = ""
 
@@ -737,6 +745,7 @@ async function main() {
 				replyText,
 				runId: waiting?.runId,
 				casesSha256: waiting?.casesSha256,
+				casesShown: waiting?.casesShown,
 			})
 			if (save.mode === "exact" || save.mode === "unavailable") {
 				saveApprovedCases(plan, save, approvalNote)
@@ -1046,12 +1055,21 @@ async function main() {
 		// file's fingerprint goes in the marker, so what the reviewer reads is exactly what is saved.
 		let planBody = ""
 		let casesSha256 = ""
-		const planned =
-			(plan.workflow ?? summary.workflow) === "generate" ? renderPlannedCases(readBytes(join(CASES_DIR, CASES_DATA_FILE))) : undefined
+		let casesShown = ""
+		const isGenerate = (plan.workflow ?? summary.workflow) === "generate"
+		const casesBytes = isGenerate ? readBytes(join(CASES_DIR, CASES_DATA_FILE)) : undefined
+		// The cases get most of the comment; the run's own report above them is kept short.
+		const summaryShown = casesBytes ? renderSummaryWithin(view, PLAN_SUMMARY_LIMIT) : renderCheckSummary(view)
+		const planned = casesBytes
+			? renderPlannedCases(casesBytes, { maxChars: COMMENT_LIMIT - summaryShown.length - sizeNote.length - PROPOSAL_OVERHEAD })
+			: undefined
 		if (planned) {
 			planBody = planned.body
 			casesSha256 = planned.digest
+			if (!planned.complete) casesShown = "partial"
 		} else {
+			// A generate plan shown from the agent's text can't be tied to the cases it would save.
+			if (isGenerate) casesShown = "markdown"
 			try {
 				planBody = readFileSync(RESULT_FILE, "utf8")
 			} catch {
@@ -1062,7 +1080,7 @@ async function main() {
 			plan.context.pr,
 			renderProposal(
 				// Capped: an over-long comment fails to post.
-				renderProposalBody({ summary: renderCheckSummary(view), plan: planBody, sizeNote }),
+				renderProposalBody({ summary: summaryShown, plan: planBody, sizeNote }),
 				sha,
 				plan.commenter,
 				// Record the job, so approving can't run a different one.
@@ -1070,7 +1088,7 @@ async function main() {
 				// And the run, so approving can fetch the cases it kept.
 				env.GITHUB_RUN_ID,
 				// And the failed run it read, and the cases it showed, so approving uses exactly those.
-				{ build: buildRunId, cases: casesSha256 },
+				{ build: buildRunId, cases: casesSha256, shown: casesShown },
 			),
 		)
 		postCheck(outcome, view, sha, [], "in_progress")
@@ -1773,6 +1791,15 @@ function saveExactly(plan, save, sha, base, finish, unavailable) {
 	// Only the exact file the plan was shown from: its fingerprint is in our own plan comment.
 	const bytes = readBytes(casesFile)
 	if (bytes === undefined || casesDigest(bytes) !== save.casesSha256) return unavailable("changed")
+	// Every field that would be saved must be one the plan showed.
+	let data
+	try {
+		data = JSON.parse(bytes.toString("utf8"))
+	} catch {
+		return unavailable("unreadable")
+	}
+	const unshown = unshownFields(data)
+	if (unshown.length) return unavailable("unshown", unshown.slice(0, 10).join(", "))
 	// The destination comes from the approved file itself, so the cases go where the plan said.
 	const where = readCasesDestination(bytes.toString("utf8"))
 	if (where.error === "no-destination") return unavailable(missingDestinationReason(subject.cli), subject.cli || undefined)

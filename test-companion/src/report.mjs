@@ -216,6 +216,11 @@ export function renderCheckSummary(args) {
 	return renderWithin(args, CHECK_SUMMARY_LIMIT, "")
 }
 
+/** The same summary within a smaller limit, so a plan's cases get most of a comment's room. */
+export function renderSummaryWithin(args, limit) {
+	return renderWithin(args, limit, "")
+}
+
 /** Render within `limit`, cutting the agent's answer first so the table, links and marker survive. */
 function renderWithin(args, limit, tail) {
 	const body = renderJobSummary(args)
@@ -284,26 +289,38 @@ export const PROPOSAL_WINDOW_MS = 24 * 60 * 60 * 1000
 // `run` is the run that made the plan, so approving it can fetch the cases that run kept.
 // `build` is the failed run the plan looked at, so approving it fixes that run and no other.
 // `cases` is the sha256 of the cases file the plan showed, so approving it saves exactly that.
-export function proposalMarkerFor(sha, requester, workflow, runId, { build, cases } = {}) {
+// `shown` is "partial" when the plan was too large to show every case, or "markdown" when a
+// generate plan couldn't be shown from its cases file: either way it can't be saved as approved.
+export function proposalMarkerFor(sha, requester, workflow, runId, { build, cases, shown } = {}) {
 	const by = String(requester ?? "").trim()
 	const job = String(workflow ?? "").trim()
 	const run = /^\d+$/.test(String(runId ?? "")) ? String(runId) : ""
 	const failed = /^\d+$/.test(String(build ?? "")) ? String(build) : ""
 	const digest = /^[0-9a-f]{64}$/.test(String(cases ?? "")) ? String(cases) : ""
-	return `<!-- test-companion-proposal sha=${sha}${by ? ` by=${by}` : ""}${job ? ` workflow=${job}` : ""}${run ? ` run=${run}` : ""}${failed ? ` build=${failed}` : ""}${digest ? ` cases=${digest}` : ""} -->`
+	const how = shown === "partial" || shown === "markdown" ? shown : ""
+	return `<!-- test-companion-proposal sha=${sha}${by ? ` by=${by}` : ""}${job ? ` workflow=${job}` : ""}${run ? ` run=${run}` : ""}${failed ? ` build=${failed}` : ""}${digest ? ` cases=${digest}` : ""}${how ? ` shown=${how}` : ""} -->`
 }
 
-// Groups: 1 = sha, 2 = requester, 3 = workflow, 4 = run id, 5 = failed run id, 6 = cases sha256.
-// The sha is captured and compared, never built into the regex. Older markers lack 4 to 6.
+// Groups: 1 = sha, 2 = requester, 3 = workflow, 4 = run id, 5 = failed run id, 6 = cases sha256,
+// 7 = how the cases were shown. The sha is captured and compared, never built into the regex.
+// Older markers lack 4 to 7.
 const MARKER =
-	/<!-- test-companion-proposal sha=([^\s>]+)(?: by=([^\s>]+))?(?: workflow=([^\s>]+))?(?: run=(\d+))?(?: build=(\d+))?(?: cases=([0-9a-f]{64}))? -->/
+	/<!-- test-companion-proposal sha=([^\s>]+)(?: by=([^\s>]+))?(?: workflow=([^\s>]+))?(?: run=(\d+))?(?: build=(\d+))?(?: cases=([0-9a-f]{64}))?(?: shown=(partial|markdown))? -->/
 
 // The last marker, since ours ends the comment and anything earlier could be planted.
 const readMarker = (body) => {
 	const all = [...String(body ?? "").matchAll(new RegExp(MARKER.source, "g"))]
 	const found = all.at(-1)
 	return found
-		? { sha: found[1], requester: found[2], workflow: found[3], runId: found[4], buildRunId: found[5], casesSha256: found[6] }
+		? {
+				sha: found[1],
+				requester: found[2],
+				workflow: found[3],
+				runId: found[4],
+				buildRunId: found[5],
+				casesSha256: found[6],
+				casesShown: found[7],
+			}
 		: undefined
 }
 
@@ -428,6 +445,7 @@ export function findProposal(comments, sha, now = Date.now(), us, opts = {}) {
 		runId: mark?.runId,
 		buildRunId: mark?.buildRunId,
 		casesSha256: mark?.casesSha256,
+		casesShown: mark?.casesShown,
 		body: newest.body ?? "",
 	}
 }
