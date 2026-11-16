@@ -1,5 +1,6 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
 import {
 	ciOnCommit,
 	parseRunReference,
@@ -8,6 +9,7 @@ import {
 	renderCiStillRunning,
 	renderBuildNote,
 	runRequestFor,
+	collectRunPages,
 } from "../src/runs.mjs"
 import { findProposal, renderProposal, proposalMarkerFor } from "../src/report.mjs"
 
@@ -220,5 +222,36 @@ describe("a fork's run is never the one read", () => {
 
 	test("naming a fork's run is refused", () => {
 		assert.match(checkNamedRun(fork(9), { prShas: ["abc1234"], repo: "o/r" }).why, /started from a fork/)
+	})
+})
+
+describe("every run on a commit is read, not just the first 100", () => {
+	const page = (n, size) => ({ workflow_runs: Array.from({ length: size }, (_, i) => ({ id: n * 1000 + i })) })
+
+	test("reads pages until one comes back short", () => {
+		const asked = []
+		const got = collectRunPages((p) => (asked.push(p), page(p, p < 3 ? 100 : 7)))
+		assert.deepEqual(asked, [1, 2, 3])
+		assert.equal(got.workflow_runs.length, 207)
+	})
+
+	test("stops at 1,000 runs", () => {
+		const asked = []
+		const got = collectRunPages((p) => (asked.push(p), page(p, 100)))
+		assert.equal(asked.length, 10)
+		assert.equal(got.workflow_runs.length, 1000)
+	})
+
+	test("a page that can't be read makes the list unreadable, never a partial 'nothing failed'", () => {
+		assert.equal(collectRunPages((p) => (p === 2 ? undefined : page(p, 100))), undefined)
+		assert.equal(collectRunPages(() => ({ message: "Bad credentials" })), undefined)
+	})
+
+	test("both listings in the Action use it", () => {
+		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
+		assert.doesNotMatch(main, /actions\/runs\?head_sha=\$\{[^}]+\}&per_page=100`\]\)/)
+		assert.match(main, /const runs = runsOnCommit\(plan\.context\.sha\)/)
+		assert.match(main, /const list = runsOnCommit\(sha\)/)
+		assert.match(main, /&per_page=100&page=\$\{page\}/)
 	})
 })

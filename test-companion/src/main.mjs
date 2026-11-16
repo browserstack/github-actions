@@ -9,6 +9,7 @@ import {
 	chooseRunsToCancel,
 	runIdsFromChecks,
 	ciOnCommit,
+	collectRunPages,
 	runRequestFor,
 	matchFailedByName,
 	checkNamedRun,
@@ -809,7 +810,7 @@ async function main() {
 				plan.context.build = check.url
 				buildNote = renderBuildNote(check, { ask: ASK_WORD[plan.workflow] })
 			} else {
-				const runs = gh(["api", `repos/${REPO}/actions/runs?head_sha=${plan.context.sha}&per_page=100`])
+				const runs = runsOnCommit(plan.context.sha)
 				if (!Array.isArray(runs?.workflow_runs)) {
 					// A failed lookup is not "nothing failed".
 					replyOnPr(plan.context.pr, LOOKUP_FAILED_REPLY)
@@ -1503,7 +1504,7 @@ function cancelRunsOn(sha) {
 	const checks = gh(["api", `repos/${REPO}/commits/${sha}/check-runs?per_page=100`])
 	const fromChecks = runIdsFromChecks(checks?.check_runs, { selfRunId: env.GITHUB_RUN_ID })
 	// Plus head_sha matches, for pull_request runs whose check isn't posted yet.
-	const list = gh(["api", `repos/${REPO}/actions/runs?head_sha=${sha}&per_page=100`])
+	const list = runsOnCommit(sha)
 	const fromRuns = chooseRunsToCancel(list?.workflow_runs, {
 		selfRunId: env.GITHUB_RUN_ID,
 		headSha: sha,
@@ -1794,6 +1795,11 @@ function saveExactly(plan, save, sha, base, finish, unavailable) {
 function pickBinding(doc, workflow) {
 	const list = (doc?.bindings ?? []).filter((b) => b.enabled)
 	return workflow ? list.find((b) => b.workflow === workflow) : list[0]
+}
+
+/** Every workflow run on a commit (all pages, up to 1,000), or undefined if any page failed. */
+function runsOnCommit(sha) {
+	return collectRunPages((page) => gh(["api", `repos/${REPO}/actions/runs?head_sha=${sha}&per_page=100&page=${page}`]))
 }
 
 /** A plain reply. Carries no COMMENT_MARKER, so later runs never overwrite it. */

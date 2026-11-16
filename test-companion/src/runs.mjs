@@ -5,6 +5,22 @@
 
 const IN_FLIGHT = new Set(["queued", "in_progress", "waiting", "requested", "pending"])
 
+/**
+ * Every run on a commit, page by page, up to `maxPages` pages (1,000 runs by default).
+ * `fetchPage(page)` returns GitHub's reply for one page. Any page that can't be read makes the
+ * whole list unreadable (undefined): a partial list could make "nothing failed" look true.
+ */
+export function collectRunPages(fetchPage, { perPage = 100, maxPages = 10 } = {}) {
+	const all = []
+	for (let page = 1; page <= maxPages; page++) {
+		const got = fetchPage(page)
+		if (!Array.isArray(got?.workflow_runs)) return undefined
+		all.push(...got.workflow_runs)
+		if (got.workflow_runs.length < perPage) break
+	}
+	return { workflow_runs: all }
+}
+
 /** Ids are compared as strings: GITHUB_RUN_ID is a string, the API's a number. */
 export function chooseRunsToCancel(runs, { selfRunId, headSha, workflowName } = {}) {
 	return (runs ?? [])
