@@ -770,6 +770,7 @@ async function main() {
 					shasComplete: listed.complete,
 					selfRunId: env.GITHUB_RUN_ID,
 					selfWorkflowName: env.TC_ACTION_SELF_WORKFLOW,
+					repo: REPO,
 				})
 				if (!check.ok) {
 					// Never a different run in its place: that is not what was approved.
@@ -794,6 +795,7 @@ async function main() {
 				const ci = ciOnCommit(runs?.workflow_runs, {
 					selfRunId: env.GITHUB_RUN_ID,
 					selfWorkflowName: env.TC_ACTION_SELF_WORKFLOW,
+					repo: REPO,
 				})
 				const chosen = matchFailedByName(requestText, ci.failed) ?? ci.failed[0]
 				if (!chosen) {

@@ -21,6 +21,7 @@ const run = (id, name, status, conclusion = null, extra = {}) => ({
 	conclusion,
 	html_url: `https://github.com/o/r/actions/runs/${id}`,
 	head_sha: "abc1234",
+	head_repository: { full_name: "o/r" },
 	...extra,
 })
 
@@ -35,7 +36,7 @@ describe("ciOnCommit", () => {
 				run(5, "Test Companion", "in_progress"),
 				run(6, "Other", "completed", "failure"),
 			],
-			{ selfRunId: 6, selfWorkflowName: "Test Companion" },
+			{ selfRunId: 6, selfWorkflowName: "Test Companion", repo: "o/r" },
 		)
 		assert.deepEqual(
 			ci.failed.map((r) => r.name),
@@ -48,7 +49,7 @@ describe("ciOnCommit", () => {
 	})
 
 	test("a workflow name can't break the comment's formatting", () => {
-		const ci = ciOnCommit([run(1, "x`] (evil)|\nname", "completed", "failure")])
+		const ci = ciOnCommit([run(1, "x`] (evil)|\nname", "completed", "failure")], { repo: "o/r" })
 		assert.doesNotMatch(ci.failed[0].name, /[`[\]|\n]/)
 	})
 })
@@ -104,15 +105,15 @@ describe("matchFailedByName", () => {
 describe("checkNamedRun", () => {
 	const prShas = ["abc1234", "def5678"]
 	test("a finished red run on one of the PR's commits is used", () => {
-		const r = checkNamedRun(run(9, "E2E", "completed", "failure"), { prShas })
+		const r = checkNamedRun(run(9, "E2E", "completed", "failure"), { prShas, repo: "o/r" })
 		assert.deepEqual(r, { ok: true, url: "https://github.com/o/r/actions/runs/9", name: "E2E" })
 	})
 	test("each reason a run can't be used", () => {
-		assert.match(checkNamedRun(null, { prShas }).why, /could not find/)
-		assert.match(checkNamedRun(run(9, "E2E", "completed", "failure", { head_sha: "zzz" }), { prShas }).why, /not for a commit/)
-		assert.match(checkNamedRun(run(9, "E2E", "in_progress"), { prShas }).why, /still going/)
-		assert.match(checkNamedRun(run(9, "E2E", "completed", "success"), { prShas }).why, /did not fail/)
-		assert.match(checkNamedRun(run(9, "TC", "completed", "failure"), { prShas, selfWorkflowName: "TC" }).why, /own runs/)
+		assert.match(checkNamedRun(null, { prShas, repo: "o/r" }).why, /could not find/)
+		assert.match(checkNamedRun(run(9, "E2E", "completed", "failure", { head_sha: "zzz" }), { prShas, repo: "o/r" }).why, /not for a commit/)
+		assert.match(checkNamedRun(run(9, "E2E", "in_progress"), { prShas, repo: "o/r" }).why, /still going/)
+		assert.match(checkNamedRun(run(9, "E2E", "completed", "success"), { prShas, repo: "o/r" }).why, /did not fail/)
+		assert.match(checkNamedRun(run(9, "TC", "completed", "failure"), { prShas, selfWorkflowName: "TC", repo: "o/r" }).why, /own runs/)
 	})
 })
 
@@ -179,7 +180,7 @@ describe("approving a plan reads the run that plan looked at", () => {
 
 	test("the recorded run is still checked: one that is no longer red can't be used", () => {
 		const run = { id: 200, html_url: e2e.url, head_sha: SHA, status: "completed", conclusion: "success", name: e2e.name, head_repository: { full_name: "org/repo" } }
-		assert.match(checkNamedRun(run, { prShas: [SHA] }).why, /did not fail/)
+		assert.match(checkNamedRun(run, { prShas: [SHA], repo: "org/repo" }).why, /did not fail/)
 	})
 
 	test("the marker keeps the run and still reads markers without it", () => {
@@ -188,5 +189,36 @@ describe("approving a plan reads the run that plan looked at", () => {
 		const old = findProposal([{ id: 9, user: { login: US, type: "Bot" }, created_at: new Date().toISOString(), body: `p\n\n<!-- test-companion-proposal sha=${SHA} by=o workflow=fix run=111 -->` }], SHA, Date.now(), US)
 		assert.equal(old.runId, "111")
 		assert.equal(old.buildRunId, undefined)
+	})
+})
+
+describe("a fork's run is never the one read", () => {
+	const fork = (id, extra = {}) => run(id, "CI", "completed", "failure", { head_repository: { full_name: "mallory/r" }, ...extra })
+
+	test("a fork's red run on the same commit is left out", () => {
+		const ci = ciOnCommit([fork(9), run(3, "E2E", "completed", "failure")], { repo: "o/r" })
+		assert.deepEqual(
+			ci.failed.map((r) => r.id),
+			[3],
+		)
+	})
+
+	test("the repository is compared without case", () => {
+		assert.equal(ciOnCommit([run(3, "E2E", "completed", "failure")], { repo: "O/R" }).failed.length, 1)
+	})
+
+	test("a run that doesn't say where it came from is left out", () => {
+		const unknown = run(3, "E2E", "completed", "failure", { head_repository: undefined })
+		assert.equal(ciOnCommit([unknown], { repo: "o/r" }).failed.length, 0)
+		assert.match(checkNamedRun(unknown, { prShas: ["abc1234"], repo: "o/r" }).why, /fork/)
+	})
+
+	test("a caller that doesn't say which repository gets nothing", () => {
+		assert.equal(ciOnCommit([run(3, "E2E", "completed", "failure")], {}).failed.length, 0)
+		assert.match(checkNamedRun(run(3, "E2E", "completed", "failure"), { prShas: ["abc1234"] }).why, /fork/)
+	})
+
+	test("naming a fork's run is refused", () => {
+		assert.match(checkNamedRun(fork(9), { prShas: ["abc1234"], repo: "o/r" }).why, /started from a fork/)
 	})
 })
