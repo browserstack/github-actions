@@ -28,6 +28,21 @@ inputs:
             The App's private key. Store it as a repository or organisation secret,
             never inline. It is never passed to the agent's shell.
         required: false
+    token-broker-url:
+        description: >-
+            Without app-id and app-private-key, the Action signs in as the BrowserStack
+            GitHub App through BrowserStack's token service, which holds the App's key.
+            The job needs `permissions: id-token: write`. Leave this unset; it exists to
+            point at a test service. Must be https.
+        required: false
+        default: "https://test-companion.browserstack.com/api/github-app/token"
+    app-slug:
+        description: >-
+            The slug of the App the token service signs for, so commits and comments
+            are credited to <slug>[bot]. Leave this unset unless the token service is a
+            test one with its own App.
+        required: false
+        default: "browserstack"
 
     workflow:
         description: >
@@ -212,6 +227,8 @@ runs:
               TC_ACTION_SELF_WORKFLOW: ${{ inputs.self-workflow-name }}
               TC_ACTION_APP_ID: ${{ inputs.app-id }}
               TC_ACTION_APP_PRIVATE_KEY: ${{ inputs.app-private-key }}
+              TC_ACTION_TOKEN_BROKER_URL: ${{ inputs.token-broker-url }}
+              TC_ACTION_APP_SLUG: ${{ inputs.app-slug }}
               TC_ACTION_ALLOW_UNISOLATED: ${{ inputs.allow-unisolated }}
               # The `tc --version` line, so a plan records which CLI made it.
               TC_ACTION_CLI_VERSION: ${{ steps.install.outputs.cli-version }}
