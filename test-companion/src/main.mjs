@@ -105,6 +105,8 @@ import {
 	isRequestedByPerson,
 	leaveOut,
 	commitPaths,
+	parseLsTree,
+	checkTreeAgainstBase,
 	leaveOutMessage,
 	listFiles,
 	renderPushNote,
@@ -245,6 +247,32 @@ let approvedPlan
 
 /** Which failed run a build-reading job looked at, and what it left out. */
 let buildNote = ""
+/** The base's whole tree, listed before the agent ran. */
+let baseListing = new Map()
+/** Where git would look for borrowed objects, and what those files said before the agent ran. */
+const ALTERNATES_FILES = ["objects/info/alternates", "objects/info/http-alternates"]
+let alternatesPaths = []
+let alternatesBefore = ""
+
+function readAlternates(paths) {
+	return paths
+		.map((p) => {
+			try {
+				return readFileSync(p, "utf8")
+			} catch {
+				return ""
+			}
+		})
+		.join("\0")
+}
+
+/** Why git's object store can't be trusted any more, or undefined. */
+function alternatesChanged() {
+	return readAlternates(alternatesPaths) === alternatesBefore
+		? undefined
+		: "the run changed where git borrows objects from (.git/objects/info/alternates), so what git reads can't be trusted"
+}
+
 /** A generate plan's room: the run's report above the cases is kept to this. */
 const PLAN_SUMMARY_LIMIT = 12_000
 /** The proposal's own text and marker, around the plan. */
@@ -940,6 +968,11 @@ async function main() {
 
 	// Where HEAD was before the agent touched anything.
 	headBeforeRun = git(["rev-parse", "HEAD"]).out
+	// What the base holds, and where git may borrow objects from, before the agent can write .git.
+	// Kept in this process, which the agent can't reach.
+	baseListing = headBeforeRun ? parseLsTree(git(["ls-tree", "-r", "-z", "--full-tree", headBeforeRun]).raw) : new Map()
+	alternatesPaths = ALTERNATES_FILES.map((f) => git(["rev-parse", "--git-path", f]).out).filter(Boolean)
+	alternatesBefore = readAlternates(alternatesPaths)
 	notice(`tc ${args.join(" ")}`)
 	// Remove stale files so a run that produces nothing can't report an earlier run's work.
 	for (const f of [SUMMARY_FILE, RESULT_FILE, `${RESULT_FILE}.json`, CASES_DIR]) {
@@ -1163,6 +1196,8 @@ function saveWork(saving, plan) {
 			"changes are in the job's workspace only.",
 		].join(" ")
 	}
+	const borrowed = alternatesChanged()
+	if (borrowed) return `**Could not save this work to \`${branch}\`:** ${borrowed}. Nothing was committed or pushed.`
 	// quotePath=false keeps non-ASCII paths as-is; -uall lists new directories file by file.
 	const status = git(["-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all"])
 	if (!status.ok) return undefined
@@ -1197,6 +1232,12 @@ function saveWork(saving, plan) {
 	if (!made.sha) {
 		return renderPushNote({ branch, files: push, skipped: skip, error: made.error || "nothing to commit" })
 	}
+	// The agent can write .git/objects, so git's view of the base can be forged. The new commit
+	// must differ from the base as listed before the run only in the files chosen above.
+	const forged = checkTreeAgainstBase(baseListing, parseLsTree(git(["ls-tree", "-r", "-z", "--full-tree", made.sha]).raw), {
+		allowed: push,
+	})
+	if (forged) return `**Could not save this work to \`${branch}\`:** ${forged}. Nothing was pushed.`
 
 	// Push to a URL built from GITHUB_REPOSITORY, not `origin`: an insteadOf rewrite in
 	// .git/config could send the token elsewhere.
@@ -1380,6 +1421,8 @@ function openHandedOffPr(path, plan) {
 	if (unexpected.length) {
 		return `**Did not open a pull request:** the repository's git config carries ${listFiles(unexpected)}, which \`actions/checkout\` does not write.`
 	}
+	const borrowed = alternatesChanged()
+	if (borrowed) return `**Did not open a pull request:** ${borrowed}.`
 	const tip = git(["rev-parse", "--verify", "--quiet", `refs/heads/${req.branch}^{commit}`])
 	if (!tip.ok || !tip.out) return `**Did not open a pull request:** the run did not leave a \`${req.branch}\` branch.`
 	// The squash goes onto the commit the run started on, and only if the agent's branch builds
@@ -1432,6 +1475,11 @@ function openHandedOffPr(path, plan) {
 		rmSync(indexFile, { force: true })
 	}
 	if (left.error) return `**Could not open the pull request:** ${left.error}.`
+	// Checked against the base as listed before the run, not as git reads it now.
+	if (left.sha) {
+		const forged = checkTreeAgainstBase(baseListing, parseLsTree(git(["ls-tree", "-r", "-z", "--full-tree", left.sha]).raw))
+		if (forged) return `**Did not open a pull request:** ${forged}.`
+	}
 	if (left.empty) {
 		return dropped.length
 			? `**Did not open a pull request:** the run's only changes were files Test Companion never commits: ${listFiles(dropped)}.`
