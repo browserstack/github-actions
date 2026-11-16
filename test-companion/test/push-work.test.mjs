@@ -29,6 +29,7 @@ import {
 	savingFor,
 	leaveOut,
 	commitPaths,
+	startedOnMergeCommit,
 	checkHandoffDescends,
 	REWROTE_HISTORY,
 	leaveOutMessage,
@@ -1229,3 +1230,33 @@ describe("git ignores replace refs and grafts the agent could plant", () => {
 function plain(cwd, args) {
 	return spawnSync("git", args, { cwd, encoding: "utf8" })
 }
+
+describe("a hand-back is never built on the pull_request merge commit", () => {
+	const merge = "m".repeat(40)
+	const head = "h".repeat(40)
+
+	test("a pull_request run still on the merge commit is caught", () => {
+		assert.equal(startedOnMergeCommit({ eventName: "pull_request", startedOn: merge, eventSha: merge, prHead: head }), true)
+	})
+
+	test("a run that moved to the pull request's commit is fine", () => {
+		assert.equal(startedOnMergeCommit({ eventName: "pull_request", startedOn: head, eventSha: merge, prHead: head }), false)
+	})
+
+	test("a comment run on the default branch keeps its documented fallback", () => {
+		assert.equal(startedOnMergeCommit({ eventName: "issue_comment", startedOn: merge, eventSha: merge, prHead: head }), false)
+	})
+
+	test("no starting commit is not read as the merge commit", () => {
+		assert.equal(startedOnMergeCommit({ eventName: "pull_request", startedOn: "", eventSha: "", prHead: head }), false)
+	})
+
+	test("the wiring refuses before anything is squashed or pushed", () => {
+		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
+		const fn = main.slice(main.indexOf("function openHandedOffPr("), main.indexOf("function openHandedOffPr(") + 6000)
+		const refuse = fn.indexOf("startedOnMergeCommit(")
+		assert.ok(refuse > 0)
+		assert.ok(refuse < fn.indexOf("leaveOut("), "refused before the squash")
+		assert.ok(refuse < fn.indexOf('git(["push"'), "refused before any push")
+	})
+})
