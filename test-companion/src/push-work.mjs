@@ -422,6 +422,20 @@ export function handedOffPrRequest({ req, pr, prBranch, defaultBranch, onReviewe
 	}
 }
 
+/**
+ * Did the run start on GitHub's merge commit for a pull request, rather than the pull request's
+ * own commit? On a `pull_request` event the job checks out that merge (the event's sha); if
+ * moving to the pull request's commit failed, the run's files are the merge's. A hand-back
+ * built from it would carry the whole pull request, so it is refused. (Parenting it on the pull
+ * request's commit instead would pull in the base branch's newer changes.)
+ */
+export function startedOnMergeCommit({ eventName, startedOn, eventSha, prHead } = {}) {
+	const at = String(startedOn ?? "").toLowerCase()
+	return (
+		eventName === "pull_request" && at !== "" && at === String(eventSha ?? "").toLowerCase() && at !== String(prHead ?? "").toLowerCase()
+	)
+}
+
 export const REWROTE_HISTORY =
 	"the run's branch doesn't build on the commit that was reviewed (it rewrote history), so its changes can't be trusted as a fix for this pull request"
 

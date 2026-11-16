@@ -91,8 +91,10 @@ For `fix` and `automate`, the work is handed back as a pull request:
 
 - opened as a draft (a normal pull request where drafts aren't available);
 - based on the pull request it was asked on, so it carries only the fix (if the
-  run didn't start on that pull request's commit, it's based on the default
-  branch instead, and the reply says so);
+  run started on the default branch instead of that pull request's commit, it's
+  based on the default branch, and the reply says so; if it started on GitHub's
+  merge of the pull request, nothing is opened, because it would carry the
+  whole pull request);
 - one squashed commit by Test Companion's bot account, so the agent's own
   commits never reach GitHub;
 - tool by-products (logs, `.env`, `browserstack.err` and the like) left out;

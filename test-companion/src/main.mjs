@@ -96,6 +96,7 @@ import {
 	splitPushable,
 	splitHandoffPaths,
 	checkHandoffDescends,
+	startedOnMergeCommit,
 	REWROTE_HISTORY,
 	savingFor,
 	isRequestedByPerson,
@@ -1369,6 +1370,12 @@ function openHandedOffPr(path, plan) {
 	if (!headBeforeRun) return "**Could not open the pull request:** could not read the commit the run started on."
 	const reviewed = git(["rev-parse", "--verify", "--quiet", `${headBeforeRun}^{commit}`])
 	if (!reviewed.ok || !reviewed.out) return "**Could not open the pull request:** could not read the commit the run started on."
+	if (
+		plan.context.pr &&
+		startedOnMergeCommit({ eventName: env.GITHUB_EVENT_NAME, startedOn: headBeforeRun, eventSha: env.GITHUB_SHA, prHead: plan.context.sha })
+	) {
+		return `**Did not open a pull request:** the run couldn't move to #${plan.context.pr}'s commit, so it ran on GitHub's merge of #${plan.context.pr} into its base. A pull request built from that would carry all of #${plan.context.pr}, not just the fix. Nothing was pushed; ask me again.`
+	}
 	const descends = checkHandoffDescends({ git, reviewed: reviewed.out, tip: tip.out })
 	if (descends.error) return `**Could not open the pull request:** ${descends.error}.`
 	if (!descends.ok) return `**Did not open a pull request:** ${REWROTE_HISTORY}.`
