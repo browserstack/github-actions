@@ -83,7 +83,8 @@ describe("changedPaths — reading git status", () => {
 	})
 
 	test("a rename reports where the file landed, not where it came from", () => {
-		assert.deepEqual(changedPaths("R  old/a.js -> new/a.js"), ["new/a.js"])
+		// Both: the old path is recorded as deleted, so the commit doesn't keep a copy.
+		assert.deepEqual(changedPaths("R  old/a.js -> new/a.js"), ["old/a.js", "new/a.js"])
 	})
 
 	test("a quoted path with a space is unquoted", () => {
@@ -275,7 +276,7 @@ describe("changedPaths — paths git had to escape", () => {
 	})
 
 	test("a rename to an escaped path reports the decoded destination", () => {
-		assert.deepEqual(changedPaths('R  old.js -> "caf\\303\\251.spec.ts"'), ["café.spec.ts"])
+		assert.deepEqual(changedPaths('R  old.js -> "caf\\303\\251.spec.ts"'), ["old.js", "café.spec.ts"])
 	})
 })
 
@@ -1258,5 +1259,26 @@ describe("a hand-back is never built on the pull_request merge commit", () => {
 		assert.ok(refuse > 0)
 		assert.ok(refuse < fn.indexOf("leaveOut("), "refused before the squash")
 		assert.ok(refuse < fn.indexOf('git(["push"'), "refused before any push")
+	})
+})
+
+describe("a staged rename is a move, not a copy", () => {
+	const identity = { name: "Test Companion", email: BOT_EMAIL }
+
+	test("a copy keeps its source", () => {
+		assert.deepEqual(changedPaths("C  a.js -> b.js"), ["b.js"])
+	})
+
+	test("after `git mv a b`, the commit has b and not a", () => {
+		const { dir, git, tip } = repoWithBranch({ "a.ts": "new\n" })
+		assert.ok(git(["mv", "a.ts", "b.ts"]).ok)
+		const status = git(["-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all"])
+		const paths = changedPaths(status.out)
+		assert.deepEqual(paths, ["a.ts", "b.ts"])
+		const out = commitPaths({ git, base: tip, paths, identity, message: "m", indexFile: join(dir, "scratch") })
+		assert.ok(out.sha, JSON.stringify(out))
+		assert.equal(git(["cat-file", "-e", `${out.sha}:a.ts`]).ok, false, "the old path was kept")
+		assert.equal(git(["show", `${out.sha}:b.ts`]).out, "new")
+		rmSync(dir, { recursive: true, force: true })
 	})
 })

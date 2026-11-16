@@ -102,11 +102,17 @@ export function changedPaths(porcelain) {
 	return String(porcelain ?? "")
 		.split("\n")
 		.filter((line) => line.trim())
-		.map(stripStatus)
-		.filter(Boolean)
-		.map((path) => {
+		.flatMap((line) => {
+			const path = stripStatus(line)
+			if (!path) return []
 			const arrow = path.indexOf(" -> ")
-			return arrow === -1 ? path : path.slice(arrow + 4)
+			if (arrow === -1) return [path]
+			// A rename (R) moved a file: its old path is gone and must be recorded as deleted,
+			// or a commit started from the base would keep both. A copy (C) leaves the old one.
+			const renamed = line.trimStart().startsWith("R")
+			const from = path.slice(0, arrow)
+			const to = path.slice(arrow + 4)
+			return renamed ? [from, to] : [to]
 		})
 		.map(unquote)
 }
