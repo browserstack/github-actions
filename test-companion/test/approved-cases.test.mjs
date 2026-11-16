@@ -516,7 +516,7 @@ describe("the plan shows every field approving saves", () => {
 					description: "Checks the cap\nSee @octocat",
 					type: "Functional",
 					tags: ["smoke", "retry"],
-					references: ["https://evil.test/x", "JIRA-1"],
+					references: ["https://evil.test/x", "ISSUE-1"],
 					customFields: { Team: "QA", Owner: "@mallory" },
 				},
 			]),
@@ -526,7 +526,7 @@ describe("the plan shows every field approving saves", () => {
 		assert.match(shown.body, /\*\*Type:\*\* Functional/)
 		assert.match(shown.body, /\*\*Tags:\*\* smoke, retry/)
 		assert.match(shown.body, /- https:\u200b\/\/evil\.test\/x/, "a reference is not a link")
-		assert.match(shown.body, /- JIRA-1/)
+		assert.match(shown.body, /- ISSUE-1/)
 		assert.match(shown.body, /- Team: QA/)
 		assert.match(shown.body, /- Owner: @\u200bmallory/)
 	})
