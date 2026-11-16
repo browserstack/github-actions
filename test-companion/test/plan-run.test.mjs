@@ -1,5 +1,6 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
 import { planRun, TC_EVENTS, contextArgs, withPullRequestHead } from "../src/plan-run.mjs"
 
 const pr = (over = {}) => ({
@@ -655,5 +656,40 @@ describe("comments from bots, our own included, are ignored", () => {
 
 	test("a person saying the same thing still counts", () => {
 		assert.equal(run({ login: "an-sdet", type: "User" }).skip, undefined)
+	})
+})
+
+describe("comments by the account we post as never start a run", () => {
+	const event = (login, type = "User", body = "Reply **@browserstack go** to run this for real.") => ({
+		action: "created",
+		issue: { number: 7, pull_request: {} },
+		comment: { id: 1, body, user: { login, type } },
+	})
+
+	test("with a person's token, that person's comments are ours and skipped", () => {
+		const out = planRun({ eventName: "issue_comment", payload: event("jane"), repo: "acme/shop", selfLogin: "jane" })
+		assert.equal(out.skip?.reason, "own-comment")
+	})
+
+	test("the login is compared without case", () => {
+		assert.equal(planRun({ eventName: "issue_comment", payload: event("Jane"), repo: "acme/shop", selfLogin: "jane" }).skip?.reason, "own-comment")
+	})
+
+	test("someone else's request still runs", () => {
+		const out = planRun({ eventName: "issue_comment", payload: event("bob", "User", "@browserstack test this PR"), repo: "acme/shop", selfLogin: "jane" })
+		assert.equal(out.skip, undefined)
+	})
+
+	test("bots are still skipped with no login given", () => {
+		assert.equal(planRun({ eventName: "issue_comment", payload: event("browserstack[bot]", "Bot"), repo: "acme/shop" }).skip?.reason, "bot-comment")
+	})
+
+	test("the wiring: a person's token is detected and warned about, and its login is passed", () => {
+		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
+		assert.match(main, /const selfLogin = appToken \? botLogin : personTokenLogin\(\) \?\? botLogin/)
+		assert.match(main, /planRun\(\{\n\s*eventName: env\.GITHUB_EVENT_NAME,\n\s*selfLogin,/)
+		const fn = main.slice(main.indexOf("function personTokenLogin("), main.indexOf("async function appInstallationToken("))
+		assert.match(fn, /\["api", "user", "--jq", "\.login"\]/)
+		assert.match(fn, /warn\(/)
 	})
 })

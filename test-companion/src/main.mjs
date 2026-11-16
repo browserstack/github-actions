@@ -252,6 +252,23 @@ function fetchAndCheckout(sha, branch) {
 	return branch ? git(["checkout", "-B", branch, sha]).ok : git(["checkout", "--detach", sha]).ok
 }
 
+/**
+ * The person `github-token` belongs to, when it is a personal token, else undefined. Only a
+ * person's token can read `GET /user`; the workflow token and an App token can't. Our comments
+ * then appear under that person's account, so they are skipped like a bot's would be.
+ */
+function personTokenLogin() {
+	const r = runGh(["api", "user", "--jq", ".login"], { token: env.GH_TOKEN })
+	const login = r.status === 0 ? String(r.stdout ?? "").trim() : ""
+	if (!login) return undefined
+	warn(
+		`Test Companion: github-token belongs to ${login}, a person, not the workflow or the GitHub App. ` +
+			`Its comments will appear as ${login}'s, so Test Companion ignores comments by ${login} and can't recognise its own plans. ` +
+			"Use the default workflow token or the GitHub App instead.",
+	)
+	return login
+}
+
 /** A repo-scoped App installation token, or undefined to fall back to the workflow token. */
 async function appInstallationToken() {
 	const creds = appCredentials(env)
@@ -478,6 +495,8 @@ async function main() {
 		env.GH_TOKEN = appToken
 		notice("Test Companion: acting as the GitHub App.")
 	}
+	// The account our comments appear under, so we never answer ourselves.
+	const selfLogin = appToken ? botLogin : personTokenLogin() ?? botLogin
 
 	// No credentials is the normal case for a fork pull request: skip, don't fail.
 	if (!env.BROWSERSTACK_USERNAME || !env.BROWSERSTACK_ACCESS_KEY) {
@@ -494,6 +513,7 @@ async function main() {
 
 	let plan = planRun({
 		eventName: env.GITHUB_EVENT_NAME,
+		selfLogin,
 		payload: readEvent(),
 		repo: REPO,
 		sha: env.GITHUB_SHA,
