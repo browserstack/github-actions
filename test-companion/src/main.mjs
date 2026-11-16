@@ -25,6 +25,8 @@ import { childEnvFor } from "./child-env.mjs"
 import {
 	approvedSavePlan,
 	readCasesDestination,
+	renderPlannedCases,
+	casesDigest,
 	pickCasesArtifact,
 	casesSubject,
 	checkCasesSubject,
@@ -702,7 +704,12 @@ async function main() {
 			}
 
 			// A plain go on a generate plan saves the plan's own cases; nothing is generated again.
-			const save = approvedSavePlan({ workflow: plan.workflow, replyText, runId: waiting?.runId })
+			const save = approvedSavePlan({
+				workflow: plan.workflow,
+				replyText,
+				runId: waiting?.runId,
+				casesSha256: waiting?.casesSha256,
+			})
 			if (save.mode === "exact" || save.mode === "unavailable") {
 				saveApprovedCases(plan, save, approvalNote)
 				// saveApprovedCases always ends the run. Never fall through to generating again.
@@ -1005,12 +1012,21 @@ async function main() {
 		const sizeNote = size.large
 			? `> **This is a large change** — ${size.files} files and ${size.lines} changed lines. Trim the list below before replying go if you only want part of it covered.\n\n`
 			: ""
-		// The plan itself, from the result file.
+		// The plan itself. A generate plan is shown from the cases file approving it saves, and that
+		// file's fingerprint goes in the marker, so what the reviewer reads is exactly what is saved.
 		let planBody = ""
-		try {
-			planBody = readFileSync(RESULT_FILE, "utf8")
-		} catch {
-			// No plan; renderProposalBody says so.
+		let casesSha256 = ""
+		const planned =
+			(plan.workflow ?? summary.workflow) === "generate" ? renderPlannedCases(readBytes(join(CASES_DIR, CASES_DATA_FILE))) : undefined
+		if (planned) {
+			planBody = planned.body
+			casesSha256 = planned.digest
+		} else {
+			try {
+				planBody = readFileSync(RESULT_FILE, "utf8")
+			} catch {
+				// No plan; renderProposalBody says so.
+			}
 		}
 		replyOnPr(
 			plan.context.pr,
@@ -1023,8 +1039,8 @@ async function main() {
 				plan.workflow ?? summary.workflow,
 				// And the run, so approving can fetch the cases it kept.
 				env.GITHUB_RUN_ID,
-				// And the failed run it read, so approving reads that run and no other.
-				{ build: buildRunId },
+				// And the failed run it read, and the cases it showed, so approving uses exactly those.
+				{ build: buildRunId, cases: casesSha256 },
 			),
 		)
 		postCheck(outcome, view, sha, [], "in_progress")
@@ -1623,6 +1639,14 @@ function readOptional(path) {
 	}
 }
 
+function readBytes(path) {
+	try {
+		return readFileSync(path)
+	} catch {
+		return undefined
+	}
+}
+
 /** Keep the run's cases file, with the repo and commit it was made for, for the cases artifact. */
 function keepCases(text, plan) {
 	if (text === undefined) return
@@ -1683,8 +1707,11 @@ function saveExactly(plan, save, sha, base, finish, unavailable) {
 	const subject = checkCasesSubject(readOptional(join(dir, CASES_SUBJECT_FILE)), { repo: REPO, sha })
 	if (!subject.ok) return unavailable(subject.why)
 	const casesFile = join(dir, CASES_DATA_FILE)
+	// Only the exact file the plan was shown from: its fingerprint is in our own plan comment.
+	const bytes = readBytes(casesFile)
+	if (bytes === undefined || casesDigest(bytes) !== save.casesSha256) return unavailable("changed")
 	// The destination comes from the approved file itself, so the cases go where the plan said.
-	const where = readCasesDestination(readOptional(casesFile))
+	const where = readCasesDestination(bytes.toString("utf8"))
 	if (where.error) return unavailable(where.error)
 
 	notice(`Test Companion: saving the approved plan's cases from run ${save.runId} to ${where.folder} in ${where.project}.`)

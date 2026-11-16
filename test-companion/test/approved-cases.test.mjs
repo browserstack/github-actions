@@ -12,6 +12,8 @@ import {
 	renderExactSave,
 	exactSaveSummary,
 	exactSaveOutcome,
+	renderPlannedCases,
+	casesDigest,
 	CASES_ARTIFACT,
 } from "../src/approved-cases.mjs"
 import { OUTCOMES } from "../src/outcome.mjs"
@@ -25,6 +27,8 @@ const REAL_BINDINGS = JSON.parse(
 		'"bindings":[{"name":"generate-on-comment","workflow":"generate","on":"pr_comment","mode":"live","approval":"review-before-run","enabled":true}]}',
 )
 const GENERATE_BINDING = REAL_BINDINGS.bindings[0]
+// The sha256 of the cases file a plan showed, as its marker records it.
+const DIGEST = "d".repeat(64)
 
 // A generate preview's result.md.json, shaped like the CLI's.
 const CASES_FILE = {
@@ -51,10 +55,10 @@ const withDestination = { ...CASES_FILE, destination: { project: "Checkout", fol
 describe("approvedSavePlan: a plain go on a generate plan saves the plan's own cases", () => {
 	test("reproduces the live failure: real binding shape, plain go, run id present → exact, not run", () => {
 		assert.equal("input" in GENERATE_BINDING, false)
-		assert.deepEqual(approvedSavePlan({ workflow: GENERATE_BINDING.workflow, replyText: "go", binding: GENERATE_BINDING, runId: "1234567890" }), {
-			mode: "exact",
-			runId: "1234567890",
-		})
+		assert.deepEqual(
+			approvedSavePlan({ workflow: GENERATE_BINDING.workflow, replyText: "go", binding: GENERATE_BINDING, runId: "1234567890", casesSha256: DIGEST }),
+			{ mode: "exact", runId: "1234567890", casesSha256: DIGEST },
+		)
 	})
 
 	test("go with edits regenerates, and says it is because of the edits", () => {
@@ -82,7 +86,13 @@ describe("approvedSavePlan: a plain go on a generate plan saves the plan's own c
 		for (const replyText of plainGoes) {
 			assert.equal(isApprovalOnly(replyText), true, `"${replyText}" should be a plain approval`)
 			for (const binding of bindings) {
-				assert.equal(approvedSavePlan({ workflow: "generate", replyText, binding, runId: "77" }).mode, "exact", `"${replyText}" with ${JSON.stringify(binding)}`)
+				assert.equal(
+					approvedSavePlan({ workflow: "generate", replyText, binding, runId: "77", casesSha256: DIGEST }).mode,
+					"exact",
+					`"${replyText}" with ${JSON.stringify(binding)}`,
+				)
+				// Without the cases' fingerprint it is refused, still never a new generate run.
+				assert.equal(approvedSavePlan({ workflow: "generate", replyText, binding, runId: "77" }).mode, "unavailable")
 			}
 		}
 	})
@@ -228,7 +238,7 @@ describe("the wiring", () => {
 
 	test("a plan attaches its cases, and approving one saves them with tm add instead of running again", () => {
 		assert.match(main, /setOutput\("cases-dir", CASES_DIR\)/)
-		assert.match(main, /env\.GITHUB_RUN_ID,\n\s*\),\n\s*\)/)
+		assert.match(main, /env\.GITHUB_RUN_ID,\n[^\n]*\n\s*\{ build: buildRunId, cases: casesSha256 \},\n\s*\),\n\s*\)/)
 		// No --project/--folder: tm add takes the destination from the approved file.
 		assert.match(main, /\["tm", "add", "--from-file", casesFile, "--json"\]/)
 		assert.doesNotMatch(main, /binding\?\.input|\.input\?\.tm_/)
@@ -250,5 +260,86 @@ describe("the wiring", () => {
 		const proposing = main.slice(main.indexOf("if (proposing && !runDidNotWork(outcome))"), main.indexOf('setOutput("outcome", "Proposed")'))
 		assert.match(proposing, /setOutput\("result-file", RESULT_FILE\)/)
 		assert.match(proposing, /setOutput\("summary-file", SUMMARY_FILE\)/)
+	})
+})
+
+describe("approving saves exactly the cases the plan showed", () => {
+	const file = Buffer.from(
+		JSON.stringify({
+			destination: { project: "rag_assignment", folder: "github-app", projectId: "PR-42", folderId: "7" },
+			cases: [
+				{ id: "T001", title: "Base delay", priority: "high", preconditions: "Module importable", steps: [{ step: "Call f(1)", result: "500" }] },
+				{ id: "T002", title: "Ping @octocat [here](https://evil.test)", steps: [] },
+			],
+		}),
+	)
+
+	test("the plan is shown from the cases file, with where it will be saved", () => {
+		const shown = renderPlannedCases(file)
+		assert.match(shown.body, /\*\*Will be saved to:\*\* github-app in rag\\_assignment \(PR-42, 7\), once approved\./)
+		assert.match(shown.body, /\*\*2 test cases:\*\*/)
+		assert.match(shown.body, /#### T001 — Base delay\nPriority: high\nBefore you start: Module importable\n1\. Call f\\\(1\\\)\n {3}- Expected: 500/)
+		assert.equal(shown.digest, casesDigest(file))
+	})
+
+	test("agent-written text can't mention anyone or add a link", () => {
+		const shown = renderPlannedCases(file).body
+		assert.doesNotMatch(shown, /@octocat/)
+		assert.doesNotMatch(shown, /\]\(https:\/\//)
+		assert.doesNotMatch(shown, /https:\/\/evil/)
+	})
+
+	test("one changed byte changes the fingerprint", () => {
+		const changed = Buffer.from(file.toString("utf8").replace("Base delay", "Base delaz"))
+		assert.notEqual(casesDigest(changed), renderPlannedCases(file).digest)
+	})
+
+	test("a file with no destination says approving can't save it", () => {
+		const none = Buffer.from(JSON.stringify({ cases: [{ id: "T001", title: "x" }] }))
+		assert.match(renderPlannedCases(none).body, /Will be saved to:\*\* nowhere/)
+	})
+
+	test("a plan too long for one comment still lists every title", () => {
+		const big = Buffer.from(
+			JSON.stringify({
+				destination: { project: "p", folder: "f" },
+				cases: Array.from({ length: 300 }, (_, i) => ({ id: `T${i}`, title: `case ${i}`, steps: [{ step: "s".repeat(200), result: "r" }] })),
+			}),
+		)
+		const shown = renderPlannedCases(big).body
+		assert.ok(shown.length < 60_000, String(shown.length))
+		assert.match(shown, /- T299 — case 299/)
+	})
+
+	test("an unreadable file shows no generated plan", () => {
+		assert.equal(renderPlannedCases(Buffer.from("not json")), undefined)
+		assert.equal(renderPlannedCases(Buffer.from("{}")), undefined)
+	})
+
+	test("the fingerprint travels in our plan comment", () => {
+		const digest = casesDigest(file)
+		const body = renderProposal("plan", "abc123", "octocat", "generate", "1234567890", { cases: digest })
+		const waiting = findProposal([{ id: 5, user: { login: "browserstack[bot]", type: "Bot" }, created_at: new Date().toISOString(), body }], "abc123", Date.now(), "browserstack[bot]")
+		assert.equal(waiting.casesSha256, digest)
+		assert.deepEqual(approvedSavePlan({ workflow: "generate", replyText: "go", runId: waiting.runId, casesSha256: waiting.casesSha256 }), {
+			mode: "exact",
+			runId: "1234567890",
+			casesSha256: digest,
+		})
+	})
+
+	test("a plan without the fingerprint is refused, with a reason", () => {
+		assert.deepEqual(approvedSavePlan({ workflow: "generate", replyText: "go", runId: "1" }), { mode: "unavailable", reason: "no-digest" })
+		assert.match(renderCasesUnavailable("no-digest"), /didn't record which cases it showed/)
+		assert.match(renderCasesUnavailable("changed"), /not the ones this plan showed/)
+	})
+
+	test("the wiring checks the fingerprint before tm add, and shows a generate plan from the file", () => {
+		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
+		const fn = main.slice(main.indexOf("function saveExactly("), main.indexOf("function pickBinding("))
+		const check = fn.indexOf('casesDigest(bytes) !== save.casesSha256) return unavailable("changed")')
+		assert.ok(check > 0, "no fingerprint check")
+		assert.ok(check < fn.indexOf('"tm", "add"'), "the check must come before tm add")
+		assert.match(main, /renderPlannedCases\(readBytes\(join\(CASES_DIR, CASES_DATA_FILE\)\)\)/)
 	})
 })

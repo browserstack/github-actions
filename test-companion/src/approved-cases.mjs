@@ -9,6 +9,7 @@
  *
  * Everything here is pure; main.mjs does the API calls and runs tc.
  */
+import { createHash } from "node:crypto"
 import { hasApproverEdits } from "./report.mjs"
 
 /** The artifact a generate preview leaves: the cases file plus subject.json naming its repo and commit. */
@@ -27,12 +28,79 @@ export const CASES_SUBJECT_FILE = "subject.json"
  * Safety rule: a plain go on a generate plan never becomes "run". Generating again would save
  * cases nobody reviewed, so every problem after this point is reported instead.
  */
-export function approvedSavePlan({ workflow, replyText, runId } = {}) {
+export function approvedSavePlan({ workflow, replyText, runId, casesSha256 } = {}) {
 	if (workflow !== "generate") return { mode: "run" }
 	if (hasApproverEdits(replyText)) return { mode: "run", edited: true }
 	// Plans made before the run id was recorded have nothing to fetch.
 	if (!/^\d+$/.test(String(runId ?? ""))) return { mode: "unavailable", reason: "no-run" }
-	return { mode: "exact", runId: String(runId) }
+	// Without the fingerprint of the cases the plan showed, nothing ties the saved file to them.
+	if (!/^[0-9a-f]{64}$/.test(String(casesSha256 ?? ""))) return { mode: "unavailable", reason: "no-digest" }
+	return { mode: "exact", runId: String(runId), casesSha256: String(casesSha256) }
+}
+
+/** The sha256 of a cases file, as recorded in the plan and checked before saving. */
+export function casesDigest(bytes) {
+	return createHash("sha256").update(bytes ?? "").digest("hex")
+}
+
+// Agent-written text shown in the plan: one line, no Markdown, no @mentions or autolinks.
+const plain = (s) =>
+	String(s ?? "")
+		.replace(/\s+/g, " ")
+		.trim()
+		.replace(/[\\`*_{}[\]()<>#+!|~]/g, "\\$&")
+		.replace(/@/g, "@\u200b")
+		.replace(/:\/\//g, ":\u200b//")
+
+// A GitHub comment holds 65,536 characters; past this, the plan lists titles only.
+const PLAN_DETAIL_LIMIT = 45_000
+
+/**
+ * The plan the reviewer reads, from the same cases file that approving saves, so what is
+ * shown and what is saved can't differ. Undefined when the file can't be read as cases.
+ * Returns { body, digest }; the digest goes in the plan's marker.
+ */
+export function renderPlannedCases(bytes) {
+	let data
+	try {
+		data = JSON.parse(Buffer.from(bytes ?? "").toString("utf8"))
+	} catch {
+		return undefined
+	}
+	if (!data || typeof data !== "object" || !Array.isArray(data.cases)) return undefined
+	const cases = data.cases.filter((c) => c && typeof c === "object")
+	const where = readCasesDestination(JSON.stringify(data))
+	const ids = (a, b) => [a, b].filter(Boolean).map(plain).join(", ")
+	const head = where.error
+		? "**Will be saved to:** nowhere. This plan records no Test Management destination, so approving it can't save these cases."
+		: `**Will be saved to:** ${plain(where.folder)} in ${plain(where.project)}${
+				data.destination?.folderId || data.destination?.projectId
+					? ` (${ids(data.destination?.projectId, data.destination?.folderId)})`
+					: ""
+			}, once approved.`
+	const count = `**${cases.length} test case${cases.length === 1 ? "" : "s"}:**`
+	const title = (c, i) => `${plain(c.id) || `#${i + 1}`} — ${plain(c.title) || "(untitled)"}`
+	const detailed = cases.map((c, i) => {
+		const lines = [`#### ${title(c, i)}`]
+		if (String(c.priority ?? "").trim()) lines.push(`Priority: ${plain(c.priority)}`)
+		if (String(c.preconditions ?? "").trim()) lines.push(`Before you start: ${plain(c.preconditions)}`)
+		const steps = Array.isArray(c.steps) ? c.steps : []
+		steps.forEach((st, n) => {
+			lines.push(`${n + 1}. ${plain(st?.step ?? st?.description ?? st?.action)}`)
+			const expected = st?.result ?? st?.expected ?? st?.expectedResult
+			if (String(expected ?? "").trim()) lines.push(`   - Expected: ${plain(expected)}`)
+		})
+		return lines.join("\n")
+	})
+	let list = detailed.join("\n\n")
+	if (list.length > PLAN_DETAIL_LIMIT) {
+		list = [
+			"_Too long to show every step here; the titles are below and the full cases are in this run's result file._",
+			"",
+			...cases.map((c, i) => `- ${title(c, i)}`),
+		].join("\n")
+	}
+	return { body: [head, "", count, "", list].join("\n"), digest: casesDigest(bytes) }
 }
 
 /**
@@ -118,6 +186,8 @@ const UNAVAILABLE_WHY = {
 	unreadable: "the plan's saved cases could not be read",
 	"other-repo": "the saved cases are not from this repository",
 	"other-commit": "the saved cases are for a different commit than this plan",
+	"no-digest": "this plan didn't record which cases it showed (an older version of Test Companion made it)",
+	changed: "the saved cases are not the ones this plan showed",
 	"no-destination": "the plan recorded no Test Management destination, so there is nowhere to save its cases",
 	"save-failed": "Test Management refused the cases before any were saved",
 }
