@@ -121,11 +121,22 @@ export function readCasesDestination(casesText) {
 	return { project, folder }
 }
 
-/** The plan run's cases artifact from a `GET .../runs/<id>/artifacts` reply, or why there is none. */
-export function pickCasesArtifact(list, runId) {
+/**
+ * The plan run's cases artifact from a `GET .../runs/<id>/artifacts` reply, or why there is none.
+ * The run must belong to this repository and have started from it (`repoId`, GitHub's numeric
+ * id): fails closed when either is missing. Its commit is not compared: a plan asked for in a
+ * comment runs on the default branch's commit, and the plan's own commit is checked through
+ * subject.json and the cases' fingerprint instead.
+ */
+export function pickCasesArtifact(list, runId, { repoId } = {}) {
 	const want = String(runId ?? "")
-	const mine = (list?.artifacts ?? []).filter((a) => a?.name === CASES_ARTIFACT && String(a?.workflow_run?.id ?? "") === want)
-	if (mine.length === 0) return { error: "missing" }
+	const named = (list?.artifacts ?? []).filter((a) => a?.name === CASES_ARTIFACT && String(a?.workflow_run?.id ?? "") === want)
+	if (named.length === 0) return { error: "missing" }
+	const repo = String(repoId ?? "")
+	const ours = (a) =>
+		repo !== "" && String(a?.workflow_run?.repository_id ?? "") === repo && String(a?.workflow_run?.head_repository_id ?? "") === repo
+	const mine = named.filter(ours)
+	if (mine.length === 0) return { error: "other-repo" }
 	const live = mine.find((a) => !a.expired)
 	return live ? { artifact: live } : { error: "expired" }
 }
@@ -222,6 +233,7 @@ const UNAVAILABLE_WHY = {
 	"old-cli": `saving a plan's own cases needs Test Companion CLI ${CASES_DESTINATION_CLI} or later, and this run has an older one`,
 	"old-cli-plan": `this plan was made with a Test Companion CLI older than ${CASES_DESTINATION_CLI}, which doesn't record where to save its cases`,
 	"save-failed": "Test Management refused the cases before any were saved",
+	"lookup-failed": "I couldn't look up the plan's saved cases on GitHub just now",
 }
 
 /** The reply when the approved cases can't be saved as they are. Never regenerates. */
@@ -231,6 +243,7 @@ export function renderCasesUnavailable(reason, detail) {
 	const notInstead = "I have not generated a new set in its place, because that would save cases nobody reviewed."
 	const update = `Update the CLI: remove the action's \`cli-version\` pin, or pin ${CASES_DESTINATION_CLI} or later.`
 	const next = {
+		"lookup-failed": `${notInstead} Reply **go** to this plan again in a minute; it is still waiting.`,
 		"no-destination": `${notInstead} Set \`tm_project\` and \`tm_folder\` for generate in the pipeline file. If they are already set, the plan was probably made with a CLI older than ${CASES_DESTINATION_CLI}: ${update} Then ask me to **generate** again and approve the fresh plan.`,
 		"old-cli": `${notInstead} ${update} Then reply **go** to this plan again; it is still waiting.`,
 		"old-cli-plan": `${notInstead} ${update} Then ask me to **generate** again and approve the fresh plan.`,
@@ -242,7 +255,20 @@ export function renderCasesUnavailable(reason, detail) {
 	].join("\n")
 }
 
-const oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim()
+/** A link to a saved case, only to BrowserStack over https; anything else is not linked. */
+export function browserstackLink(url) {
+	let u
+	try {
+		u = new URL(String(url ?? ""))
+	} catch {
+		return undefined
+	}
+	const host = u.hostname.toLowerCase()
+	if (u.protocol !== "https:" || u.username || u.password) return undefined
+	if (host !== "browserstack.com" && !host.endsWith(".browserstack.com")) return undefined
+	// href percent-encodes spaces and angle brackets, so it is safe inside <...>.
+	return u.href
+}
 
 /** The answer text for an exact save: what was created, with ids, and anything that failed. */
 export function renderExactSave(report, { project, folder } = {}) {
@@ -250,21 +276,22 @@ export function renderExactSave(report, { project, folder } = {}) {
 	const failed = report?.failed ?? []
 	const skipped = report?.skipped ?? []
 	const lines = []
-	const where = `${folder} in ${project}`
+	const where = `${plain(folder)} in ${plain(project)}`
 	if (created.length > 0) {
-		lines.push(`Saved the ${created.length} approved test case${created.length === 1 ? "" : "s"} to \`${where}\` exactly as planned; nothing was generated again.`)
+		lines.push(`Saved the ${created.length} approved test case${created.length === 1 ? "" : "s"} to ${where} exactly as planned; nothing was generated again.`)
 		lines.push("")
 		for (const c of created) {
-			const id = oneLine(c.identifier)
-			const label = c.url && id ? `[${id}](${c.url})` : id
-			lines.push(`- ${label}${label ? " — " : ""}${oneLine(c.title)}`)
+			const id = plain(c.identifier)
+			const link = browserstackLink(c.url)
+			const label = link && id ? `[${id}](<${link}>)` : id
+			lines.push(`- ${label}${label ? " — " : ""}${plain(c.title)}`)
 		}
 	}
 	if (failed.length > 0) {
 		if (lines.length) lines.push("")
 		lines.push(`**${failed.length} could not be saved:**`)
 		lines.push("")
-		for (const f of failed) lines.push(`- ${oneLine(f.title)}: ${oneLine(f.error)}`)
+		for (const f of failed) lines.push(`- ${plain(f.title)}: ${plain(f.error)}`)
 	}
 	if (skipped.length > 0) {
 		if (lines.length) lines.push("")
@@ -299,6 +326,29 @@ export function exactSaveOutcome(report, outcomes) {
 	const skipped = report?.skipped?.length ?? 0
 	if (failed === 0) return { outcome: outcomes.SUCCEEDED, spend: true }
 	return { outcome: outcomes.RUN_BROKE, spend: created + skipped > 0 }
+}
+
+/**
+ * The reply when `tc tm add` stopped without saying what it saved (killed, timed out, or no
+ * report). Some cases may be in Test Management, so the plan is used up: approving it again
+ * could save them twice.
+ */
+export function renderSaveInterrupted({ project, folder } = {}, why) {
+	const where = project && folder ? `${plain(folder)} in ${plain(project)}` : "Test Management"
+	const extra = String(why ?? "").trim()
+	return [
+		`The save stopped before it reported what it saved${extra ? ` (${plain(extra)})` : ""}, so some of the approved cases may already be in ${where}.`,
+		"",
+		`This plan is now used up, so approving it again can't save them twice. Check ${where} before asking me to **generate** again.`,
+	].join("\n")
+}
+
+/**
+ * Whether `tc tm add` said, in its own words, that it saved nothing. Only then is the plan
+ * left approvable; any other stop may have saved some cases.
+ */
+export function tmAddSavedNothing(stderr) {
+	return /\bnothing was saved\b/i.test(String(stderr ?? ""))
 }
 
 /** A note for the reply when a go with edits had to generate again. */
