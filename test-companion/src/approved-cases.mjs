@@ -367,7 +367,7 @@ const UNAVAILABLE_WHY = {
 	"no-destination": "the plan recorded no Test Management destination, so there is nowhere to save its cases",
 	"old-cli": `saving a plan's own cases needs Test Companion CLI ${CASES_DESTINATION_CLI} or later, and this run has an older one`,
 	"old-cli-plan": `this plan was made with a Test Companion CLI older than ${CASES_DESTINATION_CLI}, which doesn't record where to save its cases`,
-	"save-failed": "Test Management refused the cases before any were saved",
+	"save-failed": "the save stopped before any case was saved",
 	"lookup-failed": "I couldn't look up the plan's saved cases on GitHub just now",
 }
 
@@ -480,11 +480,28 @@ export function renderSaveInterrupted({ project, folder } = {}, why) {
 }
 
 /**
- * Whether `tc tm add` said, in its own words, that it saved nothing. Only then is the plan
- * left approvable; any other stop may have saved some cases.
+ * Whether `tc tm add` said, in its own words, that it saved nothing.
  */
 export function tmAddSavedNothing(stderr) {
 	return /\bnothing was saved\b/i.test(String(stderr ?? ""))
+}
+
+/**
+ * How a `tc tm add` that printed no report stopped: "nothing-saved" or "uncertain". Only
+ * "nothing-saved" leaves the plan approvable; anything else may have saved some cases.
+ *
+ * The CLI prints its report as soon as it has started creating cases. So a process that ran
+ * and exited by itself with an error, and printed no report, failed before saving (reading
+ * the file, signing in, finding the project or folder). A process that never started saved
+ * nothing too. A kill, a timeout, a crash (a Go panic) or a clean exit with no report could
+ * have stopped mid-save.
+ */
+export function tmAddStop({ status, signal, errorCode, stderr } = {}) {
+	if (tmAddSavedNothing(stderr)) return "nothing-saved"
+	if (errorCode === "ENOENT" || errorCode === "EACCES") return "nothing-saved"
+	if (signal || errorCode) return "uncertain"
+	if (/\bpanic:|\bgoroutine \d+/.test(String(stderr ?? ""))) return "uncertain"
+	return Number.isInteger(status) && status !== 0 ? "nothing-saved" : "uncertain"
 }
 
 /** A note for the reply when a go with edits had to generate again. */

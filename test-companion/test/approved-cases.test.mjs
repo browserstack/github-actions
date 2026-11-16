@@ -24,6 +24,7 @@ import {
 	browserstackLink,
 	renderSaveInterrupted,
 	tmAddSavedNothing,
+	tmAddStop,
 } from "../src/approved-cases.mjs"
 import { OUTCOMES } from "../src/outcome.mjs"
 import { isApprovalOnly } from "../src/intent.mjs"
@@ -221,7 +222,7 @@ describe("what the reply says", () => {
 		const text = renderCasesUnavailable("expired")
 		assert.match(text, /I did not save anything: the plan's saved cases have expired\./)
 		assert.match(text, /I have not generated a new set/)
-		assert.match(renderCasesUnavailable("save-failed", "folder not found"), /before any were saved \(folder not found\)\./)
+		assert.match(renderCasesUnavailable("save-failed", "folder not found"), /before any case was saved \(folder not found\)\./)
 	})
 })
 
@@ -454,7 +455,7 @@ describe("a save that stopped without a report uses the plan up", () => {
 	test("the wiring: killed, timed out or no report is a used-up Run broke; only 'nothing was saved' stays approvable", () => {
 		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
 		const fn = main.slice(main.indexOf("function saveExactly("), main.indexOf("function pickBinding("))
-		assert.match(fn, /if \(!r\.error && !r\.signal && tmAddSavedNothing\(stderr\)\) return unavailable\("save-failed", why\)/)
+		assert.match(fn, /if \(tmAddStop\(\{ status: r\.status, signal: r\.signal, errorCode: r\.error\?\.code, stderr \}\) === "nothing-saved"\) \{\n\s*return unavailable\("save-failed", why\)/)
 		assert.match(fn, /return finish\(\{ \.\.\.base, outcome: OUTCOMES\.RUN_BROKE, answer: renderSaveInterrupted\(where, why\) \}, true\)/)
 	})
 })
@@ -620,5 +621,30 @@ describe("the plan shows every field approving saves", () => {
 		assert.doesNotMatch(text, /older version/)
 		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
 		assert.match(main, /if \(isGenerate\) casesShown = "markdown"/)
+	})
+})
+
+describe("a save that stopped says nothing was saved only when that's certain", () => {
+	test("failing before saving (sign-in, connection, finding the folder) means nothing was saved", () => {
+		assert.equal(tmAddStop({ status: 1, stderr: "Error: not signed in" }), "nothing-saved")
+		assert.equal(tmAddStop({ status: 1, stderr: "Error: folder \"x\" not found in project PR-1" }), "nothing-saved")
+		assert.equal(tmAddStop({ status: 1, stderr: "Error: nothing was saved: this file records no Test Management destination" }), "nothing-saved")
+	})
+
+	test("a CLI that never started saved nothing", () => {
+		assert.equal(tmAddStop({ status: null, errorCode: "ENOENT" }), "nothing-saved")
+	})
+
+	test("a kill, a timeout, a crash or a clean exit with no report may have saved some", () => {
+		assert.equal(tmAddStop({ status: null, signal: "SIGTERM", errorCode: "ETIMEDOUT" }), "uncertain")
+		assert.equal(tmAddStop({ status: null, signal: "SIGKILL" }), "uncertain")
+		assert.equal(tmAddStop({ status: 2, stderr: "panic: runtime error\n\ngoroutine 1 [running]:" }), "uncertain")
+		assert.equal(tmAddStop({ status: 0, stderr: "" }), "uncertain")
+	})
+
+	test("the wording matches", () => {
+		assert.match(renderCasesUnavailable("save-failed", "not signed in"), /the save stopped before any case was saved \(not signed in\)/)
+		assert.doesNotMatch(renderCasesUnavailable("save-failed"), /may already/)
+		assert.match(renderSaveInterrupted({ project: "p", folder: "f" }, "stopped by SIGTERM"), /may already be in f in p/)
 	})
 })
