@@ -28,7 +28,7 @@ import {
 	readCasesDestination,
 	unshownFields,
 	renderSaveInterrupted,
-	tmAddSavedNothing,
+	tmAddStop,
 	missingDestinationReason,
 	renderPlannedCases,
 	casesDigest,
@@ -1817,10 +1817,11 @@ function saveExactly(plan, save, sha, base, finish, unavailable) {
 		logRedacted("tc tm add", stderr || r.error?.message)
 		const said = stderr.trim().split("\n").filter(Boolean).at(-1)
 		const why = redactSecrets(said || (r.signal ? `stopped by ${r.signal}` : r.error?.message) || "", secretsNow())
-		// Only the CLI's own "nothing was saved" leaves the plan approvable. A save that was
-		// killed, timed out or printed no report may have saved some, so the plan is used up:
-		// a second go could save them twice.
-		if (!r.error && !r.signal && tmAddSavedNothing(stderr)) return unavailable("save-failed", why)
+		// Approvable again only when nothing can have been saved. A save that was killed, timed
+		// out or crashed may have saved some, so the plan is used up: a second go could save them twice.
+		if (tmAddStop({ status: r.status, signal: r.signal, errorCode: r.error?.code, stderr }) === "nothing-saved") {
+			return unavailable("save-failed", why)
+		}
 		return finish({ ...base, outcome: OUTCOMES.RUN_BROKE, answer: renderSaveInterrupted(where, why) }, true)
 	}
 	if (report.failed.length > 0) logRedacted("tc tm add", stderr)
