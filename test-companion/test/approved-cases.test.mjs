@@ -18,6 +18,8 @@ import {
 	CASES_DESTINATION_CLI,
 	renderPlannedCases,
 	casesDigest,
+	unshownFields,
+	RENDERED_CASE_FIELDS,
 	CASES_ARTIFACT,
 	browserstackLink,
 	renderSaveInterrupted,
@@ -258,7 +260,7 @@ describe("the wiring", () => {
 
 	test("a plan attaches its cases, and approving one saves them with tm add instead of running again", () => {
 		assert.match(main, /setOutput\("cases-dir", CASES_DIR\)/)
-		assert.match(main, /env\.GITHUB_RUN_ID,\n[^\n]*\n\s*\{ build: buildRunId, cases: casesSha256 \},\n\s*\),\n\s*\)/)
+		assert.match(main, /env\.GITHUB_RUN_ID,\n[^\n]*\n\s*\{ build: buildRunId, cases: casesSha256, shown: casesShown \},\n\s*\),\n\s*\)/)
 		// No --project/--folder: tm add takes the destination from the approved file.
 		assert.match(main, /\["tm", "add", "--from-file", casesFile, "--json"\]/)
 		assert.doesNotMatch(main, /binding\?\.input|\.input\?\.tm_/)
@@ -298,7 +300,10 @@ describe("approving saves exactly the cases the plan showed", () => {
 		const shown = renderPlannedCases(file)
 		assert.match(shown.body, /\*\*Will be saved to:\*\* github-app in rag\\_assignment \(PR-42, 7\), once approved\./)
 		assert.match(shown.body, /\*\*2 test cases:\*\*/)
-		assert.match(shown.body, /#### T001 — Base delay\nPriority: high\nBefore you start: Module importable\n1\. Call f\\\(1\\\)\n {3}- Expected: 500/)
+		assert.match(shown.body, /<details><summary>T001 — Base delay<\/summary>/)
+		assert.match(shown.body, /\*\*Priority:\*\* high/)
+		assert.match(shown.body, /\*\*Before you start:\*\* Module importable/)
+		assert.match(shown.body, /1\. Call f\\\(1\\\)\n {3}- Expected: 500/)
 		assert.equal(shown.digest, casesDigest(file))
 	})
 
@@ -317,18 +322,6 @@ describe("approving saves exactly the cases the plan showed", () => {
 	test("a file with no destination says approving can't save it", () => {
 		const none = Buffer.from(JSON.stringify({ cases: [{ id: "T001", title: "x" }] }))
 		assert.match(renderPlannedCases(none).body, /Will be saved to:\*\* nowhere/)
-	})
-
-	test("a plan too long for one comment still lists every title", () => {
-		const big = Buffer.from(
-			JSON.stringify({
-				destination: { project: "p", folder: "f" },
-				cases: Array.from({ length: 300 }, (_, i) => ({ id: `T${i}`, title: `case ${i}`, steps: [{ step: "s".repeat(200), result: "r" }] })),
-			}),
-		)
-		const shown = renderPlannedCases(big).body
-		assert.ok(shown.length < 60_000, String(shown.length))
-		assert.match(shown, /- T299 — case 299/)
 	})
 
 	test("an unreadable file shows no generated plan", () => {
@@ -360,7 +353,8 @@ describe("approving saves exactly the cases the plan showed", () => {
 		const check = fn.indexOf('casesDigest(bytes) !== save.casesSha256) return unavailable("changed")')
 		assert.ok(check > 0, "no fingerprint check")
 		assert.ok(check < fn.indexOf('"tm", "add"'), "the check must come before tm add")
-		assert.match(main, /renderPlannedCases\(readBytes\(join\(CASES_DIR, CASES_DATA_FILE\)\)\)/)
+		assert.match(main, /renderPlannedCases\(casesBytes, \{ maxChars: COMMENT_LIMIT - summaryShown\.length/)
+		assert.match(main, /readBytes\(join\(CASES_DIR, CASES_DATA_FILE\)\)/)
 	})
 })
 
@@ -485,5 +479,146 @@ describe("failure detail is kept, and kept out of the comment", () => {
 		const fn = main.slice(main.indexOf("function saveExactly("), main.indexOf("function pickBinding("))
 		assert.match(fn, /logRedacted\("gh run download", got\.stderr\)/)
 		assert.match(fn, /logRedacted\("tc tm add", stderr \|\| r\.error\?\.message\)/)
+	})
+})
+
+describe("the plan shows every field approving saves", () => {
+	const doc = (cases, extra = {}) => Buffer.from(JSON.stringify({ destination: { project: "rag", folder: "gh" }, cases, ...extra }))
+
+	test("a BDD case shows its feature, background and scenario", () => {
+		const shown = renderPlannedCases(
+			doc([
+				{
+					id: "T001",
+					title: "Login works",
+					format: "bdd",
+					feature: "Login",
+					background: "Given the app is open",
+					bddScenario: "Scenario: good password\n  When I sign in\n  Then I see my home page",
+				},
+			]),
+		)
+		assert.equal(shown.complete, true)
+		assert.deepEqual(shown.unshown, [])
+		assert.match(shown.body, /\*\*Format:\*\* BDD/)
+		assert.match(shown.body, /\*\*Feature:\*\* Login/)
+		assert.match(shown.body, /\*\*Background:\*\* Given the app is open/)
+		assert.match(shown.body, /\*\*Scenario:\*\*\n\n```text\nScenario: good password\n {2}When I sign in\n {2}Then I see my home page\n```/)
+	})
+
+	test("description, type, tags, references and custom fields are all shown, as plain text", () => {
+		const shown = renderPlannedCases(
+			doc([
+				{
+					id: "T002",
+					title: "Cap",
+					description: "Checks the cap\nSee @octocat",
+					type: "Functional",
+					tags: ["smoke", "retry"],
+					references: ["https://evil.test/x", "JIRA-1"],
+					customFields: { Team: "QA", Owner: "@mallory" },
+				},
+			]),
+		)
+		assert.deepEqual(shown.unshown, [])
+		assert.match(shown.body, /\*\*Description:\*\*\n\n```text\nChecks the cap\nSee @octocat\n```/, "in a code block: no mention")
+		assert.match(shown.body, /\*\*Type:\*\* Functional/)
+		assert.match(shown.body, /\*\*Tags:\*\* smoke, retry/)
+		assert.match(shown.body, /- https:\u200b\/\/evil\.test\/x/, "a reference is not a link")
+		assert.match(shown.body, /- JIRA-1/)
+		assert.match(shown.body, /- Team: QA/)
+		assert.match(shown.body, /- Owner: @\u200bmallory/)
+	})
+
+	test("a case already in Test Management is labelled, since saving skips it", () => {
+		assert.match(renderPlannedCases(doc([{ id: "TC-9", title: "Old", folder: "F-1" }])).body, /Already in Test Management \(F-1\): saving skips this case/)
+	})
+
+	test("an unknown field is listed in the plan, and refused before saving", () => {
+		const shown = renderPlannedCases(doc([{ id: "T003", title: "x", links: ["https://evil.test"] }]))
+		assert.deepEqual(shown.unshown, ["T003: links"])
+		assert.match(shown.body, /can't save its cases exactly as shown/)
+		const text = renderCasesUnavailable("unshown", "T003: links")
+		assert.match(text, /fields the plan couldn't show/)
+		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
+		const fn = main.slice(main.indexOf("function saveExactly("), main.indexOf("function pickBinding("))
+		const check = fn.indexOf('if (unshown.length) return unavailable("unshown"')
+		assert.ok(check > fn.indexOf("casesDigest(bytes)"), "after the fingerprint check")
+		assert.ok(check < fn.indexOf('"tm", "add"'), "before tm add")
+	})
+
+	test("a field of the wrong shape counts as not shown", () => {
+		assert.deepEqual(unshownFields({ cases: [{ id: "T1", title: "x", tags: "smoke" }] }), ["T1: tags"])
+		assert.deepEqual(unshownFields({ cases: [{ id: "T1", title: "x", customFields: { a: { nested: 1 } } }] }), ["T1: customFields"])
+		assert.deepEqual(unshownFields({ cases: [{ id: "T1", title: "x", steps: [{ step: "s", note: "hidden" }] }] }), ["T1: steps"])
+		assert.deepEqual(unshownFields({ cases: ["not a case"] }), ["#1: not a test case"])
+	})
+
+	test("an empty unknown field doesn't block", () => {
+		assert.deepEqual(unshownFields({ cases: [{ id: "T1", title: "x", links: [], extra: "", other: null }] }), [])
+	})
+
+	test("the renderer and the check share one list of fields", () => {
+		const full = {
+			id: "T1",
+			title: "t",
+			folder: "F",
+			format: "bdd",
+			type: "ty",
+			priority: "p",
+			tags: ["tg"],
+			description: "de",
+			preconditions: "pr",
+			feature: "fe",
+			background: "bg",
+			bddScenario: "sc",
+			steps: [{ step: "st", result: "re" }],
+			references: ["rf"],
+			customFields: { k: "v" },
+		}
+		assert.deepEqual(Object.keys(full).sort(), [...RENDERED_CASE_FIELDS].sort(), "the list is exactly these fields")
+		assert.deepEqual(unshownFields({ cases: [full] }), [])
+		const body = renderPlannedCases(doc([full])).body
+		for (const value of ["T1", "t", "F", "BDD", "ty", "p", "tg", "de", "pr", "fe", "bg", "sc", "st", "re", "rf", "k: v"]) {
+			assert.ok(body.includes(value), `${value} is not shown`)
+		}
+		for (const key of RENDERED_CASE_FIELDS) {
+			assert.deepEqual(unshownFields({ cases: [{ title: "x", [key + "X"]: "v" }] }), [`#1: ${key}X`])
+		}
+	})
+
+	test("a plan too large for one comment shows what fits, says so, and can't be approved", () => {
+		const cases = Array.from({ length: 300 }, (_, i) => ({ id: `T${i}`, title: `case ${i}`, steps: [{ step: "s".repeat(300), result: "r" }] }))
+		const shown = renderPlannedCases(doc(cases), { maxChars: 20_000 })
+		assert.equal(shown.complete, false)
+		assert.ok(shown.body.length <= 20_000, String(shown.body.length))
+		assert.match(shown.body, /too large to show in full/)
+		assert.match(shown.body, /can't be approved to save exactly as shown/)
+		const marker = proposalMarkerFor("abc", "o", "generate", "1", { cases: shown.digest, shown: "partial" })
+		assert.match(marker, / shown=partial -->$/)
+		const waiting = findProposal(
+			[{ id: 5, user: { login: "browserstack[bot]", type: "Bot" }, created_at: new Date().toISOString(), body: `p\n\n${marker}` }],
+			"abc",
+			Date.now(),
+			"browserstack[bot]",
+		)
+		assert.equal(waiting.casesShown, "partial")
+		assert.deepEqual(
+			approvedSavePlan({ workflow: "generate", replyText: "go", runId: "1", casesSha256: shown.digest, casesShown: waiting.casesShown }),
+			{ mode: "unavailable", reason: "partial" },
+		)
+		assert.match(renderCasesUnavailable("partial"), /too large to show every case/)
+	})
+
+	test("a plan shown from the agent's text can't be approved for an exact save, and says why", () => {
+		assert.deepEqual(approvedSavePlan({ workflow: "generate", replyText: "go", runId: "1", casesShown: "markdown" }), {
+			mode: "unavailable",
+			reason: "unchecked",
+		})
+		const text = renderCasesUnavailable("unchecked")
+		assert.match(text, /couldn't be shown from its cases file/)
+		assert.doesNotMatch(text, /older version/)
+		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
+		assert.match(main, /if \(isGenerate\) casesShown = "markdown"/)
 	})
 })

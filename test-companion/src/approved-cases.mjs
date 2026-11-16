@@ -28,9 +28,12 @@ export const CASES_SUBJECT_FILE = "subject.json"
  * Safety rule: a plain go on a generate plan never becomes "run". Generating again would save
  * cases nobody reviewed, so every problem after this point is reported instead.
  */
-export function approvedSavePlan({ workflow, replyText, runId, casesSha256 } = {}) {
+export function approvedSavePlan({ workflow, replyText, runId, casesSha256, casesShown } = {}) {
 	if (workflow !== "generate") return { mode: "run" }
 	if (hasApproverEdits(replyText)) return { mode: "run", edited: true }
+	// A plan that didn't show all its cases, or showed the agent's text instead, wasn't reviewed in full.
+	if (casesShown === "partial") return { mode: "unavailable", reason: "partial" }
+	if (casesShown === "markdown") return { mode: "unavailable", reason: "unchecked" }
 	// Plans made before the run id was recorded have nothing to fetch.
 	if (!/^\d+$/.test(String(runId ?? ""))) return { mode: "unavailable", reason: "no-run" }
 	// Without the fingerprint of the cases the plan showed, nothing ties the saved file to them.
@@ -52,15 +55,136 @@ const plain = (s) =>
 		.replace(/@/g, "@\u200b")
 		.replace(/:\/\//g, ":\u200b//")
 
-// A GitHub comment holds 65,536 characters; past this, the plan lists titles only.
-const PLAN_DETAIL_LIMIT = 45_000
+// Agent-written text that may span lines, shown in a code block: nothing in it is Markdown,
+// a mention or a link. The fence is longer than any run of backticks inside.
+const block = (s) => {
+	const text = String(s ?? "").replace(/\r\n?/g, "\n").replace(/^\n+|\s+$/g, "")
+	const longest = Math.max(2, ...(text.match(/`+/g) ?? []).map((run) => run.length))
+	const fence = "`".repeat(longest + 1)
+	return `${fence}text\n${text}\n${fence}`
+}
+// Text inside <summary>, which is HTML, not Markdown.
+const summaryText = (s) =>
+	String(s ?? "")
+		.replace(/\s+/g, " ")
+		.trim()
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/@/g, "@\u200b")
+		.replace(/:\/\//g, ":\u200b//")
+
+const isText = (v) => typeof v === "string"
+const isTextList = (v) => Array.isArray(v) && v.every(isText)
+const isTextMap = (v) => Boolean(v) && typeof v === "object" && !Array.isArray(v) && Object.values(v).every(isText)
+const isStepList = (v) =>
+	Array.isArray(v) &&
+	v.every((st) => st && typeof st === "object" && !Array.isArray(st) && Object.entries(st).every(([k, x]) => STEP_FIELDS.has(k) && (x === undefined || x === null || isText(x))))
+const textLine = (label) => (v) => `**${label}:** ${plain(v)}`
+const textBlock = (label) => (v) => (/\n/.test(v) ? `**${label}:**\n\n${block(v)}\n` : `**${label}:** ${plain(v)}`)
+
+// A step's fields; any other key in a step is not shown, so a case carrying one is refused.
+const STEP_FIELDS = new Set(["step", "result"])
+
+/**
+ * Every field of a case in the cases file that the plan shows, in the order shown: the one list
+ * both the plan and the pre-save check use, so they can't drift. `id`, `title` and `folder` are
+ * shown in the case's heading; `render` is undefined for those. These are all the fields
+ * `tc tm add --from-file` sends (a BDD case's feature, scenario and background included).
+ */
+const CASE_FIELDS = {
+	id: { valid: isText },
+	title: { valid: isText },
+	folder: { valid: isText },
+	format: { valid: isText, render: (v) => `**Format:** ${String(v).toLowerCase() === "bdd" ? "BDD" : plain(v)}` },
+	type: { valid: isText, render: textLine("Type") },
+	priority: { valid: isText, render: textLine("Priority") },
+	tags: { valid: isTextList, render: (v) => `**Tags:** ${v.map(plain).join(", ")}` },
+	description: { valid: isText, render: textBlock("Description") },
+	preconditions: { valid: isText, render: textBlock("Before you start") },
+	feature: { valid: isText, render: textBlock("Feature") },
+	background: { valid: isText, render: textBlock("Background") },
+	bddScenario: { valid: isText, render: textBlock("Scenario") },
+	steps: {
+		valid: isStepList,
+		render: (v) =>
+			[
+				"**Steps:**",
+				"",
+				...v.flatMap((st, n) => [
+					`${n + 1}. ${plain(st?.step)}`,
+					...(String(st?.result ?? "").trim() ? [`   - Expected: ${plain(st.result)}`] : []),
+				]),
+			].join("\n"),
+	},
+	references: { valid: isTextList, render: (v) => ["**References:**", "", ...v.map((r) => `- ${plain(r)}`)].join("\n") },
+	customFields: {
+		valid: isTextMap,
+		render: (v) => ["**Custom fields:**", "", ...Object.entries(v).map(([k, x]) => `- ${plain(k)}: ${plain(x)}`)].join("\n"),
+	},
+}
+
+/** The case fields the plan shows. */
+export const RENDERED_CASE_FIELDS = Object.freeze(Object.keys(CASE_FIELDS))
+
+const isEmpty = (v) =>
+	v === undefined ||
+	v === null ||
+	(typeof v === "string" && v.trim() === "") ||
+	(Array.isArray(v) && v.length === 0) ||
+	(typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0)
+
+/**
+ * The fields the plan can't show, as "T003: links" labels: a non-empty field not in
+ * RENDERED_CASE_FIELDS (an unknown or newer one), or one whose value isn't the shape the plan
+ * shows. Any of these means approving can't save the cases exactly as shown.
+ */
+export function unshownFields(data) {
+	const out = []
+	const cases = Array.isArray(data?.cases) ? data.cases : []
+	cases.forEach((c, i) => {
+		const name = isText(c?.id) && c.id.trim() ? c.id.trim() : `#${i + 1}`
+		if (!c || typeof c !== "object" || Array.isArray(c)) {
+			out.push(`${name}: not a test case`)
+			return
+		}
+		for (const [key, value] of Object.entries(c)) {
+			if (isEmpty(value)) continue
+			const field = CASE_FIELDS[key]
+			if (!field || !field.valid(value)) out.push(`${name}: ${key}`)
+		}
+	})
+	return out
+}
+
+/** One case, every field the cases file holds for it, in a collapsible block. */
+function renderCase(c, i) {
+	const id = isText(c.id) && c.id.trim() ? c.id : `#${i + 1}`
+	const heading = `${summaryText(id)} — ${summaryText(c.title) || "(untitled)"}`
+	const lines = []
+	if (isText(c.folder) && c.folder.trim()) {
+		lines.push(`_Already in Test Management (${plain(c.folder)}): saving skips this case._`, "")
+	}
+	for (const [key, field] of Object.entries(CASE_FIELDS)) {
+		const value = c[key]
+		if (!field.render || isEmpty(value) || !field.valid(value)) continue
+		lines.push(field.render(value), "")
+	}
+	return [`<details><summary>${heading}</summary>`, "", ...lines, "</details>"].join("\n")
+}
 
 /**
  * The plan the reviewer reads, from the same cases file that approving saves, so what is
- * shown and what is saved can't differ. Undefined when the file can't be read as cases.
- * Returns { body, digest }; the digest goes in the plan's marker.
+ * shown and what is saved can't differ. Every field `tc tm add` sends is shown; fields it
+ * can't show are listed, and approving such a plan is refused before saving.
+ *
+ * `maxChars` is the room left in the comment. A plan that doesn't fit shows the cases that
+ * do, says so, and returns `complete: false`: it can't be approved for an exact save.
+ *
+ * Returns { body, digest, complete, unshown } or undefined when the file can't be read as cases.
  */
-export function renderPlannedCases(bytes) {
+export function renderPlannedCases(bytes, { maxChars = 55_000 } = {}) {
 	let data
 	try {
 		data = JSON.parse(Buffer.from(bytes ?? "").toString("utf8"))
@@ -68,7 +192,7 @@ export function renderPlannedCases(bytes) {
 		return undefined
 	}
 	if (!data || typeof data !== "object" || !Array.isArray(data.cases)) return undefined
-	const cases = data.cases.filter((c) => c && typeof c === "object")
+	const cases = data.cases
 	const where = readCasesDestination(JSON.stringify(data))
 	const ids = (a, b) => [a, b].filter(Boolean).map(plain).join(", ")
 	const head = where.error
@@ -79,28 +203,36 @@ export function renderPlannedCases(bytes) {
 					: ""
 			}, once approved.`
 	const count = `**${cases.length} test case${cases.length === 1 ? "" : "s"}:**`
-	const title = (c, i) => `${plain(c.id) || `#${i + 1}`} — ${plain(c.title) || "(untitled)"}`
-	const detailed = cases.map((c, i) => {
-		const lines = [`#### ${title(c, i)}`]
-		if (String(c.priority ?? "").trim()) lines.push(`Priority: ${plain(c.priority)}`)
-		if (String(c.preconditions ?? "").trim()) lines.push(`Before you start: ${plain(c.preconditions)}`)
-		const steps = Array.isArray(c.steps) ? c.steps : []
-		steps.forEach((st, n) => {
-			lines.push(`${n + 1}. ${plain(st?.step ?? st?.description ?? st?.action)}`)
-			const expected = st?.result ?? st?.expected ?? st?.expectedResult
-			if (String(expected ?? "").trim()) lines.push(`   - Expected: ${plain(expected)}`)
-		})
-		return lines.join("\n")
-	})
-	let list = detailed.join("\n\n")
-	if (list.length > PLAN_DETAIL_LIMIT) {
-		list = [
-			"_Too long to show every step here; the titles are below and the full cases are in this run's result file._",
-			"",
-			...cases.map((c, i) => `- ${title(c, i)}`),
-		].join("\n")
+	const unshown = unshownFields(data)
+	const warning = unshown.length
+		? `**Approving this plan can't save its cases exactly as shown:** some cases carry fields this plan can't show (${unshown
+				.slice(0, 20)
+				.map(plain)
+				.join(", ")}${unshown.length > 20 ? ", …" : ""}). Ask me to **generate** again.`
+		: ""
+	const top = [head, ...(warning ? ["", warning] : []), "", count, ""].join("\n")
+	const tooLarge = (shown) =>
+		`**This plan is too large to show in full** (${shown} of ${cases.length} cases shown), so it can't be approved to save exactly as shown. Ask me to **generate** fewer cases.`
+	const rendered = cases.map((c, i) => (c && typeof c === "object" && !Array.isArray(c) ? renderCase(c, i) : `- #${i + 1}: not a test case`))
+	const all = rendered.join("\n\n")
+	if (top.length + all.length <= maxChars) {
+		return { body: top + all, digest: casesDigest(bytes), complete: true, unshown }
 	}
-	return { body: [head, "", count, "", list].join("\n"), digest: casesDigest(bytes) }
+	// Room for the note, then as many whole cases as fit.
+	const room = maxChars - top.length - tooLarge(cases.length).length - 4
+	const kept = []
+	let used = 0
+	for (const r of rendered) {
+		if (used + r.length + 2 > room) break
+		kept.push(r)
+		used += r.length + 2
+	}
+	return {
+		body: [top + tooLarge(kept.length), "", kept.join("\n\n")].join("\n"),
+		digest: casesDigest(bytes),
+		complete: false,
+		unshown,
+	}
 }
 
 /**
@@ -229,6 +361,9 @@ const UNAVAILABLE_WHY = {
 	"other-commit": "the saved cases are for a different commit than this plan",
 	"no-digest": "this plan didn't record which cases it showed (an older version of Test Companion made it)",
 	changed: "the saved cases are not the ones this plan showed",
+	partial: "this plan was too large to show every case, so not all of it was reviewed",
+	unchecked: "this plan couldn't be shown from its cases file, so what it showed can't be checked against what would be saved",
+	unshown: "some cases carry fields the plan couldn't show, so they weren't reviewed",
 	"no-destination": "the plan recorded no Test Management destination, so there is nowhere to save its cases",
 	"old-cli": `saving a plan's own cases needs Test Companion CLI ${CASES_DESTINATION_CLI} or later, and this run has an older one`,
 	"old-cli-plan": `this plan was made with a Test Companion CLI older than ${CASES_DESTINATION_CLI}, which doesn't record where to save its cases`,
@@ -244,6 +379,7 @@ export function renderCasesUnavailable(reason, detail) {
 	const update = `Update the CLI: remove the action's \`cli-version\` pin, or pin ${CASES_DESTINATION_CLI} or later.`
 	const next = {
 		"lookup-failed": `${notInstead} Reply **go** to this plan again in a minute; it is still waiting.`,
+		partial: `${notInstead} Ask me to **generate** fewer cases, then approve the fresh plan.`,
 		"no-destination": `${notInstead} Set \`tm_project\` and \`tm_folder\` for generate in the pipeline file. If they are already set, the plan was probably made with a CLI older than ${CASES_DESTINATION_CLI}: ${update} Then ask me to **generate** again and approve the fresh plan.`,
 		"old-cli": `${notInstead} ${update} Then reply **go** to this plan again; it is still waiting.`,
 		"old-cli-plan": `${notInstead} ${update} Then ask me to **generate** again and approve the fresh plan.`,
