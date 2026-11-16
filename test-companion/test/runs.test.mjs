@@ -92,7 +92,7 @@ describe("runIdsFromChecks — finding OUR in-flight runs on a commit", () => {
 
 describe("ciOnCommit — which build 'explain the failure' means", () => {
 	// The newest failed run is failed[0].
-	const latestFailedRun = (runs, opts) => ciOnCommit(runs, opts).failed[0]?.url
+	const latestFailedRun = (runs, opts) => ciOnCommit(runs, { repo: "acme/shop", ...opts }).failed[0]?.url
 	// `rca`, `fix` and `verdict` need to know which build failed.
 	const run = (id, conclusion, name = "CI", status = "completed") => ({
 		id,
@@ -100,6 +100,7 @@ describe("ciOnCommit — which build 'explain the failure' means", () => {
 		status,
 		conclusion,
 		html_url: `https://github.com/acme/shop/actions/runs/${id}`,
+		head_repository: { full_name: "acme/shop" },
 	})
 
 	test("picks the newest failed run", () => {

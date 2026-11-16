@@ -40,12 +40,24 @@ const nameOf = (r) =>
 		.trim() || "workflow"
 
 /**
- * The other runs on a commit, newest first: finished red ones and ones still going.
- * Excludes our own runs.
+ * Whether a run was started from this repository's own branches, not a fork's. A fork's pull
+ * request can carry the same commit, and its run's log is the fork author's to write. Fails
+ * closed: a run, or a caller, that doesn't say which repository is never ours.
  */
-export function ciOnCommit(runs, { selfRunId, selfWorkflowName } = {}) {
+export function isOwnRepoRun(run, repo) {
+	const want = String(repo ?? "").toLowerCase()
+	const from = String(run?.head_repository?.full_name ?? "").toLowerCase()
+	return want !== "" && from === want
+}
+
+/**
+ * The other runs on a commit, newest first: finished red ones and ones still going.
+ * Excludes our own runs, and runs started from a fork.
+ */
+export function ciOnCommit(runs, { selfRunId, selfWorkflowName, repo } = {}) {
 	const others = (runs ?? [])
 		.filter((r) => r && String(r.id) !== String(selfRunId) && (!selfWorkflowName || r.name !== selfWorkflowName))
+		.filter((r) => isOwnRepoRun(r, repo))
 		.sort((a, b) => (b.id ?? 0) - (a.id ?? 0))
 	const pick = (r) => ({ id: r.id, name: nameOf(r), url: r.html_url })
 	return {
@@ -182,7 +194,7 @@ export function prCommitShas(slurped, headSha) {
 }
 
 /** Why a run named in a comment can't be used, or { ok, url, name }. */
-export function checkNamedRun(run, { prShas = [], shasComplete = true, selfRunId, selfWorkflowName } = {}) {
+export function checkNamedRun(run, { prShas = [], shasComplete = true, selfRunId, selfWorkflowName, repo } = {}) {
 	if (!run?.id || !run?.html_url) return { why: "I could not find that run in this repository." }
 	if (String(run.id) === String(selfRunId) || (selfWorkflowName && run.name === selfWorkflowName)) {
 		return { why: "That is one of Test Companion's own runs." }
@@ -194,6 +206,9 @@ export function checkNamedRun(run, { prShas = [], shasComplete = true, selfRunId
 				? "That run is not for a commit on this pull request."
 				: "I couldn't list all of this pull request's commits, so I can only use runs on its latest commit. Name a run from the latest commit, or ask without naming one.",
 		}
+	}
+	if (!isOwnRepoRun(run, repo)) {
+		return { why: "That run was started from a fork, not from this repository's own branches, so I won't read its log." }
 	}
 	if (IN_FLIGHT.has(run.status)) return { why: "That run is still going. Ask me again when it finishes." }
 	if (run.status !== "completed" || !RED.has(run.conclusion)) {
