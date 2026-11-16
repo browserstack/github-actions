@@ -25,6 +25,8 @@ import { childEnvFor } from "./child-env.mjs"
 import {
 	approvedSavePlan,
 	readCasesDestination,
+	renderSaveInterrupted,
+	tmAddSavedNothing,
 	missingDestinationReason,
 	renderPlannedCases,
 	casesDigest,
@@ -1652,6 +1654,12 @@ function readOptional(path) {
 	}
 }
 
+/** Write a command's error output to the job log, with secrets hidden. Never posted on the PR. */
+function logRedacted(what, text) {
+	const shown = redactSecrets(String(text ?? "").trim(), secretsNow())
+	if (shown) console.log(`Test Companion: ${what} said:\n${shown.slice(0, 4000)}`)
+}
+
 function readBytes(path) {
 	try {
 		return readFileSync(path)
@@ -1716,12 +1724,18 @@ function saveApprovedCases(plan, save, approvalNote) {
 function saveExactly(plan, save, sha, base, finish, unavailable) {
 	// An older CLI has no `tm add --from-file`; say so rather than report a refusal.
 	if (!cliHasTmAddFromFile()) return unavailable("old-cli", String(env.TC_ACTION_CLI_VERSION ?? "").trim())
-	const picked = pickCasesArtifact(gh(["api", `repos/${REPO}/actions/runs/${save.runId}/artifacts?per_page=100`]), save.runId)
+	// A lookup that failed is not "the cases are missing": the plan stays approvable.
+	const lookup = classifyLookup(ghRaw(["api", `repos/${REPO}/actions/runs/${save.runId}/artifacts?per_page=100`]))
+	if (lookup.failed) return unavailable("lookup-failed")
+	const picked = pickCasesArtifact(lookup.found, save.runId, { repoId: env.GITHUB_REPOSITORY_ID })
 	if (picked.error) return unavailable(picked.error)
 
 	const dir = mkdtempSync(join(REPORT_DIR, "tc-approved-cases-"))
 	const got = runGh(["run", "download", save.runId, "-R", REPO, "-n", CASES_ARTIFACT, "-D", dir], { token: env.GH_TOKEN })
-	if (got.status !== 0) return unavailable("download-failed")
+	if (got.status !== 0) {
+		logRedacted("gh run download", got.stderr)
+		return unavailable("download-failed")
+	}
 	const subject = checkCasesSubject(readOptional(join(dir, CASES_SUBJECT_FILE)), { repo: REPO, sha })
 	if (!subject.ok) return unavailable(subject.why)
 	const casesFile = join(dir, CASES_DATA_FILE)
@@ -1739,11 +1753,19 @@ function saveExactly(plan, save, sha, base, finish, unavailable) {
 		env: childEnvFor(env),
 		timeout: 300_000,
 	})
+	const stderr = String(r.stderr ?? "")
 	const report = parseTmAddReport(r.stdout)
 	if (!report) {
-		const why = String(r.stderr ?? "").trim().split("\n").filter(Boolean).at(-1)
-		return unavailable("save-failed", redactSecrets(why, secretsNow()))
+		logRedacted("tc tm add", stderr || r.error?.message)
+		const said = stderr.trim().split("\n").filter(Boolean).at(-1)
+		const why = redactSecrets(said || (r.signal ? `stopped by ${r.signal}` : r.error?.message) || "", secretsNow())
+		// Only the CLI's own "nothing was saved" leaves the plan approvable. A save that was
+		// killed, timed out or printed no report may have saved some, so the plan is used up:
+		// a second go could save them twice.
+		if (!r.error && !r.signal && tmAddSavedNothing(stderr)) return unavailable("save-failed", why)
+		return finish({ ...base, outcome: OUTCOMES.RUN_BROKE, answer: renderSaveInterrupted(where, why) }, true)
 	}
+	if (report.failed.length > 0) logRedacted("tc tm add", stderr)
 	const { outcome, spend } = exactSaveOutcome(report, OUTCOMES)
 	finish({ ...base, outcome, summary: { ...base.summary, ...exactSaveSummary(report, where) }, answer: renderExactSave(report, where) }, spend)
 }

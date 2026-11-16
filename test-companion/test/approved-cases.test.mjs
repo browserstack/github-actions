@@ -19,6 +19,9 @@ import {
 	renderPlannedCases,
 	casesDigest,
 	CASES_ARTIFACT,
+	browserstackLink,
+	renderSaveInterrupted,
+	tmAddSavedNothing,
 } from "../src/approved-cases.mjs"
 import { OUTCOMES } from "../src/outcome.mjs"
 import { isApprovalOnly } from "../src/intent.mjs"
@@ -124,15 +127,28 @@ describe("readCasesDestination: where the cases go comes from the approved file"
 })
 
 describe("pickCasesArtifact", () => {
-	const art = (over) => ({ name: CASES_ARTIFACT, expired: false, workflow_run: { id: 7 }, id: 1, ...over })
+	const run = { id: 7, repository_id: 42, head_repository_id: 42, head_sha: "def" }
+	const art = (over) => ({ name: CASES_ARTIFACT, expired: false, workflow_run: run, id: 1, ...over })
+	const opts = { repoId: "42" }
 
 	test("the plan run's live cases artifact", () => {
-		assert.deepEqual(pickCasesArtifact({ artifacts: [art({ name: "test-companion-report" }), art()] }, "7"), { artifact: art() })
+		assert.deepEqual(pickCasesArtifact({ artifacts: [art({ name: "test-companion-report" }), art()] }, "7", opts), { artifact: art() })
 	})
 	test("none from that run is missing; only expired ones is expired", () => {
-		assert.deepEqual(pickCasesArtifact({ artifacts: [art({ workflow_run: { id: 8 } })] }, "7"), { error: "missing" })
-		assert.deepEqual(pickCasesArtifact({ artifacts: [art({ expired: true })] }, "7"), { error: "expired" })
-		assert.deepEqual(pickCasesArtifact(null, "7"), { error: "missing" })
+		assert.deepEqual(pickCasesArtifact({ artifacts: [art({ workflow_run: { ...run, id: 8 } })] }, "7", opts), { error: "missing" })
+		assert.deepEqual(pickCasesArtifact({ artifacts: [art({ expired: true })] }, "7", opts), { error: "expired" })
+		assert.deepEqual(pickCasesArtifact(null, "7", opts), { error: "missing" })
+	})
+	test("a run from another repository, or started from a fork, is refused", () => {
+		assert.deepEqual(pickCasesArtifact({ artifacts: [art({ workflow_run: { ...run, repository_id: 9 } })] }, "7", opts), { error: "other-repo" })
+		assert.deepEqual(pickCasesArtifact({ artifacts: [art({ workflow_run: { ...run, head_repository_id: 9 } })] }, "7", opts), { error: "other-repo" })
+	})
+	test("fails closed when either side doesn't say which repository", () => {
+		assert.deepEqual(pickCasesArtifact({ artifacts: [art()] }, "7", {}), { error: "other-repo" })
+		assert.deepEqual(pickCasesArtifact({ artifacts: [art({ workflow_run: { id: 7 } })] }, "7", opts), { error: "other-repo" })
+	})
+	test("the run's commit is not compared: a plan asked for in a comment runs on the default branch", () => {
+		assert.ok(pickCasesArtifact({ artifacts: [art({ workflow_run: { ...run, head_sha: "anything" } })] }, "7", opts).artifact)
 	})
 })
 
@@ -172,14 +188,14 @@ describe("parseTmAddReport reads tc tm add --json", () => {
 describe("what the reply says", () => {
 	const where = { project: "Checkout", folder: "Web" }
 	const created = [
-		{ title: "Base delay", identifier: "TC-1", url: "https://tm.example/TC-1" },
+		{ title: "Base delay", identifier: "TC-1", url: "https://test-management.browserstack.com/projects/1/test-cases/TC-1" },
 		{ title: "Cap", identifier: "TC-2" },
 	]
 
 	test("every saved case is listed with its id, from tm add's own output", () => {
 		const text = renderExactSave({ created, failed: [], skipped: [] }, where)
-		assert.match(text, /Saved the 2 approved test cases to `Web in Checkout` exactly as planned; nothing was generated again\./)
-		assert.match(text, /- \[TC-1\]\(https:\/\/tm\.example\/TC-1\) — Base delay/)
+		assert.match(text, /Saved the 2 approved test cases to Web in Checkout exactly as planned; nothing was generated again\./)
+		assert.match(text, /- \[TC-1\]\(<https:\/\/test-management\.browserstack\.com\/projects\/1\/test-cases\/TC-1>\) — Base delay/)
 		assert.match(text, /- TC-2 — Cap/)
 	})
 
@@ -397,5 +413,77 @@ describe("an older CLI is named as the problem, not the pipeline file", () => {
 		const action = readFileSync(new URL("../action.yml", import.meta.url), "utf8")
 		const runStep = action.slice(action.indexOf("- name: Run\n"), action.indexOf("- name: Attach the report"))
 		assert.match(runStep, /TC_ACTION_CLI_VERSION: \$\{\{ steps\.install\.outputs\.cli-version \}\}/)
+	})
+})
+
+describe("the exact-save reply can't be used to mention people or plant links", () => {
+	test("only https BrowserStack addresses are linked", () => {
+		assert.ok(browserstackLink("https://test-management.browserstack.com/projects/1"))
+		assert.ok(browserstackLink("https://browserstack.com/x"))
+		for (const u of ["https://evil.test/x", "http://browserstack.com/x", "https://browserstack.com.evil.test/", "https://u@browserstack.com/", "javascript:alert(1)", ""]) {
+			assert.equal(browserstackLink(u), undefined, u)
+		}
+	})
+
+	test("titles, ids and errors are plain text", () => {
+		const text = renderExactSave(
+			{
+				created: [{ identifier: "TC-1", title: "Ping @octocat [here](https://evil.test)", url: "https://evil.test/TC-1" }],
+				failed: [{ title: "**bold**", error: "see <img src=x>" }],
+				skipped: [],
+			},
+			{ project: "P", folder: "F" },
+		)
+		assert.doesNotMatch(text, /@octocat/)
+		assert.doesNotMatch(text, /\]\(https:\/\/evil/)
+		assert.doesNotMatch(text, /\(<https:\/\/evil/)
+		assert.match(text, /- TC-1 — /, "a non-BrowserStack URL is not linked")
+		assert.doesNotMatch(text, /(^|[^\\])<img/, "an unescaped HTML tag")
+		assert.doesNotMatch(text, /- \*\*bold\*\*/)
+	})
+})
+
+describe("a save that stopped without a report uses the plan up", () => {
+	test("only the CLI's own 'nothing was saved' keeps the plan approvable", () => {
+		assert.equal(tmAddSavedNothing("Error: nothing was saved: case T003 has no title"), true)
+		assert.equal(tmAddSavedNothing("signal: killed"), false)
+		assert.equal(tmAddSavedNothing(""), false)
+	})
+
+	test("the reply says some may be saved, and to check before asking again", () => {
+		const text = renderSaveInterrupted({ project: "rag", folder: "github-app" }, "stopped by SIGTERM")
+		assert.match(text, /some of the approved cases may already be in github-app in rag/)
+		assert.match(text, /used up/)
+		assert.match(text, /Check github-app in rag before asking me to \*\*generate\*\* again/)
+	})
+
+	test("the wiring: killed, timed out or no report is a used-up Run broke; only 'nothing was saved' stays approvable", () => {
+		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
+		const fn = main.slice(main.indexOf("function saveExactly("), main.indexOf("function pickBinding("))
+		assert.match(fn, /if \(!r\.error && !r\.signal && tmAddSavedNothing\(stderr\)\) return unavailable\("save-failed", why\)/)
+		assert.match(fn, /return finish\(\{ \.\.\.base, outcome: OUTCOMES\.RUN_BROKE, answer: renderSaveInterrupted\(where, why\) \}, true\)/)
+	})
+})
+
+describe("failure detail is kept, and kept out of the comment", () => {
+	test("a failed artifact lookup is reported as a lookup failure, and the plan stays approvable", () => {
+		const text = renderCasesUnavailable("lookup-failed")
+		assert.match(text, /couldn't look up the plan's saved cases/)
+		assert.match(text, /it is still waiting/)
+		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
+		const fn = main.slice(main.indexOf("function saveExactly("), main.indexOf("function pickBinding("))
+		assert.match(fn, /if \(lookup\.failed\) return unavailable\("lookup-failed"\)/)
+		assert.match(fn, /pickCasesArtifact\(lookup\.found, save\.runId, \{ repoId: env\.GITHUB_REPOSITORY_ID \}\)/)
+	})
+
+	test("download and tm add errors go to the job log with secrets hidden, not the comment", () => {
+		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
+		const log = main.slice(main.indexOf("function logRedacted("), main.indexOf("function readBytes("))
+		assert.match(log, /redactSecrets\(/)
+		assert.match(log, /console\.log\(/)
+		assert.doesNotMatch(log, /replyOnPr|postComment/)
+		const fn = main.slice(main.indexOf("function saveExactly("), main.indexOf("function pickBinding("))
+		assert.match(fn, /logRedacted\("gh run download", got\.stderr\)/)
+		assert.match(fn, /logRedacted\("tc tm add", stderr \|\| r\.error\?\.message\)/)
 	})
 })
