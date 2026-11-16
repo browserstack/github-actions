@@ -213,6 +213,8 @@ runs:
               TC_ACTION_APP_ID: ${{ inputs.app-id }}
               TC_ACTION_APP_PRIVATE_KEY: ${{ inputs.app-private-key }}
               TC_ACTION_ALLOW_UNISOLATED: ${{ inputs.allow-unisolated }}
+              # The `tc --version` line, so a plan records which CLI made it.
+              TC_ACTION_CLI_VERSION: ${{ steps.install.outputs.cli-version }}
           run: node "${{ github.action_path }}/src/main.mjs"
 
         - name: Attach the report

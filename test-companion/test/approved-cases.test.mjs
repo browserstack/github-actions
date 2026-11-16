@@ -12,6 +12,10 @@ import {
 	renderExactSave,
 	exactSaveSummary,
 	exactSaveOutcome,
+	cliVersionOf,
+	cliRecordsDestination,
+	missingDestinationReason,
+	CASES_DESTINATION_CLI,
 	renderPlannedCases,
 	casesDigest,
 	CASES_ARTIFACT,
@@ -135,7 +139,7 @@ describe("pickCasesArtifact", () => {
 describe("checkCasesSubject: the saved cases must be for this repo and this plan's commit", () => {
 	const subject = JSON.stringify(casesSubject({ repo: "o/r", sha: "abc123" }))
 	test("same repo and commit", () => {
-		assert.deepEqual(checkCasesSubject(subject, { repo: "o/r", sha: "abc123" }), { ok: true })
+		assert.deepEqual(checkCasesSubject(subject, { repo: "o/r", sha: "abc123" }), { ok: true, cli: "" })
 	})
 	test("another repo, another commit, or junk is refused", () => {
 		assert.deepEqual(checkCasesSubject(subject, { repo: "o/other", sha: "abc123" }), { ok: false, why: "other-repo" })
@@ -341,5 +345,57 @@ describe("approving saves exactly the cases the plan showed", () => {
 		assert.ok(check > 0, "no fingerprint check")
 		assert.ok(check < fn.indexOf('"tm", "add"'), "the check must come before tm add")
 		assert.match(main, /renderPlannedCases\(readBytes\(join\(CASES_DIR, CASES_DATA_FILE\)\)\)/)
+	})
+})
+
+describe("an older CLI is named as the problem, not the pipeline file", () => {
+	test("reads the version from the `tc --version` line", () => {
+		assert.deepEqual(cliVersionOf("test-companion CLI v1.1.16 (beta)"), [1, 1, 16])
+		assert.equal(cliVersionOf("unknown"), undefined)
+		assert.equal(CASES_DESTINATION_CLI, "1.1.16")
+	})
+
+	test("which CLIs record a destination", () => {
+		assert.equal(cliRecordsDestination("test-companion CLI v1.1.15 (beta)"), false)
+		assert.equal(cliRecordsDestination("test-companion CLI v1.0.99"), false)
+		assert.equal(cliRecordsDestination("test-companion CLI v1.1.16 (beta)"), true)
+		assert.equal(cliRecordsDestination("test-companion CLI v1.2.0"), true)
+		assert.equal(cliRecordsDestination("test-companion CLI v2.0.0"), true)
+		assert.equal(cliRecordsDestination(""), undefined)
+	})
+
+	test("a plan made by an older CLI isn't blamed on the pipeline file", () => {
+		assert.equal(missingDestinationReason("test-companion CLI v1.1.15 (beta)"), "old-cli-plan")
+		const text = renderCasesUnavailable("old-cli-plan", "test-companion CLI v1.1.15 (beta)")
+		assert.match(text, /older than 1\.1\.16/)
+		assert.doesNotMatch(text, /Set `tm_project`/)
+		assert.match(text, /generate\*\* again/)
+	})
+
+	test("with a new enough CLI, a missing destination points at the pipeline file, and mentions the CLI only as a fallback", () => {
+		assert.equal(missingDestinationReason("test-companion CLI v1.1.16 (beta)"), "no-destination")
+		assert.equal(missingDestinationReason(""), "no-destination")
+		const text = renderCasesUnavailable("no-destination")
+		assert.match(text, /Set `tm_project` and `tm_folder`/)
+		assert.match(text, /If they are already set, the plan was probably made with a CLI older than 1\.1\.16/)
+	})
+
+	test("a go run whose CLI can't save from a file says so, and the plan stays approvable", () => {
+		const text = renderCasesUnavailable("old-cli", "test-companion CLI v1.1.14")
+		assert.match(text, /needs Test Companion CLI 1\.1\.16 or later/)
+		assert.match(text, /reply \*\*go\*\* to this plan again; it is still waiting/)
+		assert.doesNotMatch(text, /refused/)
+	})
+
+	test("the plan records its CLI, and the go run checks its own before anything else", () => {
+		const subject = JSON.stringify(casesSubject({ repo: "o/r", sha: "abc", cli: "test-companion CLI v1.1.15 (beta)" }))
+		assert.equal(checkCasesSubject(subject, { repo: "o/r", sha: "abc" }).cli, "test-companion CLI v1.1.15 (beta)")
+		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
+		const fn = main.slice(main.indexOf("function saveExactly("), main.indexOf("function pickBinding("))
+		assert.ok(fn.indexOf("cliHasTmAddFromFile()") < fn.indexOf("pickCasesArtifact("), "the CLI check comes first")
+		assert.match(fn, /missingDestinationReason\(subject\.cli\)/)
+		const action = readFileSync(new URL("../action.yml", import.meta.url), "utf8")
+		const runStep = action.slice(action.indexOf("- name: Run\n"), action.indexOf("- name: Attach the report"))
+		assert.match(runStep, /TC_ACTION_CLI_VERSION: \$\{\{ steps\.install\.outputs\.cli-version \}\}/)
 	})
 })

@@ -130,9 +130,39 @@ export function pickCasesArtifact(list, runId) {
 	return live ? { artifact: live } : { error: "expired" }
 }
 
-/** What the plan run records about itself, so a go run can't save cases made for another repo or commit. */
-export function casesSubject({ repo, sha }) {
-	return { repo: String(repo ?? ""), sha: String(sha ?? "") }
+/**
+ * What the plan run records about itself, so a go run can't save cases made for another repo or
+ * commit. `cli` is the `tc --version` line that made the plan, to tell an older CLI apart from a
+ * missing destination.
+ */
+export function casesSubject({ repo, sha, cli }) {
+	return { repo: String(repo ?? ""), sha: String(sha ?? ""), cli: String(cli ?? "") }
+}
+
+// The first CLI whose cases file records its Test Management destination.
+export const CASES_DESTINATION_CLI = "1.1.16"
+
+/** The x.y.z in a `tc --version` line, as numbers, or undefined. */
+export function cliVersionOf(text) {
+	const m = /(\d+)\.(\d+)\.(\d+)/.exec(String(text ?? ""))
+	return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : undefined
+}
+
+/** Whether that CLI writes a destination into its cases file: true, false, or undefined when unknown. */
+export function cliRecordsDestination(text) {
+	const v = cliVersionOf(text)
+	if (!v) return undefined
+	const min = cliVersionOf(CASES_DESTINATION_CLI)
+	for (let i = 0; i < 3; i++) if (v[i] !== min[i]) return v[i] > min[i]
+	return true
+}
+
+/**
+ * Why a cases file with no destination can't be saved: "old-cli-plan" when the plan's CLI is
+ * known to predate destinations, else "no-destination" (none configured, or the CLI unknown).
+ */
+export function missingDestinationReason(planCli) {
+	return cliRecordsDestination(planCli) === false ? "old-cli-plan" : "no-destination"
 }
 
 /** Whether a downloaded subject.json matches the repo and commit being approved; `why` when not. */
@@ -145,7 +175,7 @@ export function checkCasesSubject(subjectText, { repo, sha }) {
 	}
 	if (!subject || subject.repo !== repo) return { ok: false, why: "other-repo" }
 	if (!sha || subject.sha !== sha) return { ok: false, why: "other-commit" }
-	return { ok: true }
+	return { ok: true, cli: String(subject.cli ?? "") }
 }
 
 /**
@@ -189,6 +219,8 @@ const UNAVAILABLE_WHY = {
 	"no-digest": "this plan didn't record which cases it showed (an older version of Test Companion made it)",
 	changed: "the saved cases are not the ones this plan showed",
 	"no-destination": "the plan recorded no Test Management destination, so there is nowhere to save its cases",
+	"old-cli": `saving a plan's own cases needs Test Companion CLI ${CASES_DESTINATION_CLI} or later, and this run has an older one`,
+	"old-cli-plan": `this plan was made with a Test Companion CLI older than ${CASES_DESTINATION_CLI}, which doesn't record where to save its cases`,
 	"save-failed": "Test Management refused the cases before any were saved",
 }
 
@@ -196,12 +228,17 @@ const UNAVAILABLE_WHY = {
 export function renderCasesUnavailable(reason, detail) {
 	const why = UNAVAILABLE_WHY[reason] ?? "the plan's cases could not be used"
 	const extra = String(detail ?? "").trim()
+	const notInstead = "I have not generated a new set in its place, because that would save cases nobody reviewed."
+	const update = `Update the CLI: remove the action's \`cli-version\` pin, or pin ${CASES_DESTINATION_CLI} or later.`
+	const next = {
+		"no-destination": `${notInstead} Set \`tm_project\` and \`tm_folder\` for generate in the pipeline file. If they are already set, the plan was probably made with a CLI older than ${CASES_DESTINATION_CLI}: ${update} Then ask me to **generate** again and approve the fresh plan.`,
+		"old-cli": `${notInstead} ${update} Then reply **go** to this plan again; it is still waiting.`,
+		"old-cli-plan": `${notInstead} ${update} Then ask me to **generate** again and approve the fresh plan.`,
+	}
 	return [
 		`I did not save anything: ${why}${extra ? ` (${extra})` : ""}.`,
 		"",
-		reason === "no-destination"
-			? "I have not generated a new set in its place, because that would save cases nobody reviewed. Set `tm_project` and `tm_folder` for generate in the pipeline file, then ask me to **generate** again and approve the fresh plan."
-			: "I have not generated a new set in its place, because that would save cases nobody reviewed. Ask me to **generate** again and approve the fresh plan.",
+		next[reason] ?? `${notInstead} Ask me to **generate** again and approve the fresh plan.`,
 	].join("\n")
 }
 

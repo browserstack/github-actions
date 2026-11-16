@@ -25,6 +25,7 @@ import { childEnvFor } from "./child-env.mjs"
 import {
 	approvedSavePlan,
 	readCasesDestination,
+	missingDestinationReason,
 	renderPlannedCases,
 	casesDigest,
 	pickCasesArtifact,
@@ -1198,6 +1199,16 @@ function isolateAgent(plan) {
 	process.exit(1)
 }
 
+/** Whether the installed CLI can save a plan's own cases (`tc tm add --from-file`), asked once. */
+let tmAddFromFile
+function cliHasTmAddFromFile() {
+	if (tmAddFromFile !== undefined) return tmAddFromFile
+	// An unknown subcommand prints its parent's help, which never names this flag.
+	const r = spawnSync(TC_PATH, ["tm", "add", "--help"], { encoding: "utf8", env: childEnvFor(env), timeout: 60_000 })
+	tmAddFromFile = /--from-file/.test(`${r.stdout ?? ""}${r.stderr ?? ""}`)
+	return tmAddFromFile
+}
+
 /** What the installed CLI supports, asked once. */
 let cliAbilities
 function cliSupports() {
@@ -1655,7 +1666,10 @@ function keepCases(text, plan) {
 	try {
 		mkdirSync(CASES_DIR, { recursive: true })
 		writeFileSync(join(CASES_DIR, CASES_DATA_FILE), text)
-		writeFileSync(join(CASES_DIR, CASES_SUBJECT_FILE), JSON.stringify(casesSubject({ repo: REPO, sha: plan.context?.sha })))
+		writeFileSync(
+			join(CASES_DIR, CASES_SUBJECT_FILE),
+			JSON.stringify(casesSubject({ repo: REPO, sha: plan.context?.sha, cli: env.TC_ACTION_CLI_VERSION })),
+		)
 	} catch {
 		// Without it a plan can still be read; approving it says the cases are missing.
 	}
@@ -1700,6 +1714,8 @@ function saveApprovedCases(plan, save, approvalNote) {
 }
 
 function saveExactly(plan, save, sha, base, finish, unavailable) {
+	// An older CLI has no `tm add --from-file`; say so rather than report a refusal.
+	if (!cliHasTmAddFromFile()) return unavailable("old-cli", String(env.TC_ACTION_CLI_VERSION ?? "").trim())
 	const picked = pickCasesArtifact(gh(["api", `repos/${REPO}/actions/runs/${save.runId}/artifacts?per_page=100`]), save.runId)
 	if (picked.error) return unavailable(picked.error)
 
@@ -1714,6 +1730,7 @@ function saveExactly(plan, save, sha, base, finish, unavailable) {
 	if (bytes === undefined || casesDigest(bytes) !== save.casesSha256) return unavailable("changed")
 	// The destination comes from the approved file itself, so the cases go where the plan said.
 	const where = readCasesDestination(bytes.toString("utf8"))
+	if (where.error === "no-destination") return unavailable(missingDestinationReason(subject.cli), subject.cli || undefined)
 	if (where.error) return unavailable(where.error)
 
 	notice(`Test Companion: saving the approved plan's cases from run ${save.runId} to ${where.folder} in ${where.project}.`)
