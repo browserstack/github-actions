@@ -1,7 +1,7 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { execFileSync, spawnSync } from "node:child_process"
-import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync, symlinkSync, unlinkSync, existsSync } from "node:fs"
+import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync, symlinkSync, unlinkSync, existsSync, copyFileSync, chmodSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import {
@@ -29,6 +29,9 @@ import {
 	savingFor,
 	leaveOut,
 	commitPaths,
+	parseLsTree,
+	treeChanges,
+	checkTreeAgainstBase,
 	startedOnMergeCommit,
 	checkHandoffDescends,
 	REWROTE_HISTORY,
@@ -1280,5 +1283,86 @@ describe("a staged rename is a move, not a copy", () => {
 		assert.equal(git(["cat-file", "-e", `${out.sha}:a.ts`]).ok, false, "the old path was kept")
 		assert.equal(git(["show", `${out.sha}:b.ts`]).out, "new")
 		rmSync(dir, { recursive: true, force: true })
+	})
+})
+
+describe("the base is checked against a listing taken before the agent ran", () => {
+	const identity = { name: "Test Companion", email: BOT_EMAIL }
+	const ls = (git, rev) => parseLsTree(spawnSync("git", ["ls-tree", "-r", "-z", "--full-tree", rev], { cwd: git.dir, encoding: "utf8" }).stdout)
+
+	test("listings compare path by path", () => {
+		const before = parseLsTree("100644 blob aaa\ta.ts\x00100644 blob bbb\tb.ts\0")
+		const after = parseLsTree("100644 blob aaa\ta.ts\x00100644 blob ccc\tb.ts\x00120000 blob ddd\tlink\0")
+		assert.deepEqual(treeChanges(before, after), ["b.ts", "link"])
+		assert.match(checkTreeAgainstBase(before, after, { allowed: ["b.ts"] }), /nobody chose: `link`/)
+		assert.match(checkTreeAgainstBase(before, after, { allowed: ["b.ts", "link"] }), /never commits: `link`/)
+		assert.equal(checkTreeAgainstBase(before, parseLsTree("100644 blob aaa\ta.ts\x00100644 blob ccc\tb.ts\0"), { allowed: ["b.ts"] }), undefined)
+		assert.match(checkTreeAgainstBase(new Map(), after), /couldn't be listed/)
+	})
+
+	test("git itself refuses a forged object, loose or packed", () => {
+		const { dir, git, tip } = repoWithBranch({ "a.ts": "new\n" })
+		const tree = git(["rev-parse", `${tip}^{tree}`]).out
+		const file = join(dir, ".git/objects", tree.slice(0, 2), tree.slice(2))
+		// Swap the base tree's object file for another tree's.
+		const other = git(["mktree"], {}, "").out
+		chmodSync(file, 0o644)
+		copyFileSync(join(dir, ".git/objects", other.slice(0, 2), other.slice(2)), file)
+		const r = git(["ls-tree", "-r", tip])
+		assert.equal(r.ok, false)
+		assert.match(r.err, /hash mismatch/)
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("a commit built on a base other than the one listed is refused", () => {
+		// What a forged read of the base would produce: a commit whose tree differs from the
+		// listed base in more than the chosen files.
+		const { dir, git, base, tip } = repoWithBranch({ "a.ts": "new\n", ".github/actions/x/action.yml": "runs: evil\n" })
+		git.dir = dir
+		const listedBase = ls(git, base)
+		writeFileSync(join(dir, "a.ts"), "newer\n")
+		const out = commitPaths({ git, base: tip, paths: ["a.ts"], identity, message: "m", indexFile: join(dir, "scratch") })
+		assert.ok(out.sha, JSON.stringify(out))
+		assert.match(checkTreeAgainstBase(listedBase, ls(git, out.sha), { allowed: ["a.ts"] }), /nobody chose: `\.github\/actions\/x\/action\.yml`/)
+		rmSync(dir, { recursive: true, force: true })
+	})
+
+	test("commit-graph and multi-pack-index files are not used", () => {
+		const settings = GIT_SAFE_ARGS.filter((a) => a !== "-c")
+		assert.ok(settings.includes("core.commitGraph=false"))
+		assert.ok(settings.includes("core.multiPackIndex=false"))
+	})
+
+	test("git never inherits a variable that points it at other objects", () => {
+		const got = gitEnvFrom({ GIT_ALTERNATE_OBJECT_DIRECTORIES: "/tmp/evil", GIT_OBJECT_DIRECTORY: "/tmp/evil", GIT_DIR: "/tmp/evil", GIT_INDEX_FILE: "/tmp/evil" })
+		for (const k of ["GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_INDEX_FILE"]) assert.equal(got[k], undefined, k)
+	})
+
+	test("an alternates file feeds git objects from another folder, which is why it's checked", () => {
+		const { dir, git } = repoWithBranch({ "a.ts": "new\n" })
+		const other = mkdtempSync(join(tmpdir(), "tc-alt-"))
+		spawnSync("git", ["init", "-q"], { cwd: other })
+		const foreign = spawnSync("git", ["hash-object", "-w", "--stdin"], { cwd: other, encoding: "utf8", input: "foreign\n" }).stdout.trim()
+		assert.equal(git(["cat-file", "-e", foreign]).ok, false)
+		mkdirSync(join(dir, ".git/objects/info"), { recursive: true })
+		writeFileSync(join(dir, ".git/objects/info/alternates"), `${join(other, ".git/objects")}\n`)
+		assert.equal(git(["cat-file", "-e", foreign]).ok, true)
+		rmSync(dir, { recursive: true, force: true })
+		rmSync(other, { recursive: true, force: true })
+	})
+
+	test("the wiring: listed before the agent, alternates and listings checked before anything is pushed", () => {
+		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
+		const start = main.indexOf('headBeforeRun = git(["rev-parse", "HEAD"]).out')
+		assert.ok(main.indexOf("baseListing = headBeforeRun ? parseLsTree(", start) > start)
+		assert.ok(main.indexOf("alternatesBefore = readAlternates(", start) > start)
+		assert.ok(main.indexOf("baseListing = headBeforeRun", start) < main.indexOf("runLockedDown(", start), "listed before the agent runs")
+		assert.match(main, /const ALTERNATES_FILES = \["objects\/info\/alternates", "objects\/info\/http-alternates"\]/)
+		const save = main.slice(main.indexOf("function saveWork("), main.indexOf("function isolateAgent("))
+		assert.ok(save.indexOf("alternatesChanged()") < save.indexOf('"status", "--porcelain"'))
+		assert.ok(save.indexOf("checkTreeAgainstBase(baseListing") < save.indexOf('git(["push"'))
+		const hand = main.slice(main.indexOf("function openHandedOffPr("), main.indexOf("function openHandedOffPr(") + 7000)
+		assert.ok(hand.indexOf("alternatesChanged()") < hand.indexOf("refs/heads/${req.branch}^{commit}"))
+		assert.ok(hand.indexOf("checkTreeAgainstBase(baseListing") < hand.indexOf('git(["push"'))
 	})
 })

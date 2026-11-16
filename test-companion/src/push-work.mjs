@@ -409,6 +409,12 @@ export const GIT_SAFE_ARGS = Object.freeze([
 	// which callers read as an error.
 	"-c",
 	"advice.graftFileDeprecated=false",
+	// The agent can write .git/objects/info/commit-graph and the multi-pack-index. Git reads a
+	// commit's parents and tree from them without checking the objects, so don't use them.
+	"-c",
+	"core.commitGraph=false",
+	"-c",
+	"core.multiPackIndex=false",
 ])
 
 /**
@@ -512,6 +518,44 @@ export function commitPaths({ git, base, paths, identity, message, indexFile }) 
 		scratch,
 	)
 	return commit.ok && commit.out ? { sha: commit.out } : { error: commit.err || "could not commit" }
+}
+
+/**
+ * `git ls-tree -r -z` output as path → "mode type id". Used to compare a commit's whole tree
+ * with the base's, as listed before the agent ran.
+ */
+export function parseLsTree(raw) {
+	const out = new Map()
+	for (const entry of String(raw ?? "").split("\0")) {
+		const tab = entry.indexOf("\t")
+		if (tab > 0) out.set(entry.slice(tab + 1), entry.slice(0, tab))
+	}
+	return out
+}
+
+/** Paths whose entry differs between two listings (added, removed or changed), sorted. */
+export function treeChanges(before, after) {
+	const paths = new Set([...before.keys(), ...after.keys()])
+	return [...paths].filter((p) => before.get(p) !== after.get(p)).sort()
+}
+
+/**
+ * Why a commit about to be pushed can't be trusted, or undefined. `before` is the base's
+ * listing taken before the agent ran; `after` is the new commit's. The agent can write
+ * .git/objects, so git's own view of the base can be forged: comparing against the listing
+ * taken earlier catches a changed base tree or objects fed in from elsewhere. Every path that
+ * differs must be one the Action chose (`allowed`, when given) and one it would ever commit.
+ */
+export function checkTreeAgainstBase(before, after, { allowed } = {}) {
+	if (!before || before.size === 0) return "the commit the run started on couldn't be listed before the run"
+	const changed = treeChanges(before, after)
+	const chosen = allowed ? new Set(allowed) : undefined
+	const unchosen = chosen ? changed.filter((p) => !chosen.has(p)) : []
+	if (unchosen.length) return `it would also change files nobody chose: ${listFiles(unchosen)}`
+	const isLink = (p) => String(after.get(p) ?? "").startsWith("120000 ")
+	const { skip } = splitPushable(changed, { isSymlink: isLink })
+	if (skip.length) return `it would change files Test Companion never commits: ${listFiles(skip)}`
+	return undefined
 }
 
 // Agent-chosen text on one line, so it can't add a trailer such as Co-authored-by.
