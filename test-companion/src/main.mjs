@@ -53,6 +53,7 @@ import {
 	signJwt,
 	installationTokenRequest,
 	appApi,
+	APP_SIGN_IN_BUDGET_MS,
 	installationLookupMessage,
 } from "./app-auth.mjs"
 import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent, runDidNotWork } from "./outcome.mjs"
@@ -286,8 +287,10 @@ async function appInstallationToken() {
 	}
 
 	// The JWT authenticates the App; only the installation token can touch a repository.
+	// One time budget for the whole sign-in, so a GitHub outage delays the fallback by at most that.
+	const deadline = Date.now() + APP_SIGN_IN_BUDGET_MS
 	const asApp = async (path, opts) => {
-		const r = await appApi(path, { jwt, apiUrl: env.GITHUB_API_URL, ...opts })
+		const r = await appApi(path, { jwt, apiUrl: env.GITHUB_API_URL, deadline, ...opts })
 		if (r.ok && r.attempts > 1) notice(`Test Companion: reaching GitHub as the App took ${r.attempts} tries.`)
 		return r
 	}

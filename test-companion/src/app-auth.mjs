@@ -30,16 +30,38 @@ export function jwtClaims(appId, nowSeconds) {
  */
 export async function appApi(
 	path,
-	{ jwt, method = "GET", body, apiUrl, fetchImpl = fetch, attempts = 3, sleep = defaultSleep, timeoutMs = APP_CALL_TIMEOUT_MS } = {},
+	{
+		jwt,
+		method = "GET",
+		body,
+		apiUrl,
+		fetchImpl = fetch,
+		attempts = 3,
+		sleep = defaultSleep,
+		timeoutMs = APP_CALL_TIMEOUT_MS,
+		// When set, no try starts, and no wait runs, past this time (ms since the epoch).
+		deadline,
+		now = Date.now,
+	} = {},
 ) {
+	const left = () => (deadline === undefined ? Infinity : deadline - now())
 	let result
 	for (let attempt = 1; attempt <= attempts; attempt++) {
-		result = await appApiOnce(path, { jwt, method, body, apiUrl, fetchImpl, timeoutMs })
+		if (left() <= 0) return { ...(result ?? OUT_OF_TIME), attempts: attempt - 1 }
+		result = await appApiOnce(path, { jwt, method, body, apiUrl, fetchImpl, timeoutMs: Math.min(timeoutMs, left()) })
 		if (!isRetryable(result) || attempt === attempts) return { ...result, attempts: attempt }
-		await sleep(retryDelayMs(result, attempt))
+		const wait = retryDelayMs(result, attempt)
+		// A wait that would end past the deadline can't lead to another try.
+		if (wait >= left()) return { ...result, attempts: attempt }
+		await sleep(wait)
 	}
 	return { ...result, attempts }
 }
+
+const OUT_OF_TIME = { ok: false, status: 0, data: undefined, reason: "ran out of time to reach GitHub" }
+
+/** The most the whole App sign-in may take, every call, try and wait included, before falling back. */
+export const APP_SIGN_IN_BUDGET_MS = 30_000
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
