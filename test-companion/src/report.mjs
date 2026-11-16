@@ -282,22 +282,29 @@ export const PROPOSAL_WINDOW_MS = 24 * 60 * 60 * 1000
 
 // Keyed to the commit, so a new push makes an old proposal unapprovable.
 // `run` is the run that made the plan, so approving it can fetch the cases that run kept.
-export function proposalMarkerFor(sha, requester, workflow, runId) {
+// `build` is the failed run the plan looked at, so approving it fixes that run and no other.
+// `cases` is the sha256 of the cases file the plan showed, so approving it saves exactly that.
+export function proposalMarkerFor(sha, requester, workflow, runId, { build, cases } = {}) {
 	const by = String(requester ?? "").trim()
 	const job = String(workflow ?? "").trim()
 	const run = /^\d+$/.test(String(runId ?? "")) ? String(runId) : ""
-	return `<!-- test-companion-proposal sha=${sha}${by ? ` by=${by}` : ""}${job ? ` workflow=${job}` : ""}${run ? ` run=${run}` : ""} -->`
+	const failed = /^\d+$/.test(String(build ?? "")) ? String(build) : ""
+	const digest = /^[0-9a-f]{64}$/.test(String(cases ?? "")) ? String(cases) : ""
+	return `<!-- test-companion-proposal sha=${sha}${by ? ` by=${by}` : ""}${job ? ` workflow=${job}` : ""}${run ? ` run=${run}` : ""}${failed ? ` build=${failed}` : ""}${digest ? ` cases=${digest}` : ""} -->`
 }
 
-// Groups: 1 = sha, 2 = requester, 3 = workflow, 4 = run id. The sha is captured and compared,
-// never built into the regex.
-const MARKER = /<!-- test-companion-proposal sha=([^\s>]+)(?: by=([^\s>]+))?(?: workflow=([^\s>]+))?(?: run=(\d+))? -->/
+// Groups: 1 = sha, 2 = requester, 3 = workflow, 4 = run id, 5 = failed run id, 6 = cases sha256.
+// The sha is captured and compared, never built into the regex. Older markers lack 4 to 6.
+const MARKER =
+	/<!-- test-companion-proposal sha=([^\s>]+)(?: by=([^\s>]+))?(?: workflow=([^\s>]+))?(?: run=(\d+))?(?: build=(\d+))?(?: cases=([0-9a-f]{64}))? -->/
 
 // The last marker, since ours ends the comment and anything earlier could be planted.
 const readMarker = (body) => {
 	const all = [...String(body ?? "").matchAll(new RegExp(MARKER.source, "g"))]
 	const found = all.at(-1)
-	return found ? { sha: found[1], requester: found[2], workflow: found[3], runId: found[4] } : undefined
+	return found
+		? { sha: found[1], requester: found[2], workflow: found[3], runId: found[4], buildRunId: found[5], casesSha256: found[6] }
+		: undefined
 }
 
 // The commit our in-progress check went on (the PR head), which on a comment run is not GITHUB_SHA.
@@ -312,13 +319,13 @@ export function isApprovableJob(workflow, enabledWorkflows) {
 	return job !== "" && !job.startsWith("-") && (enabledWorkflows ?? []).includes(job)
 }
 
-export function renderProposal(body, sha, requester, workflow, runId) {
+export function renderProposal(body, sha, requester, workflow, runId, pinned = {}) {
 	return [
 		body,
 		"",
 		"Reply **go** to run this for real. Nothing is written until you do. To change the list first, reply **@browserstack go** with your edits. Leave it and it stops being approvable after a day.",
 		"",
-		proposalMarkerFor(sha, requester, workflow, runId),
+		proposalMarkerFor(sha, requester, workflow, runId, pinned),
 	].join("\n")
 }
 
@@ -419,6 +426,8 @@ export function findProposal(comments, sha, now = Date.now(), us, opts = {}) {
 		requester: mark?.requester,
 		workflow: mark?.workflow,
 		runId: mark?.runId,
+		buildRunId: mark?.buildRunId,
+		casesSha256: mark?.casesSha256,
 		body: newest.body ?? "",
 	}
 }

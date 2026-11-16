@@ -7,7 +7,12 @@ import {
 	checkNamedRun,
 	renderCiStillRunning,
 	renderBuildNote,
+	runRequestFor,
 } from "../src/runs.mjs"
+import { findProposal, renderProposal, proposalMarkerFor } from "../src/report.mjs"
+
+const SHA = "a".repeat(40)
+const US = "browserstack[bot]"
 
 const run = (id, name, status, conclusion = null, extra = {}) => ({
 	id,
@@ -133,5 +138,55 @@ describe("the replies", () => {
 	test("no other failures, no extra text", () => {
 		assert.equal(renderBuildNote({ name: "E2E", url: "u" }), "Looked at `E2E` ([run](u)).")
 		assert.equal(renderBuildNote(undefined), "")
+	})
+})
+
+describe("approving a plan reads the run that plan looked at", () => {
+	const opts = { repo: "org/repo", serverUrl: "https://github.com" }
+	// Newest first, as ciOnCommit returns them: Lint failed after E2E.
+	const lint = { id: 300, name: "Lint", url: "https://github.com/org/repo/actions/runs/300" }
+	const e2e = { id: 200, name: "E2E Tests (linux)", url: "https://github.com/org/repo/actions/runs/200" }
+	const failed = [lint, e2e]
+	const plannedFrom = (requestText) => {
+		const asked = runRequestFor({ approving: false, requestText, ...opts })
+		return asked.named?.id ?? (matchFailedByName(requestText, failed) ?? failed[0]).id
+	}
+	const approvedRun = (body) => {
+		const waiting = findProposal([{ id: 9, user: { login: US, type: "Bot" }, created_at: new Date().toISOString(), body }], SHA, Date.now(), US)
+		return runRequestFor({ approving: true, plannedRunId: waiting?.buildRunId, requestText: "go", ...opts })
+	}
+
+	test("`fix e2e` then `go` fixes E2E, though Lint is newer and also red", () => {
+		const build = plannedFrom("@browserstack fix e2e")
+		assert.equal(String(build), "200")
+		const asked = approvedRun(renderProposal("plan", SHA, "octocat", "fix", "111", { build }))
+		assert.deepEqual(asked, { named: { id: "200" } })
+	})
+
+	test("`fix run <id>` then `go` fixes that run", () => {
+		const build = plannedFrom("@browserstack fix run 200000")
+		assert.equal(build, "200000")
+		assert.deepEqual(approvedRun(renderProposal("plan", SHA, "octocat", "fix", "111", { build })), { named: { id: "200000" } })
+	})
+
+	test("`go` itself never names a run, so it can't choose one", () => {
+		assert.deepEqual(runRequestFor({ approving: false, requestText: "go", ...opts }), { named: undefined })
+	})
+
+	test("a plan that didn't record its run is refused, never re-chosen", () => {
+		assert.deepEqual(approvedRun(renderProposal("plan", SHA, "octocat", "fix", "111")), { refuse: "no-planned-run" })
+	})
+
+	test("the recorded run is still checked: one that is no longer red can't be used", () => {
+		const run = { id: 200, html_url: e2e.url, head_sha: SHA, status: "completed", conclusion: "success", name: e2e.name, head_repository: { full_name: "org/repo" } }
+		assert.match(checkNamedRun(run, { prShas: [SHA] }).why, /did not fail/)
+	})
+
+	test("the marker keeps the run and still reads markers without it", () => {
+		assert.match(proposalMarkerFor(SHA, "o", "fix", "111", { build: "200" }), / run=111 build=200 -->$/)
+		assert.equal(proposalMarkerFor(SHA, "o", "fix", "111", { build: "2 00" }).includes("build="), false)
+		const old = findProposal([{ id: 9, user: { login: US, type: "Bot" }, created_at: new Date().toISOString(), body: `p\n\n<!-- test-companion-proposal sha=${SHA} by=o workflow=fix run=111 -->` }], SHA, Date.now(), US)
+		assert.equal(old.runId, "111")
+		assert.equal(old.buildRunId, undefined)
 	})
 })

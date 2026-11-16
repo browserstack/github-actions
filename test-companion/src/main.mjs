@@ -9,7 +9,7 @@ import {
 	chooseRunsToCancel,
 	runIdsFromChecks,
 	ciOnCommit,
-	parseRunReference,
+	runRequestFor,
 	matchFailedByName,
 	checkNamedRun,
 	renderCiStillRunning,
@@ -234,6 +234,8 @@ let approvedPlan
 
 /** Which failed run a build-reading job looked at, and what it left out. */
 let buildNote = ""
+/** That run's id, recorded in a plan so approving it reads the same run. */
+let buildRunId = ""
 
 // No --depth: it would make the full clone shallow. The URL carries its own credential
 // because the starter sets persist-credentials: false.
@@ -724,7 +726,24 @@ async function main() {
 		// rca, fix and verdict need a failed build: one the comment names, else the newest red run on this commit.
 		if (NEEDS_A_BUILD.has(plan.workflow) && !plan.context.build) {
 			const short = String(plan.context.sha).slice(0, 7)
-			const named = parseRunReference(requestText, { repo: REPO, serverUrl: env.GITHUB_SERVER_URL })
+			// Approving reads the run the plan looked at. "go" names no run, so choosing again could
+			// pick a different one (a newer red run, or the newest instead of the one named).
+			const approving = Boolean(gate.approvedProposal)
+			const asked = runRequestFor({
+				approving,
+				plannedRunId: waiting?.buildRunId,
+				requestText,
+				repo: REPO,
+				serverUrl: env.GITHUB_SERVER_URL,
+			})
+			if (asked.refuse) {
+				replyOnPr(
+					plan.context.pr,
+					"That plan doesn't record which failed run it looked at (an older version of Test Companion made it), so I have not run it. Ask me again and I will put up a fresh one.",
+				)
+				finishSkipped("proposal-without-run", plan.workflow)
+			}
+			const named = asked.named
 			if (named?.error) {
 				replyOnPr(plan.context.pr, named.error)
 				finishSkipped("run-not-usable", "link")
@@ -746,9 +765,16 @@ async function main() {
 					selfWorkflowName: env.TC_ACTION_SELF_WORKFLOW,
 				})
 				if (!check.ok) {
-					replyOnPr(plan.context.pr, `I can't use run \`${named.id}\`: ${check.why}`)
+					// Never a different run in its place: that is not what was approved.
+					replyOnPr(
+						plan.context.pr,
+						approving
+							? `The run this plan looked at, \`${named.id}\`, can't be used any more: ${check.why} Ask me again and I will put up a fresh plan.`
+							: `I can't use run \`${named.id}\`: ${check.why}`,
+					)
 					finishSkipped("run-not-usable", named.id)
 				}
+				buildRunId = String(named.id)
 				plan.context.build = check.url
 				buildNote = renderBuildNote(check, { ask: ASK_WORD[plan.workflow] })
 			} else {
@@ -773,6 +799,7 @@ async function main() {
 					)
 					finishSkipped(ci.running.length ? "ci-still-running" : "nothing-failed", plan.workflow)
 				}
+				buildRunId = String(chosen.id)
 				plan.context.build = chosen.url
 				buildNote = renderBuildNote(chosen, {
 					otherFailed: ci.failed.filter((r) => r !== chosen),
@@ -996,6 +1023,8 @@ async function main() {
 				plan.workflow ?? summary.workflow,
 				// And the run, so approving can fetch the cases it kept.
 				env.GITHUB_RUN_ID,
+				// And the failed run it read, so approving reads that run and no other.
+				{ build: buildRunId },
 			),
 		)
 		postCheck(outcome, view, sha, [], "in_progress")
