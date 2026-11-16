@@ -79,6 +79,20 @@ export function parseRunReference(text, { repo, serverUrl } = {}) {
 	return bare ? { id: bare[1] } : undefined
 }
 
+/**
+ * Which run a build-reading request names. Approving a plan reads the run the plan looked at
+ * (`plannedRunId`, from its marker), never one chosen again: "go" names no run, so choosing
+ * again could pick a newer red run, or the newest instead of the one named.
+ * Returns { named } as parseRunReference would (undefined = choose from the commit's red runs),
+ * or { refuse: "no-planned-run" } when an approved plan didn't record its run.
+ */
+export function runRequestFor({ approving, plannedRunId, requestText, repo, serverUrl } = {}) {
+	if (approving) {
+		return /^\d+$/.test(String(plannedRunId ?? "")) ? { named: { id: String(plannedRunId) } } : { refuse: "no-planned-run" }
+	}
+	return { named: parseRunReference(requestText, { repo, serverUrl }) }
+}
+
 // Words that say what to do, not which workflow to look at.
 const NOT_A_NAME = new Set(
 	"browserstack explain fix find bad pr prs pull request the a an why what did does do failed failing fail failure build builds run runs this that these on in for please of to and go verdict rca me it is test tests ci check checks job jobs with my our".split(
