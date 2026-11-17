@@ -3,6 +3,10 @@
 # Add two secrets under Settings → Secrets and variables → Actions:
 # BROWSERSTACK_USERNAME and BROWSERSTACK_ACCESS_KEY.
 #
+# To have comments, checks and commits show as BrowserStack, install the BrowserStack
+# GitHub App on the repository. There's no key to add: the job signs in through
+# BrowserStack's token service, using `id-token: write` below.
+#
 # What runs is set in testcompanion-pipeline.yml, so you can leave this file as it is.
 # Every trigger is listed up front; one that matches nothing costs a no-op job.
 name: Test Companion
@@ -67,6 +71,7 @@ jobs:
             pull-requests: write # the one comment, and opening a pull request
             checks: write # the "Test Companion" check
             actions: write # reading the red run, and cancelling one when a PR closes
+            id-token: write # signing in as the BrowserStack GitHub App, with no key in this repository
         steps:
             # v4.4.0, pinned to a commit because a tag can be repointed.
             - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -85,7 +90,7 @@ jobs:
                   # a version without a checksum is refused.
                   # cli-version: "1.2.0"
                   # cli-sha256: "<sha256 of that release for linux-amd64>"
-                  # With the GitHub App installed, uncomment these.
+                  # Only for your own GitHub App instead of BrowserStack's: uncomment these.
                   # app-id: ${{ secrets.TEST_COMPANION_APP_ID }}
                   # app-private-key: ${{ secrets.TEST_COMPANION_APP_PRIVATE_KEY }}
                   # Manual runs only; event-driven runs read the pipeline file.
