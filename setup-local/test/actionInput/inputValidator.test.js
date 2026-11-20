@@ -59,7 +59,7 @@ describe('InputValidator class to validate individual fields of the action input
     });
 
     context('Validates local identifier', () => {
-      it("Returns the idenfier joined by '-' if the input is not 'random'", () => {
+      it("Returns the identifier joined by '-' if the input is not 'random'", () => {
         const inputLocalIdentifer = 'This is The identifier';
         const expectedOutput = 'This-is-The-identifier';
         expect(InputValidator.validateLocalIdentifier(inputLocalIdentifer)).to.eq(expectedOutput);
