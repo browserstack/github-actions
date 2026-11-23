@@ -1138,7 +1138,7 @@ describe("the report says which request it is answering", () => {
 		assert.ok(body.includes(`| Asked by | @octocat · [View comment](${asked}) |`))
 	})
 
-	test("the escaped pipe keeps the table at two columns", () => {
+	test("the Asked by row stays two columns", () => {
 		const body = renderJobSummary(view({ askedBy: "octocat", askedAt: asked }))
 		const row = body.split("\n").find((l) => l.startsWith("| Asked by |"))
 		assert.equal(row.replace(/\\\|/g, "").split("|").length - 2, 2)

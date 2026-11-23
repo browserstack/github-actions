@@ -455,7 +455,7 @@ describe("a save that stopped without a report uses the plan up", () => {
 	test("the wiring: killed, timed out or no report is a used-up Run broke; only 'nothing was saved' stays approvable", () => {
 		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
 		const fn = main.slice(main.indexOf("function saveExactly("), main.indexOf("function pickBinding("))
-		assert.match(fn, /if \(tmAddStop\(\{ status: r\.status, signal: r\.signal, errorCode: r\.error\?\.code, stderr \}\) === "nothing-saved"\) \{\n\s*return unavailable\("save-failed", why, download\)/)
+		assert.match(fn, /if \(tmAddStop\(\{ status: r\.status, signal: r\.signal, errorCode: r\.error\?\.code, stderr \}\) === "nothing-saved"\) \{\n\s*return unavailable\("save-failed", why, kept\)/)
 		assert.match(fn, /return finish\(\{ \.\.\.base, outcome: OUTCOMES\.RUN_BROKE, answer: renderSaveInterrupted\(where, why\) \}, true\)/)
 	})
 })
