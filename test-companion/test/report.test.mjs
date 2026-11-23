@@ -1133,9 +1133,9 @@ describe("the report says which request it is answering", () => {
 		assert.ok(body.includes(asked), "the asking comment is not linked")
 	})
 
-	test("Asked by reads `@who | #comment id`, the id linking to the asking comment", () => {
+	test("Asked by reads `@who · View comment`, linking to the asking comment", () => {
 		const body = renderJobSummary(view({ askedBy: "octocat", askedAt: asked }))
-		assert.ok(body.includes(`| Asked by | @octocat \\| [#6579040229](${asked}) |`))
+		assert.ok(body.includes(`| Asked by | @octocat · [View comment](${asked}) |`))
 	})
 
 	test("the escaped pipe keeps the table at two columns", () => {

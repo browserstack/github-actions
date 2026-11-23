@@ -194,14 +194,9 @@ export function renderPlannedCases(bytes, { maxChars = 55_000 } = {}) {
 	if (!data || typeof data !== "object" || !Array.isArray(data.cases)) return undefined
 	const cases = data.cases
 	const where = readCasesDestination(JSON.stringify(data))
-	const ids = (a, b) => [a, b].filter(Boolean).map(plain).join(", ")
 	const head = where.error
 		? "**Will be saved to:** nowhere. This plan records no Test Management destination, so approving it can't save these cases."
-		: `**Will be saved to:** ${plain(where.folder)} in ${plain(where.project)}${
-				data.destination?.folderId || data.destination?.projectId
-					? ` (${ids(data.destination?.projectId, data.destination?.folderId)})`
-					: ""
-			}, once approved.`
+		: `**Will be saved to:** ${whereLinked(where)}, once approved.`
 	const count = `**${cases.length} test case${cases.length === 1 ? "" : "s"}:**`
 	const unshown = unshownFields(data)
 	const warning = unshown.length
@@ -250,7 +245,36 @@ export function readCasesDestination(casesText) {
 	const project = String(data.destination?.project ?? "").trim()
 	const folder = String(data.destination?.folder ?? "").trim()
 	if (!project || !folder) return { error: "no-destination" }
-	return { project, folder }
+	const projectId = String(data.destination?.projectId ?? "").trim()
+	const folderId = String(data.destination?.folderId ?? "").trim()
+	return { project, folder, ...(projectId ? { projectId } : {}), ...(folderId ? { folderId } : {}) }
+}
+
+/**
+ * The Test Management page of a folder, or undefined. Built only from ids of the expected shape,
+ * so nothing in the cases file can turn it into a link elsewhere.
+ */
+export function tmFolderLink(projectId, folderId) {
+	const project = String(projectId ?? "")
+	const folder = String(folderId ?? "")
+	if (!/^[A-Za-z0-9_-]{1,64}$/.test(project) || !/^\d{1,20}$/.test(folder)) return undefined
+	return `https://test-management.browserstack.com/projects/${project}/folder/${folder}`
+}
+
+/** GitHub's download page for one artifact of a run in this repository, or undefined. */
+export function artifactDownloadLink(repo, runId, artifactId) {
+	const r = String(repo ?? "")
+	const run = String(runId ?? "")
+	const artifact = String(artifactId ?? "")
+	if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r) || !/^\d+$/.test(run) || !/^\d+$/.test(artifact)) return undefined
+	return `https://github.com/${r}/actions/runs/${run}/artifacts/${artifact}`
+}
+
+// "folder in project", linked to the folder when its ids are known.
+function whereLinked({ project, folder, projectId, folderId } = {}) {
+	const where = `${plain(folder)} in ${plain(project)}`
+	const url = tmFolderLink(projectId, folderId)
+	return url ? `[${where}](${url})` : where
 }
 
 /**
@@ -371,8 +395,11 @@ const UNAVAILABLE_WHY = {
 	"lookup-failed": "I couldn't look up the plan's saved cases on GitHub just now",
 }
 
-/** The reply when the approved cases can't be saved as they are. Never regenerates. */
-export function renderCasesUnavailable(reason, detail) {
+/**
+ * The reply when the approved cases can't be saved as they are. Never regenerates. `download` is
+ * the plan's cases artifact, given only when those cases are the approved ones.
+ */
+export function renderCasesUnavailable(reason, detail, { download } = {}) {
 	const why = UNAVAILABLE_WHY[reason] ?? "the plan's cases could not be used"
 	const extra = String(detail ?? "").trim()
 	const notInstead = "I have not generated a new set in its place, because that would save cases nobody reviewed."
@@ -384,10 +411,12 @@ export function renderCasesUnavailable(reason, detail) {
 		"old-cli": `${notInstead} ${update} Then reply **go** to this plan again; it is still waiting.`,
 		"old-cli-plan": `${notInstead} ${update} Then ask me to **generate** again and approve the fresh plan.`,
 	}
+	const keep = download ? ["", `The approved test cases aren't lost: [download them](${download}).`] : []
 	return [
 		`I did not save anything: ${why}${extra ? ` (${extra})` : ""}.`,
 		"",
 		next[reason] ?? `${notInstead} Ask me to **generate** again and approve the fresh plan.`,
+		...keep,
 	].join("\n")
 }
 
@@ -407,12 +436,12 @@ export function browserstackLink(url) {
 }
 
 /** The answer text for an exact save: what was created, with ids, and anything that failed. */
-export function renderExactSave(report, { project, folder } = {}) {
+export function renderExactSave(report, destination = {}, { download } = {}) {
 	const created = report?.created ?? []
 	const failed = report?.failed ?? []
 	const skipped = report?.skipped ?? []
 	const lines = []
-	const where = `${plain(folder)} in ${plain(project)}`
+	const where = whereLinked(destination)
 	if (created.length > 0) {
 		lines.push(`Saved the ${created.length} approved test case${created.length === 1 ? "" : "s"} to ${where} exactly as planned; nothing was generated again.`)
 		lines.push("")
@@ -428,6 +457,7 @@ export function renderExactSave(report, { project, folder } = {}) {
 		lines.push(`**${failed.length} could not be saved:**`)
 		lines.push("")
 		for (const f of failed) lines.push(`- ${plain(f.title)}: ${plain(f.error)}`)
+		if (download) lines.push("", `[Download the approved test cases](${download}) to keep the ones that weren't saved.`)
 	}
 	if (skipped.length > 0) {
 		if (lines.length) lines.push("")
@@ -469,8 +499,8 @@ export function exactSaveOutcome(report, outcomes) {
  * report). Some cases may be in Test Management, so the plan is used up: approving it again
  * could save them twice.
  */
-export function renderSaveInterrupted({ project, folder } = {}, why) {
-	const where = project && folder ? `${plain(folder)} in ${plain(project)}` : "Test Management"
+export function renderSaveInterrupted(destination = {}, why) {
+	const where = destination.project && destination.folder ? whereLinked(destination) : "Test Management"
 	const extra = String(why ?? "").trim()
 	return [
 		`The save stopped before it reported what it saved${extra ? ` (${plain(extra)})` : ""}, so some of the approved cases may already be in ${where}.`,

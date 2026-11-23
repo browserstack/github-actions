@@ -299,7 +299,7 @@ describe("approving saves exactly the cases the plan showed", () => {
 
 	test("the plan is shown from the cases file, with where it will be saved", () => {
 		const shown = renderPlannedCases(file)
-		assert.match(shown.body, /\*\*Will be saved to:\*\* github-app in rag\\_assignment \(PR-42, 7\), once approved\./)
+		assert.ok(shown.body.includes('**Will be saved to:** [github-app in rag\\_assignment](https://test-management.browserstack.com/projects/PR-42/folder/7), once approved.'))
 		assert.match(shown.body, /\*\*2 test cases:\*\*/)
 		assert.match(shown.body, /<details><summary>T001 — Base delay<\/summary>/)
 		assert.match(shown.body, /\*\*Priority:\*\* high/)
@@ -311,7 +311,9 @@ describe("approving saves exactly the cases the plan showed", () => {
 	test("agent-written text can't mention anyone or add a link", () => {
 		const shown = renderPlannedCases(file).body
 		assert.doesNotMatch(shown, /@octocat/)
-		assert.doesNotMatch(shown, /\]\(https:\/\//)
+		// The only link is the destination folder, built from its ids.
+		const ours = "](https://test-management.browserstack.com/projects/PR-42/folder/7)"
+		assert.doesNotMatch(shown.replace(ours, ""), /\]\(https:\/\//)
 		assert.doesNotMatch(shown, /https:\/\/evil/)
 	})
 
@@ -455,7 +457,7 @@ describe("a save that stopped without a report uses the plan up", () => {
 	test("the wiring: killed, timed out or no report is a used-up Run broke; only 'nothing was saved' stays approvable", () => {
 		const main = readFileSync(new URL("../src/main.mjs", import.meta.url), "utf8")
 		const fn = main.slice(main.indexOf("function saveExactly("), main.indexOf("function pickBinding("))
-		assert.match(fn, /if \(tmAddStop\(\{ status: r\.status, signal: r\.signal, errorCode: r\.error\?\.code, stderr \}\) === "nothing-saved"\) \{\n\s*return unavailable\("save-failed", why\)/)
+		assert.match(fn, /if \(tmAddStop\(\{ status: r\.status, signal: r\.signal, errorCode: r\.error\?\.code, stderr \}\) === "nothing-saved"\) \{\n\s*return unavailable\("save-failed", why, download\)/)
 		assert.match(fn, /return finish\(\{ \.\.\.base, outcome: OUTCOMES\.RUN_BROKE, answer: renderSaveInterrupted\(where, why\) \}, true\)/)
 	})
 })

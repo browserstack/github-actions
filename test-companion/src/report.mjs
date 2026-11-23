@@ -8,19 +8,21 @@ const withMark = (outcome) => {
 	return mark ? `${mark} ${outcome}` : String(outcome ?? "")
 }
 
-/** `[#<id>](<url>)` for the comment that asked for this run; "" unless the URL names a comment. */
-export function requestLink(url) {
+/** `[View comment](<url>)` for a comment on this PR; "" unless the URL names a comment. */
+export function requestLink(url, label = "View comment") {
 	const u = String(url ?? "")
-	const id = /^https:\/\/[^\s()|<>[\]]+#issuecomment-(\d+)$/.exec(u)?.[1]
-	return id ? `[#${id}](${u})` : ""
+	return /^https:\/\/[^\s()|<>[\]]+#issuecomment-\d+$/.test(u) ? `[${label}](${u})` : ""
 }
 
-/** `@<who> | [#<comment id>](<url>)`; the pipe is escaped so it stays inside the table cell. */
+/** `@<who> · [View comment](<url>)`. */
 export function askedByCell(askedBy, askedAt) {
 	if (!askedBy) return ""
 	const link = requestLink(askedAt)
-	return link ? `@${askedBy} \\| ${link}` : `@${askedBy}`
+	return link ? `@${askedBy} · ${link}` : `@${askedBy}`
 }
+
+// Link text we did not write (a folder or project name): no Markdown or table breakers.
+const linkText = (s) => String(s ?? "").replace(/[\\`*_[\]()<>|]/g, "\\$&")
 
 /**
  * Only comments posted by our own bot login count. Another App or workflow
@@ -39,25 +41,37 @@ export function requestMarkerFor(requestId) {
 
 const previewRun = (summary) => summary?.preview === "true"
 
-// Flags generated-but-unsaved cases loudly; bare counts read as success.
-function producedLines(summary, resultArtifact) {
+/**
+ * Flags generated-but-unsaved cases loudly; bare counts read as success. The links are built by
+ * the Action (`savedToUrl`, `casesDownloadUrl`), never read from the run's summary file, which
+ * the agent can write.
+ */
+function producedLines(summary, resultArtifact, { proposing, runUrl, savedToUrl, casesDownloadUrl } = {}) {
 	const generated = Number(summary.cases_generated ?? 0)
 	const saved = Number(summary.cases_saved ?? 0)
 	if (!generated && !saved) return []
 
+	// A plan lists its cases below and says where they go; nothing is saved until it is approved.
+	if (proposing) return [`**Test cases:** ${generated} generated. Nothing is saved until you approve.`, ""]
+
 	const lines = [`**Test cases:** ${generated} generated, ${saved} saved to Test Management.`]
 	if (saved > 0 && summary.saved_to) {
-		lines.push(`They are in \`${inertMarkers(summary.saved_to)}\`.`)
-	}
-	if (saved < generated) {
 		lines.push(
-			saved === 0
-				? "**Nothing was written to Test Management.** Download the result below to keep the cases."
-				: "Some of them were not saved. Download the result below for the full list.",
+			savedToUrl
+				? `They are in [${linkText(inertMarkers(summary.saved_to))}](${savedToUrl}).`
+				: `They are in \`${inertMarkers(summary.saved_to)}\`.`,
 		)
 	}
-	if (resultArtifact) {
-		lines.push(`The full list is in the **${resultArtifact}** artifact on this run.`)
+	if (saved < generated) {
+		const get = casesDownloadUrl
+			? `[Download the test cases](${casesDownloadUrl}) to keep them.`
+			: runUrl
+				? `Download them from the **Artifacts** section of the [run page](${runUrl}) to keep them.`
+				: "Download the result below to keep the cases."
+		lines.push(saved === 0 ? `**Nothing was written to Test Management.** ${get}` : `Some of them were not saved. ${get}`)
+		if (resultArtifact && !casesDownloadUrl) {
+			lines.push(`The full list is in the **${resultArtifact}** artifact on this run.`)
+		}
 	}
 	return [lines.join(" "), ""]
 }
@@ -109,6 +123,9 @@ export function renderJobSummary({
 	errorLine,
 	buildNote,
 	planWorkflow,
+	proposing,
+	savedToUrl,
+	casesDownloadUrl,
 } = {}) {
 	const lines = []
 	lines.push(`## Test Companion — ${withMark(outcome)}`)
@@ -162,7 +179,7 @@ export function renderJobSummary({
 		["Cost", summary.credits ? `${summary.credits} credits` : ""],
 		["CLI", cliVersion],
 		["Asked by", askedByCell(askedBy, askedAt)],
-		["Plan", approvedPlan?.url ? `[#${approvedPlan.id}](${approvedPlan.url})` : ""],
+		["Plan", requestLink(approvedPlan?.url, "View plan")],
 	].filter(([, v]) => v)
 
 	lines.push("| | |", "|---|---|")
@@ -174,7 +191,7 @@ export function renderJobSummary({
 	}
 
 	lines.push(...failureLines(failedTests))
-	lines.push(...producedLines(summary, resultArtifact))
+	lines.push(...producedLines(summary, resultArtifact, { proposing, runUrl, savedToUrl, casesDownloadUrl }))
 
 	if (String(workNote ?? "").trim()) {
 		lines.push(inertMarkers(workNote), "")
@@ -336,14 +353,28 @@ export function isApprovableJob(workflow, enabledWorkflows) {
 	return job !== "" && !job.startsWith("-") && (enabledWorkflows ?? []).includes(job)
 }
 
-export function renderProposal(body, sha, requester, workflow, runId, pinned = {}) {
+// What `go` does, per job, for the plan's call to action.
+const GO_DOES = {
+	generate: "save these test cases to Test Management",
+	fix: "apply this fix as a draft pull request",
+	"test-pr": "write these tests to this branch",
+	automate: "write these automated tests as a pull request",
+}
+
+/** The plan's call to action, set apart from the report so the next step is obvious. */
+export function renderNextStep(workflow) {
+	const does = GO_DOES[String(workflow ?? "")] ?? "run this for real"
 	return [
-		body,
-		"",
-		"Reply **go** to run this for real. Nothing is written until you do. To change the list first, reply **@browserstack go** with your edits. Leave it and it stops being approvable after a day.",
-		"",
-		proposalMarkerFor(sha, requester, workflow, runId, pinned),
+		"> [!IMPORTANT]",
+		"> **Next step:** reply `go` to " + does + ". Nothing is written until you do.",
+		">",
+		"> - To change the plan first, reply `@browserstack go` followed by your changes.",
+		"> - To skip it, do nothing: it stops being approvable after a day.",
 	].join("\n")
+}
+
+export function renderProposal(body, sha, requester, workflow, runId, pinned = {}) {
+	return [body, "", renderNextStep(workflow), "", proposalMarkerFor(sha, requester, workflow, runId, pinned)].join("\n")
 }
 
 /** "approved", "dropped", or undefined when no plan on this commit was used. */
