@@ -10,7 +10,7 @@
  * Everything here is pure; main.mjs does the API calls and runs tc.
  */
 import { createHash } from "node:crypto"
-import { hasApproverEdits } from "./report.mjs"
+import { hasApproverEdits, plain } from "./report.mjs"
 
 /** The artifact a generate preview leaves: the cases file plus subject.json naming its repo and commit. */
 export const CASES_ARTIFACT = "test-companion-cases"
@@ -46,14 +46,6 @@ export function casesDigest(bytes) {
 	return createHash("sha256").update(bytes ?? "").digest("hex")
 }
 
-// Agent-written text shown in the plan: one line, no Markdown, no @mentions or autolinks.
-const plain = (s) =>
-	String(s ?? "")
-		.replace(/\s+/g, " ")
-		.trim()
-		.replace(/[\\`*_{}[\]()<>#+!|~]/g, "\\$&")
-		.replace(/@/g, "@\u200b")
-		.replace(/:\/\//g, ":\u200b//")
 
 // Agent-written text that may span lines, shown in a code block: nothing in it is Markdown,
 // a mention or a link. The fence is longer than any run of backticks inside.
@@ -257,9 +249,18 @@ export function readCasesDestination(casesText) {
  * The folder's Test Management page that `tc tm add` reported, or undefined. Only a page of
  * exactly that shape is linked: the URL comes from the CLI's output, not from us.
  */
-export function tmFolderUrl(url) {
+export function tmFolderUrl(url, folderId) {
 	const u = String(url ?? "")
-	return /^https:\/\/test-management\.browserstack\.com\/projects\/\d{1,20}\/folder\/\d{1,20}\/test-cases$/.test(u) ? u : undefined
+	const folder = String(folderId ?? "")
+	if (!/^\d{1,20}$/.test(folder)) return undefined
+	const page = /^https:\/\/[a-z0-9-]+\.browserstack\.com\/projects\/\d{1,20}\/folder\/(\d{1,20})\/test-cases$/.exec(u)
+	return page && page[1] === folder ? u : undefined
+}
+
+/** "until 2026-11-30" from an artifact's `expires_at`, or "" when it isn't a date. */
+export function keptUntil(expiresAt) {
+	const day = /^(\d{4}-\d{2}-\d{2})T/.exec(String(expiresAt ?? ""))?.[1]
+	return day ? `until ${day}` : ""
 }
 
 /** GitHub's download page for one artifact of a run in this repository, or undefined. */
@@ -272,9 +273,9 @@ export function artifactDownloadLink(repo, runId, artifactId) {
 }
 
 // "folder in project", linked to the folder's page when the save reported one.
-function whereLinked({ project, folder } = {}, folderUrl) {
+function whereLinked({ project, folder } = {}, folderUrl, folderId) {
 	const where = `${plain(folder)} in ${plain(project)}`
-	const url = tmFolderUrl(folderUrl)
+	const url = tmFolderUrl(folderUrl, folderId)
 	return url ? `[${where}](${url})` : where
 }
 
@@ -401,7 +402,7 @@ const UNAVAILABLE_WHY = {
  * The reply when the approved cases can't be saved as they are. Never regenerates. `download` is
  * the plan's cases artifact, given only when those cases are the approved ones.
  */
-export function renderCasesUnavailable(reason, detail, { download } = {}) {
+export function renderCasesUnavailable(reason, detail, { download, until } = {}) {
 	const why = UNAVAILABLE_WHY[reason] ?? "the plan's cases could not be used"
 	const extra = String(detail ?? "").trim()
 	const notInstead = "I have not generated a new set in its place, because that would save cases nobody reviewed."
@@ -413,7 +414,7 @@ export function renderCasesUnavailable(reason, detail, { download } = {}) {
 		"old-cli": `${notInstead} ${update} Then reply **go** to this plan again; it is still waiting.`,
 		"old-cli-plan": `${notInstead} ${update} Then ask me to **generate** again and approve the fresh plan.`,
 	}
-	const keep = download ? ["", `The approved test cases aren't lost: [download them](${download}).`] : []
+	const keep = download ? ["", `You can still [download the approved test cases](${download})${until ? `, kept ${until}` : ""}.`] : []
 	return [
 		`I did not save anything: ${why}${extra ? ` (${extra})` : ""}.`,
 		"",
@@ -438,12 +439,12 @@ export function browserstackLink(url) {
 }
 
 /** The answer text for an exact save: what was created, with ids, and anything that failed. */
-export function renderExactSave(report, destination = {}, { download } = {}) {
+export function renderExactSave(report, destination = {}) {
 	const created = report?.created ?? []
 	const failed = report?.failed ?? []
 	const skipped = report?.skipped ?? []
 	const lines = []
-	const where = whereLinked(destination, report?.folderUrl)
+	const where = whereLinked(destination, report?.folderUrl, report?.folderId)
 	if (created.length > 0) {
 		lines.push(`Saved the ${created.length} approved test case${created.length === 1 ? "" : "s"} to ${where} exactly as planned; nothing was generated again.`)
 		lines.push("")
@@ -459,7 +460,6 @@ export function renderExactSave(report, destination = {}, { download } = {}) {
 		lines.push(`**${failed.length} could not be saved:**`)
 		lines.push("")
 		for (const f of failed) lines.push(`- ${plain(f.title)}: ${plain(f.error)}`)
-		if (download) lines.push("", `[Download the approved test cases](${download}) to keep the ones that weren't saved.`)
 	}
 	if (skipped.length > 0) {
 		if (lines.length) lines.push("")
@@ -501,8 +501,8 @@ export function exactSaveOutcome(report, outcomes) {
  * report). Some cases may be in Test Management, so the plan is used up: approving it again
  * could save them twice.
  */
-export function renderSaveInterrupted(destination = {}, why) {
-	const where = destination.project && destination.folder ? `${plain(destination.folder)} in ${plain(destination.project)}` : "Test Management"
+export function renderSaveInterrupted({ project, folder } = {}, why) {
+	const where = project && folder ? `${plain(folder)} in ${plain(project)}` : "Test Management"
 	const extra = String(why ?? "").trim()
 	return [
 		`The save stopped before it reported what it saved${extra ? ` (${plain(extra)})` : ""}, so some of the approved cases may already be in ${where}.`,

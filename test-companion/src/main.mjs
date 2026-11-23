@@ -40,6 +40,7 @@ import {
 	renderExactSave,
 	tmFolderUrl,
 	artifactDownloadLink,
+	keptUntil,
 	exactSaveSummary,
 	exactSaveOutcome,
 	EDITED_GO_NOTE,
@@ -1081,7 +1082,8 @@ async function main() {
 	// so it is reported like any other run, which also completes its check.
 	if (proposing && !runDidNotWork(outcome)) {
 		const sha = checkSha(plan.context, summary, env.GITHUB_SHA)
-		addToJobSummary(renderJobSummary(view))
+		const planView = { ...view, proposing: true }
+		addToJobSummary(renderJobSummary(planView))
 		const size = describeChangeSize(pull)
 		const sizeNote = size.large
 			? `> **This is a large change** — ${size.files} files and ${size.lines} changed lines. Trim the list below before replying go if you only want part of it covered.\n\n`
@@ -1094,7 +1096,6 @@ async function main() {
 		const isGenerate = (plan.workflow ?? summary.workflow) === "generate"
 		const casesBytes = isGenerate ? readBytes(join(CASES_DIR, CASES_DATA_FILE)) : undefined
 		// The cases get most of the comment; the run's own report above them is kept short.
-		const planView = { ...view, proposing: true }
 		const summaryShown = casesBytes ? renderSummaryWithin(planView, PLAN_SUMMARY_LIMIT) : renderCheckSummary(planView)
 		const planned = casesBytes
 			? renderPlannedCases(casesBytes, { maxChars: COMMENT_LIMIT - summaryShown.length - sizeNote.length - PROPOSAL_OVERHEAD })
@@ -1127,7 +1128,7 @@ async function main() {
 				{ build: buildRunId, cases: casesSha256, shown: casesShown },
 			),
 		)
-		postCheck(outcome, view, sha, [], "in_progress")
+		postCheck(outcome, planView, sha, [], "in_progress")
 		// A plan's files are attached too: approving a generate plan saves these cases.
 		if (summaryText) setOutput("summary-file", SUMMARY_FILE)
 		if (hasResult) setOutput("result-file", RESULT_FILE)
@@ -1809,19 +1810,21 @@ function saveApprovedCases(plan, save, approvalNote) {
 		if (plan.context.pr) postComment(plan.context.pr, { ...view, consumedMarker: spend ? consumedMarker : "" })
 		process.exit(0)
 	}
-	const unavailable = (reason, detail, download) =>
-		finish({ ...base, outcome: OUTCOMES.COULD_NOT_RUN, answer: renderCasesUnavailable(reason, detail, { download }) }, false)
+	const unavailable = (reason, detail, keep = {}) =>
+		finish({ ...base, outcome: OUTCOMES.COULD_NOT_RUN, answer: renderCasesUnavailable(reason, detail, keep) }, false)
+	// Set once the approved file is confirmed, so an unexpected failure after that still links it.
+	const kept = {}
 
 	if (save.mode !== "exact") return unavailable(save.reason)
 	// Anything unexpected is reported too: a plain go must never turn into a new generate run.
 	try {
-		saveExactly(plan, save, sha, base, finish, unavailable)
+		saveExactly(plan, save, sha, base, finish, unavailable, kept)
 	} catch (e) {
-		unavailable("save-failed", redactSecrets(String(e?.message ?? e), secretsNow()))
+		unavailable("save-failed", redactSecrets(String(e?.message ?? e), secretsNow()), kept)
 	}
 }
 
-function saveExactly(plan, save, sha, base, finish, unavailable) {
+function saveExactly(plan, save, sha, base, finish, unavailable, kept = {}) {
 	// An older CLI has no `tm add --from-file`; say so rather than report a refusal.
 	if (!cliHasTmAddFromFile()) return unavailable("old-cli", String(env.TC_ACTION_CLI_VERSION ?? "").trim())
 	// A lookup that failed is not "the cases are missing": the plan stays approvable.
@@ -1852,10 +1855,11 @@ function saveExactly(plan, save, sha, base, finish, unavailable) {
 	const unshown = unshownFields(data)
 	if (unshown.length) return unavailable("unshown", unshown.slice(0, 10).join(", "))
 	// From here the file is exactly the approved one, so a save that doesn't happen links to it.
-	const download = artifactDownloadLink(REPO, save.runId, picked.artifact?.id)
+	kept.download = artifactDownloadLink(REPO, save.runId, picked.artifact?.id)
+	kept.until = keptUntil(picked.artifact?.expires_at)
 	// The destination comes from the approved file itself, so the cases go where the plan said.
 	const where = readCasesDestination(bytes.toString("utf8"))
-	if (where.error === "no-destination") return unavailable(missingDestinationReason(subject.cli), subject.cli || undefined, download)
+	if (where.error === "no-destination") return unavailable(missingDestinationReason(subject.cli), subject.cli || undefined, kept)
 	if (where.error) return unavailable(where.error)
 
 	notice(`Test Companion: saving the approved plan's cases from run ${save.runId} to ${where.folder} in ${where.project}.`)
@@ -1873,7 +1877,7 @@ function saveExactly(plan, save, sha, base, finish, unavailable) {
 		// Approvable again only when nothing can have been saved. A save that was killed, timed
 		// out or crashed may have saved some, so the plan is used up: a second go could save them twice.
 		if (tmAddStop({ status: r.status, signal: r.signal, errorCode: r.error?.code, stderr }) === "nothing-saved") {
-			return unavailable("save-failed", why, download)
+			return unavailable("save-failed", why, kept)
 		}
 		return finish({ ...base, outcome: OUTCOMES.RUN_BROKE, answer: renderSaveInterrupted(where, why) }, true)
 	}
@@ -1885,9 +1889,10 @@ function saveExactly(plan, save, sha, base, finish, unavailable) {
 			...base,
 			outcome,
 			summary: { ...base.summary, ...exactSaveSummary(report, where) },
-			answer: renderExactSave(report, where, { download: someLost ? download : undefined }),
-			savedToUrl: tmFolderUrl(report.folderUrl),
-			casesDownloadUrl: someLost ? download : undefined,
+			answer: renderExactSave(report, where),
+			savedToUrl: tmFolderUrl(report.folderUrl, report.folderId),
+			casesDownloadUrl: someLost ? kept.download : undefined,
+			casesKeptUntil: someLost ? kept.until : undefined,
 		},
 		spend,
 	)

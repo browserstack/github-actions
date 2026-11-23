@@ -21,8 +21,17 @@ export function askedByCell(askedBy, askedAt) {
 	return link ? `@${askedBy} · ${link}` : `@${askedBy}`
 }
 
-// Link text we did not write (a folder or project name): no Markdown or table breakers.
-const linkText = (s) => String(s ?? "").replace(/[\\`*_[\]()<>|]/g, "\\$&")
+/**
+ * Text we did not write (agent output, a folder or project name from a file the agent wrote): one
+ * line, no Markdown, no @mentions or autolinks. Safe inside link text and table cells.
+ */
+export const plain = (s) =>
+	String(s ?? "")
+		.replace(/\s+/g, " ")
+		.trim()
+		.replace(/[\\`*_{}[\]()<>#+!|~]/g, "\\$&")
+		.replace(/@/g, "@\u200b")
+		.replace(/:\/\//g, ":\u200b//")
 
 /**
  * Only comments posted by our own bot login count. Another App or workflow
@@ -46,25 +55,30 @@ const previewRun = (summary) => summary?.preview === "true"
  * the Action (`savedToUrl`, `casesDownloadUrl`), never read from the run's summary file, which
  * the agent can write.
  */
-function producedLines(summary, resultArtifact, { proposing, runUrl, savedToUrl, casesDownloadUrl } = {}) {
+function producedLines(summary, resultArtifact, { proposing, runUrl, savedToUrl, casesDownloadUrl, casesKeptUntil } = {}) {
 	const generated = Number(summary.cases_generated ?? 0)
 	const saved = Number(summary.cases_saved ?? 0)
 	if (!generated && !saved) return []
 
 	// A plan lists its cases below and says where they go; nothing is saved until it is approved.
-	if (proposing) return [`**Test cases:** ${generated} generated. Nothing is saved until you approve.`, ""]
+	// Preview blocks Test Companion's own writes, not the agent's shell, so a save is still reported.
+	if (proposing) {
+		const note =
+			saved > 0
+				? `**${saved} were already saved to Test Management while making this plan**, so approving it may save them again.`
+				: "Nothing is saved until you approve."
+		return [`**Test cases:** ${generated} generated. ${note}`, ""]
+	}
 
 	const lines = [`**Test cases:** ${generated} generated, ${saved} saved to Test Management.`]
 	if (saved > 0 && summary.saved_to) {
 		lines.push(
-			savedToUrl
-				? `They are in [${linkText(inertMarkers(summary.saved_to))}](${savedToUrl}).`
-				: `They are in \`${inertMarkers(summary.saved_to)}\`.`,
+			savedToUrl ? `They are in [${plain(summary.saved_to)}](${savedToUrl}).` : `They are in ${plain(summary.saved_to)}.`,
 		)
 	}
 	if (saved < generated) {
 		const get = casesDownloadUrl
-			? `[Download the test cases](${casesDownloadUrl}) to keep them.`
+			? `[Download the test cases](${casesDownloadUrl})${casesKeptUntil ? `, kept ${casesKeptUntil},` : ""} to keep them.`
 			: runUrl
 				? `Download them from the **Artifacts** section of the [run page](${runUrl}) to keep them.`
 				: "Download the result below to keep the cases."
@@ -126,6 +140,7 @@ export function renderJobSummary({
 	proposing,
 	savedToUrl,
 	casesDownloadUrl,
+	casesKeptUntil,
 } = {}) {
 	const lines = []
 	lines.push(`## Test Companion — ${withMark(outcome)}`)
@@ -191,7 +206,7 @@ export function renderJobSummary({
 	}
 
 	lines.push(...failureLines(failedTests))
-	lines.push(...producedLines(summary, resultArtifact, { proposing, runUrl, savedToUrl, casesDownloadUrl }))
+	lines.push(...producedLines(summary, resultArtifact, { proposing, runUrl, savedToUrl, casesDownloadUrl, casesKeptUntil }))
 
 	if (String(workNote ?? "").trim()) {
 		lines.push(inertMarkers(workNote), "")
@@ -356,8 +371,9 @@ export function isApprovableJob(workflow, enabledWorkflows) {
 // What `go` does, per job, for the plan's call to action.
 const GO_DOES = {
 	generate: "save these test cases to Test Management",
-	fix: "apply this fix as a draft pull request",
+	fix: "apply this fix as a pull request",
 	"test-pr": "write these tests to this branch",
+	test: "write these tests to this branch",
 	automate: "write these automated tests as a pull request",
 }
 
