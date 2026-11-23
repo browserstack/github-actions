@@ -2,29 +2,31 @@ import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { renderJobSummary, renderNextStep, renderProposal } from "../src/report.mjs"
 import {
-	tmFolderLink,
+	tmFolderUrl,
 	artifactDownloadLink,
-	readCasesDestination,
+	parseTmAddReport,
 	renderCasesUnavailable,
 	renderExactSave,
 	renderSaveInterrupted,
 } from "../src/approved-cases.mjs"
 
-const FOLDER = "https://test-management.browserstack.com/projects/PR-164148/folder/61742797"
+const FOLDER = "https://test-management.browserstack.com/projects/4328203/folder/61742797/test-cases"
 const DOWNLOAD = "https://github.com/o/r/actions/runs/123/artifacts/456"
 const RUN = "https://github.com/o/r/actions/runs/999"
 const where = { project: "rag_assignment", folder: "github-app", projectId: "PR-164148", folderId: "61742797" }
 
-describe("tmFolderLink: the folder's Test Management page, from ids only", () => {
-	test("a project code and a numeric folder id make the link", () => {
-		assert.equal(tmFolderLink("PR-164148", "61742797"), FOLDER)
+describe("tmFolderUrl: only a Test Management folder page is linked", () => {
+	test("the page tc tm add reports is kept", () => {
+		assert.equal(tmFolderUrl(FOLDER), FOLDER)
 	})
 	test("anything else gives no link", () => {
-		assert.equal(tmFolderLink("", "1"), undefined)
-		assert.equal(tmFolderLink("PR-1", ""), undefined)
-		assert.equal(tmFolderLink("PR-1/../../x", "1"), undefined)
-		assert.equal(tmFolderLink("PR-1", "1?next=https://evil.test"), undefined)
-		assert.equal(tmFolderLink("PR 1", "1"), undefined)
+		assert.equal(tmFolderUrl(undefined), undefined)
+		assert.equal(tmFolderUrl(""), undefined)
+		assert.equal(tmFolderUrl("https://test-management.browserstack.com/projects/PR-164148/folder/61742797/test-cases"), undefined)
+		assert.equal(tmFolderUrl("https://evil.test/projects/1/folder/2/test-cases"), undefined)
+		assert.equal(tmFolderUrl("http://test-management.browserstack.com/projects/1/folder/2/test-cases"), undefined)
+		assert.equal(tmFolderUrl(`${FOLDER}?next=https://evil.test`), undefined)
+		assert.equal(tmFolderUrl(`${FOLDER})[x](https://evil.test`), undefined)
 	})
 })
 
@@ -40,21 +42,24 @@ describe("artifactDownloadLink: GitHub's page for one artifact", () => {
 	})
 })
 
-describe("readCasesDestination keeps the ids the link needs", () => {
-	test("ids are passed through when present", () => {
-		const text = JSON.stringify({ destination: where, cases: [] })
-		assert.deepEqual(readCasesDestination(text), where)
+describe("parseTmAddReport keeps the folder page", () => {
+	test("folderUrl is passed through", () => {
+		const out = JSON.stringify({ project: "PR-164148", folderId: "61742797", folderUrl: FOLDER, created: [], failed: [], skipped: [] })
+		assert.equal(parseTmAddReport(out).folderUrl, FOLDER)
+	})
+	test("an older CLI without it gives an empty one", () => {
+		assert.equal(parseTmAddReport(JSON.stringify({ created: [] })).folderUrl, "")
 	})
 })
 
 describe("a saved generate links its folder", () => {
-	const report = { created: [{ identifier: "TC-1", title: "One" }], failed: [], skipped: [] }
+	const report = { created: [{ identifier: "TC-1", title: "One" }], failed: [], skipped: [], folderUrl: FOLDER }
 
 	test("the answer names the folder as a link", () => {
-		assert.match(renderExactSave(report, where), /to \[github-app in rag\\_assignment\]\(https:\/\/test-management\.browserstack\.com\/projects\/PR-164148\/folder\/61742797\) exactly as planned/)
+		assert.ok(renderExactSave(report, where).includes(`to [github-app in rag\\_assignment](${FOLDER}) exactly as planned`))
 	})
-	test("without ids it stays plain text", () => {
-		const text = renderExactSave(report, { project: "rag_assignment", folder: "github-app" })
+	test("without a reported page it stays plain text", () => {
+		const text = renderExactSave({ ...report, folderUrl: "" }, where)
 		assert.match(text, /to github-app in rag\\_assignment exactly as planned/)
 		assert.doesNotMatch(text, /\]\(https:/)
 	})
@@ -75,8 +80,8 @@ describe("a saved generate links its folder", () => {
 		assert.doesNotMatch(body, /evil/)
 		assert.ok(body.includes("They are in `x`."))
 	})
-	test("an interrupted save links the folder to check", () => {
-		assert.match(renderSaveInterrupted(where, "killed"), /Check \[github-app in rag\\_assignment\]\(https:/)
+	test("an interrupted save has no report, so names the folder without a link", () => {
+		assert.match(renderSaveInterrupted(where, "killed"), /Check github-app in rag\\_assignment before/)
 	})
 })
 
