@@ -194,9 +194,14 @@ export function renderPlannedCases(bytes, { maxChars = 55_000 } = {}) {
 	if (!data || typeof data !== "object" || !Array.isArray(data.cases)) return undefined
 	const cases = data.cases
 	const where = readCasesDestination(JSON.stringify(data))
+	const ids = (a, b) => [a, b].filter(Boolean).map(plain).join(", ")
 	const head = where.error
 		? "**Will be saved to:** nowhere. This plan records no Test Management destination, so approving it can't save these cases."
-		: `**Will be saved to:** ${whereLinked(where)}, once approved.`
+		: `**Will be saved to:** ${plain(where.folder)} in ${plain(where.project)}${
+				data.destination?.folderId || data.destination?.projectId
+					? ` (${ids(data.destination?.projectId, data.destination?.folderId)})`
+					: ""
+			}, once approved.`
 	const count = `**${cases.length} test case${cases.length === 1 ? "" : "s"}:**`
 	const unshown = unshownFields(data)
 	const warning = unshown.length
@@ -245,20 +250,16 @@ export function readCasesDestination(casesText) {
 	const project = String(data.destination?.project ?? "").trim()
 	const folder = String(data.destination?.folder ?? "").trim()
 	if (!project || !folder) return { error: "no-destination" }
-	const projectId = String(data.destination?.projectId ?? "").trim()
-	const folderId = String(data.destination?.folderId ?? "").trim()
-	return { project, folder, ...(projectId ? { projectId } : {}), ...(folderId ? { folderId } : {}) }
+	return { project, folder }
 }
 
 /**
- * The Test Management page of a folder, or undefined. Built only from ids of the expected shape,
- * so nothing in the cases file can turn it into a link elsewhere.
+ * The folder's Test Management page that `tc tm add` reported, or undefined. Only a page of
+ * exactly that shape is linked: the URL comes from the CLI's output, not from us.
  */
-export function tmFolderLink(projectId, folderId) {
-	const project = String(projectId ?? "")
-	const folder = String(folderId ?? "")
-	if (!/^[A-Za-z0-9_-]{1,64}$/.test(project) || !/^\d{1,20}$/.test(folder)) return undefined
-	return `https://test-management.browserstack.com/projects/${project}/folder/${folder}`
+export function tmFolderUrl(url) {
+	const u = String(url ?? "")
+	return /^https:\/\/test-management\.browserstack\.com\/projects\/\d{1,20}\/folder\/\d{1,20}\/test-cases$/.test(u) ? u : undefined
 }
 
 /** GitHub's download page for one artifact of a run in this repository, or undefined. */
@@ -270,10 +271,10 @@ export function artifactDownloadLink(repo, runId, artifactId) {
 	return `https://github.com/${r}/actions/runs/${run}/artifacts/${artifact}`
 }
 
-// "folder in project", linked to the folder when its ids are known.
-function whereLinked({ project, folder, projectId, folderId } = {}) {
+// "folder in project", linked to the folder's page when the save reported one.
+function whereLinked({ project, folder } = {}, folderUrl) {
 	const where = `${plain(folder)} in ${plain(project)}`
-	const url = tmFolderLink(projectId, folderId)
+	const url = tmFolderUrl(folderUrl)
 	return url ? `[${where}](${url})` : where
 }
 
@@ -369,6 +370,7 @@ export function parseTmAddReport(stdout) {
 	return {
 		project: String(report.project ?? ""),
 		folderId: String(report.folderId ?? ""),
+		folderUrl: String(report.folderUrl ?? ""),
 		created: report.created,
 		failed: Array.isArray(report.failed) ? report.failed : [],
 		skipped: Array.isArray(report.skipped) ? report.skipped : [],
@@ -441,7 +443,7 @@ export function renderExactSave(report, destination = {}, { download } = {}) {
 	const failed = report?.failed ?? []
 	const skipped = report?.skipped ?? []
 	const lines = []
-	const where = whereLinked(destination)
+	const where = whereLinked(destination, report?.folderUrl)
 	if (created.length > 0) {
 		lines.push(`Saved the ${created.length} approved test case${created.length === 1 ? "" : "s"} to ${where} exactly as planned; nothing was generated again.`)
 		lines.push("")
@@ -500,7 +502,7 @@ export function exactSaveOutcome(report, outcomes) {
  * could save them twice.
  */
 export function renderSaveInterrupted(destination = {}, why) {
-	const where = destination.project && destination.folder ? whereLinked(destination) : "Test Management"
+	const where = destination.project && destination.folder ? `${plain(destination.folder)} in ${plain(destination.project)}` : "Test Management"
 	const extra = String(why ?? "").trim()
 	return [
 		`The save stopped before it reported what it saved${extra ? ` (${plain(extra)})` : ""}, so some of the approved cases may already be in ${where}.`,

@@ -176,7 +176,7 @@ describe("parseTmAddReport reads tc tm add --json", () => {
 		failed: [],
 	}
 	test("the report object, with missing lists filled in", () => {
-		assert.deepEqual(parseTmAddReport(JSON.stringify(report, null, 2)), { ...report, skipped: [] })
+		assert.deepEqual(parseTmAddReport(JSON.stringify(report, null, 2)), { ...report, skipped: [], folderUrl: "" })
 	})
 	test("the last object when something was printed before it", () => {
 		assert.equal(parseTmAddReport(`Saving 1 case…\n${JSON.stringify(report)}`)?.created.length, 1)
@@ -299,7 +299,7 @@ describe("approving saves exactly the cases the plan showed", () => {
 
 	test("the plan is shown from the cases file, with where it will be saved", () => {
 		const shown = renderPlannedCases(file)
-		assert.ok(shown.body.includes('**Will be saved to:** [github-app in rag\\_assignment](https://test-management.browserstack.com/projects/PR-42/folder/7), once approved.'))
+		assert.match(shown.body, /\*\*Will be saved to:\*\* github-app in rag\\_assignment \(PR-42, 7\), once approved\./)
 		assert.match(shown.body, /\*\*2 test cases:\*\*/)
 		assert.match(shown.body, /<details><summary>T001 — Base delay<\/summary>/)
 		assert.match(shown.body, /\*\*Priority:\*\* high/)
@@ -311,9 +311,7 @@ describe("approving saves exactly the cases the plan showed", () => {
 	test("agent-written text can't mention anyone or add a link", () => {
 		const shown = renderPlannedCases(file).body
 		assert.doesNotMatch(shown, /@octocat/)
-		// The only link is the destination folder, built from its ids.
-		const ours = "](https://test-management.browserstack.com/projects/PR-42/folder/7)"
-		assert.doesNotMatch(shown.replace(ours, ""), /\]\(https:\/\//)
+		assert.doesNotMatch(shown, /\]\(https:\/\//)
 		assert.doesNotMatch(shown, /https:\/\/evil/)
 	})
 
