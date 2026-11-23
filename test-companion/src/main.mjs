@@ -38,6 +38,8 @@ import {
 	parseTmAddReport,
 	renderCasesUnavailable,
 	renderExactSave,
+	tmFolderLink,
+	artifactDownloadLink,
 	exactSaveSummary,
 	exactSaveOutcome,
 	EDITED_GO_NOTE,
@@ -1092,7 +1094,8 @@ async function main() {
 		const isGenerate = (plan.workflow ?? summary.workflow) === "generate"
 		const casesBytes = isGenerate ? readBytes(join(CASES_DIR, CASES_DATA_FILE)) : undefined
 		// The cases get most of the comment; the run's own report above them is kept short.
-		const summaryShown = casesBytes ? renderSummaryWithin(view, PLAN_SUMMARY_LIMIT) : renderCheckSummary(view)
+		const planView = { ...view, proposing: true }
+		const summaryShown = casesBytes ? renderSummaryWithin(planView, PLAN_SUMMARY_LIMIT) : renderCheckSummary(planView)
 		const planned = casesBytes
 			? renderPlannedCases(casesBytes, { maxChars: COMMENT_LIMIT - summaryShown.length - sizeNote.length - PROPOSAL_OVERHEAD })
 			: undefined
@@ -1806,8 +1809,8 @@ function saveApprovedCases(plan, save, approvalNote) {
 		if (plan.context.pr) postComment(plan.context.pr, { ...view, consumedMarker: spend ? consumedMarker : "" })
 		process.exit(0)
 	}
-	const unavailable = (reason, detail) =>
-		finish({ ...base, outcome: OUTCOMES.COULD_NOT_RUN, answer: renderCasesUnavailable(reason, detail) }, false)
+	const unavailable = (reason, detail, download) =>
+		finish({ ...base, outcome: OUTCOMES.COULD_NOT_RUN, answer: renderCasesUnavailable(reason, detail, { download }) }, false)
 
 	if (save.mode !== "exact") return unavailable(save.reason)
 	// Anything unexpected is reported too: a plain go must never turn into a new generate run.
@@ -1848,9 +1851,11 @@ function saveExactly(plan, save, sha, base, finish, unavailable) {
 	}
 	const unshown = unshownFields(data)
 	if (unshown.length) return unavailable("unshown", unshown.slice(0, 10).join(", "))
+	// From here the file is exactly the approved one, so a save that doesn't happen links to it.
+	const download = artifactDownloadLink(REPO, save.runId, picked.artifact?.id)
 	// The destination comes from the approved file itself, so the cases go where the plan said.
 	const where = readCasesDestination(bytes.toString("utf8"))
-	if (where.error === "no-destination") return unavailable(missingDestinationReason(subject.cli), subject.cli || undefined)
+	if (where.error === "no-destination") return unavailable(missingDestinationReason(subject.cli), subject.cli || undefined, download)
 	if (where.error) return unavailable(where.error)
 
 	notice(`Test Companion: saving the approved plan's cases from run ${save.runId} to ${where.folder} in ${where.project}.`)
@@ -1868,13 +1873,24 @@ function saveExactly(plan, save, sha, base, finish, unavailable) {
 		// Approvable again only when nothing can have been saved. A save that was killed, timed
 		// out or crashed may have saved some, so the plan is used up: a second go could save them twice.
 		if (tmAddStop({ status: r.status, signal: r.signal, errorCode: r.error?.code, stderr }) === "nothing-saved") {
-			return unavailable("save-failed", why)
+			return unavailable("save-failed", why, download)
 		}
 		return finish({ ...base, outcome: OUTCOMES.RUN_BROKE, answer: renderSaveInterrupted(where, why) }, true)
 	}
 	if (report.failed.length > 0) logRedacted("tc tm add", stderr)
 	const { outcome, spend } = exactSaveOutcome(report, OUTCOMES)
-	finish({ ...base, outcome, summary: { ...base.summary, ...exactSaveSummary(report, where) }, answer: renderExactSave(report, where) }, spend)
+	const someLost = report.failed.length > 0
+	finish(
+		{
+			...base,
+			outcome,
+			summary: { ...base.summary, ...exactSaveSummary(report, where) },
+			answer: renderExactSave(report, where, { download: someLost ? download : undefined }),
+			savedToUrl: tmFolderLink(where.projectId, where.folderId),
+			casesDownloadUrl: someLost ? download : undefined,
+		},
+		spend,
+	)
 }
 
 /** The binding a comment is asking for, or the one bound to the event. */

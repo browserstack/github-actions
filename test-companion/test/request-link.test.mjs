@@ -3,9 +3,14 @@ import assert from "node:assert/strict"
 import { requestLink, askedByCell } from "../src/report.mjs"
 
 describe("requestLink: the report names the comment that asked for it", () => {
-	test("a comment link becomes its id, linked", () => {
+	test("a comment link becomes a View comment link", () => {
 		const url = "https://github.com/o/r/pull/945#issuecomment-6830219211"
-		assert.equal(requestLink(url), `[#6830219211](${url})`)
+		assert.equal(requestLink(url), `[View comment](${url})`)
+	})
+
+	test("the label can name what it links to", () => {
+		const url = "https://github.com/o/r/pull/945#issuecomment-1"
+		assert.equal(requestLink(url, "View plan"), `[View plan](${url})`)
 	})
 
 	test("anything that isn't a comment link gives no row", () => {
@@ -19,9 +24,9 @@ describe("requestLink: the report names the comment that asked for it", () => {
 
 
 describe("askedByCell", () => {
-	test("who and the linked comment id, pipe escaped", () => {
+	test("who, then a View comment link", () => {
 		const url = "https://github.com/o/r/pull/9#issuecomment-123"
-		assert.equal(askedByCell("octocat", url), `@octocat \\| [#123](${url})`)
+		assert.equal(askedByCell("octocat", url), `@octocat · [View comment](${url})`)
 	})
 	test("no comment link: just who", () => {
 		assert.equal(askedByCell("octocat", undefined), "@octocat")
