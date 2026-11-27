@@ -60,6 +60,7 @@ import {
 	APP_SIGN_IN_BUDGET_MS,
 	installationLookupMessage,
 } from "./app-auth.mjs"
+import { appTokenFromBroker, brokerFallbackNotice, appSlugFrom } from "./token-broker.mjs"
 import { OUTCOMES, parseSummary, resolveOutcome, checkConclusion, stepShouldFail, approvalWasSpent, runDidNotWork } from "./outcome.mjs"
 import {
 	renderJobSummary,
@@ -138,7 +139,9 @@ import {
 const env = process.env
 // Taken before the App token replaces GH_TOKEN and the key is deleted, so both are still hidden.
 const STARTUP_SECRETS = secretsFrom(env)
-const secretsNow = () => [...STARTUP_SECRETS, ...secretsFrom(env)]
+// Credentials received at run time that never sit in env, such as the identity token sent to the token service.
+const RECEIVED_SECRETS = []
+const secretsNow = () => [...STARTUP_SECRETS, ...RECEIVED_SECRETS, ...secretsFrom(env)]
 const REPO = env.GITHUB_REPOSITORY ?? ""
 const RUN_URL = `${env.GITHUB_SERVER_URL ?? "https://github.com"}/${REPO}/actions/runs/${env.GITHUB_RUN_ID ?? ""}`
 // RUNNER_TEMP is cleared per job; /tmp may hold an earlier job's files on a reused runner.
@@ -311,10 +314,14 @@ function personTokenLogin() {
 	return login
 }
 
-/** A repo-scoped App installation token, or undefined to fall back to the workflow token. */
+/**
+ * A repo-scoped App installation token, or undefined to fall back to the workflow token.
+ * With the App's key as inputs (a self-managed App), sign in directly; otherwise ask
+ * BrowserStack's token service, which holds the key.
+ */
 async function appInstallationToken() {
 	const creds = appCredentials(env)
-	if (!creds) return undefined
+	if (!creds) return brokeredAppToken()
 	// Remove the key from the environment so nothing started later, the agent included, inherits it.
 	delete env.TC_ACTION_APP_PRIVATE_KEY
 
@@ -383,6 +390,39 @@ async function appInstallationToken() {
 		identity = commitIdentity({ appSlug: found.data?.app_slug, appUserId: user.status === 0 ? String(user.stdout ?? "").trim() : "" })
 	}
 	return token
+}
+
+/** The App token from BrowserStack's token service, or undefined to fall back to the workflow token. */
+async function brokeredAppToken() {
+	const mask = (secret) => {
+		console.log(`::add-mask::${secret}`)
+		RECEIVED_SECRETS.push(secret)
+	}
+	let got
+	try {
+		got = await appTokenFromBroker({ env, mask })
+	} catch (e) {
+		got = { notice: brokerFallbackNotice({ reason: e?.message ?? String(e) }) }
+	} finally {
+		// Spent: nothing started later, the agent included, can ask for another identity token.
+		delete env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
+		delete env.ACTIONS_ID_TOKEN_REQUEST_URL
+	}
+	if (!got.token) {
+		if (got.notice) notice(got.notice)
+		return undefined
+	}
+	if (got.attempts > 1) notice(`Test Companion: reaching the token service took ${got.attempts} tries.`)
+
+	// The service doesn't say which App it signed for; its bot account is <slug>[bot].
+	const appSlug = appSlugFrom(env.TC_ACTION_APP_SLUG)
+	const appLogin = `${appSlug}[bot]`
+	botLogin = appLogin
+	// The bot account's id makes the noreply email GitHub links to the App.
+	const user = runGh(["api", `users/${encodeURIComponent(appLogin)}`, "--jq", ".id"], { token: got.token })
+	if (user.status !== 0) warn(`Test Companion: could not look up ${appLogin}'s account, so commits use the plain Test Companion name.`)
+	identity = commitIdentity({ appSlug, appUserId: user.status === 0 ? String(user.stdout ?? "").trim() : "" })
+	return got.token
 }
 
 /**

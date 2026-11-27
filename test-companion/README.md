@@ -67,8 +67,21 @@ from the release you tested; a version without a checksum is refused.
 | `workflow` | no | Manual runs only; event-driven runs read the pipeline file |
 | `preview` | no | Report what would happen and change nothing |
 | `allow-unisolated` | no | `"true"` runs the agent as the job's own user when it cannot be locked down, where it can reach this job's tokens and secrets. Off by default |
-| `app-id` / `app-private-key` | no | Post as the GitHub App. Keep the workflow's `permissions:` block: the workflow token is the fallback |
+| `app-id` / `app-private-key` | no | Only for your own GitHub App: sign in with its key directly. Without them, the BrowserStack App is used through the token service (see below) |
+| `token-broker-url` / `app-slug` | no | Point at a test token service and its App. Leave unset |
 | `github-token` | no | The token for the Action's own GitHub calls. Leave it as the default (the workflow token) or use the GitHub App's token, never a personal access token: Test Companion recognises its own comments by their bot account, and a person's token would make them look like that person's |
+
+## Posting as BrowserStack
+
+Install the BrowserStack GitHub App on the repository and keep `id-token: write`
+in the job's `permissions:` (the starter workflow has it). There is no key to
+store: each run asks GitHub for a short-lived token that says which repository
+it is, and BrowserStack's token service trades it for an App token limited to
+that one repository, for at most an hour. If the App isn't installed, the job
+has no `id-token: write`, or the service can't be reached, the run carries on
+with the workflow token and posts as `github-actions[bot]`, with a notice
+saying why. Keep the other `permissions:` lines either way: that token is the
+fallback.
 
 ## Approving a plan
 
